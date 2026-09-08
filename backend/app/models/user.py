@@ -1,0 +1,63 @@
+"""
+User = an authenticated person. Always scoped to exactly one
+organization. A Blinkit user and a Veekay employee are the same
+model — what differs is organization_id + assigned roles, which is
+what makes isolation a data property instead of a code branch.
+"""
+import uuid
+from enum import StrEnum
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+
+class UserStatus(StrEnum):
+    ACTIVE = "active"
+    DEACTIVATED = "deactivated"
+    LOCKED = "locked"  # temporary, from failed-login protection
+
+
+class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("organization_id", "email", name="uq_org_email"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
+    )
+
+    full_name: Mapped[str] = mapped_column(String(128))
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    password_hash: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(16), default=UserStatus.ACTIVE.value)
+
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[str | None] = mapped_column(String, nullable=True)  # ISO timestamp, set on lockout
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # soft-delete / deactivation flag
+
+    organization: Mapped["Organization"] = relationship(back_populates="users")
+    user_roles: Mapped[list["UserRole"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class UserRole(Base, TimestampMixin):
+    """Many-to-many: a user can hold more than one role (rare but the
+    model should not forbid e.g. Regional Manager + Blinkit Admin)."""
+    __tablename__ = "user_roles"
+    __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_role"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    user: Mapped["User"] = relationship(back_populates="user_roles")
+    role: Mapped["Role"] = relationship()
