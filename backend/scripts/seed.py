@@ -38,7 +38,7 @@ EMPLOYEE_PERMISSIONS = ["orders.view", "orders.update", "tickets.view", "tickets
 
 # Starter password for both seeded users. Change these before this goes
 # anywhere near production.
-SEED_PASSWORD = "ChangeMe123!"
+SEED_PASSWORD = "Pass@123"
 
 
 def main() -> None:
