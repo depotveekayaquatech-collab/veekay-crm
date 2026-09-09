@@ -9,7 +9,7 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [organizationSlug, setOrganizationSlug] = useState("veekay");
-  const [email, setEmail] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +20,8 @@ export function LoginPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(organizationSlug, email, password);
-      navigate("/dashboard");
+      await login(organizationSlug, employeeCode, password);
+      navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
     } finally {
@@ -82,12 +82,11 @@ export function LoginPage() {
               required
             />
             <Input
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              placeholder="you@company.com"
+              label="Employee ID"
+              value={employeeCode}
+              onChange={(e) => setEmployeeCode(e.target.value.toUpperCase())}
+              autoComplete="username"
+              placeholder="e.g. EMP001"
               required
             />
             <Input
@@ -123,12 +122,12 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 rounded-md bg-white px-3 py-2.5 text-xs text-gray-500 shadow-sm ring-1 ring-surface-border">
-            <span className="font-medium text-gray-700">Demo access</span> — organization{" "}
-            <code className="text-gray-700">veekay</code>, email{" "}
-            <code className="text-gray-700">admin@veekay.com</code>, password{" "}
-            <code className="text-gray-700">ChangeMe123!</code>
-          </p>
+          <div className="mt-6 space-y-1 rounded-md bg-white px-3 py-2.5 text-xs text-gray-500 shadow-sm ring-1 ring-surface-border">
+            <p className="font-medium text-gray-700">Demo access (password Pass@123)</p>
+            <p><code className="text-gray-700">ADMIN001</code> — admin</p>
+            <p><code className="text-gray-700">EMP001</code> — Blinkit, North region</p>
+            <p><code className="text-gray-700">EMP002</code> — Zepto, Karnataka</p>
+          </div>
         </div>
       </div>
     </div>

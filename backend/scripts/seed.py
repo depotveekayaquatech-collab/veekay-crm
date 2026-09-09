@@ -1,44 +1,70 @@
 """
-Run once against a fresh database to create enough data to log in:
-one organization, two roles, a starter permission set, and one admin user.
+Fresh-database seed for Phase 4.
 
     python scripts/seed.py
+
+Idempotent — safe to re-run. Creates the Veekay org + Blinkit/Zepto
+platforms, roles + permissions, an admin and two field employees
+(one region-model on Blinkit, one state-model on Zepto), regions,
+stores with LIVE/PENDING status, a Zepto state assignment, and a few
+bottle-count entries for today/yesterday.
 """
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.security import hash_password
 from app.db.session import SessionLocal
+from app.models.order_entry import EntrySource, OrderEntry
 from app.models.organization import Organization, OrganizationKind
 from app.models.permission import Permission, RolePermission
+from app.models.region import Region
 from app.models.role import Role
+from app.models.state_assignment import StateAssignment
+from app.models.store import Store
 from app.models.user import User, UserRole, UserStatus
 
 PERMISSIONS = [
-    ("orders.view", "View orders"),
-    ("orders.create", "Create orders"),
-    ("orders.assign", "Assign orders"),
-    ("orders.update", "Update order status"),
-    ("orders.verify", "Verify orders"),
-    ("tickets.view", "View tickets"),
-    ("tickets.create", "Create tickets"),
-    ("tickets.verify", "Verify tickets"),
-    ("tickets.resolve", "Resolve tickets"),
+    ("orders.view", "View order calendars"),
+    ("orders.mark", "Mark bottle counts"),
+    ("orders.correct", "Correct or clear any entry"),
+    ("orders.overview", "View the admin daily overview"),
+    ("stores.view", "View stores"),
+    ("stores.manage", "Create and edit stores"),
+    ("regions.view", "View regions"),
+    ("regions.manage", "Create and edit regions"),
     ("employees.view", "View employees"),
-    ("employees.create", "Create employees"),
-    ("employees.update", "Update employees"),
-    ("reports.view", "View reports"),
-    ("reports.export", "Export reports"),
+    ("employees.create", "Create employees and set permissions"),
+    ("employees.update", "Edit employees"),
+    ("employees.deactivate", "Deactivate employees"),
+    ("assignments.manage", "Assign regions and states to employees"),
+    ("activity.view", "View the activity log"),
 ]
 
 ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]
-EMPLOYEE_PERMISSIONS = ["orders.view", "orders.update", "tickets.view", "tickets.create"]
+# The 'employee' role grants nothing on its own — every field employee's
+# access is the exact set of per-user permission checkboxes an admin ticks
+# (so an admin can also take capability away, not only add it).
+EMPLOYEE_PERMISSIONS: list[str] = []
+DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark"]
 
-# Starter password for both seeded users. Change these before this goes
-# anywhere near production.
 SEED_PASSWORD = "Pass@123"
+
+REGIONS = [("North", "NORTH"), ("West", "WEST"), ("South", "SOUTH")]
+
+# (name, code, partner, region_code, state, city, status)
+STORES = [
+    ("Blinkit — Saket", "BLK-4821", "blinkit", "NORTH", "Delhi", "New Delhi", "LIVE"),
+    ("Blinkit — Rohini", "BLK-4830", "blinkit", "NORTH", "Delhi", "New Delhi", "LIVE"),
+    ("Blinkit — Gurugram", "BLK-4901", "blinkit", "NORTH", "Haryana", "Gurugram", "LIVE"),
+    ("Blinkit — Andheri", "BLK-5093", "blinkit", "WEST", "Maharashtra", "Mumbai", "LIVE"),
+    ("Blinkit — Pune Kothrud", "BLK-5140", "blinkit", "WEST", "Maharashtra", "Pune", "PENDING"),
+    ("Zepto — Koramangala", "ZEP-1187", "zepto", "SOUTH", "Karnataka", "Bengaluru", "LIVE"),
+    ("Zepto — Indiranagar", "ZEP-1190", "zepto", "SOUTH", "Karnataka", "Bengaluru", "LIVE"),
+    ("Zepto — HITEC City", "ZEP-1250", "zepto", "SOUTH", "Telangana", "Hyderabad", "LIVE"),
+]
 
 
 def main() -> None:
@@ -50,54 +76,135 @@ def main() -> None:
             db.add(org)
             db.flush()
 
-        permissions_by_code = {}
-        for code, description in PERMISSIONS:
+        partners = {}
+        for slug, name in [("blinkit", "Blinkit"), ("zepto", "Zepto")]:
+            p = db.query(Organization).filter_by(slug=slug).first()
+            if p is None:
+                p = Organization(slug=slug, name=name, kind=OrganizationKind.PARTNER.value)
+                db.add(p)
+                db.flush()
+            partners[slug] = p
+
+        perms = {}
+        for code, desc in PERMISSIONS:
             perm = db.query(Permission).filter_by(code=code).first()
             if perm is None:
-                perm = Permission(code=code, description=description)
+                perm = Permission(code=code, description=desc)
                 db.add(perm)
                 db.flush()
-            permissions_by_code[code] = perm
+            perms[code] = perm
 
-        def ensure_role(code: str, name: str, permission_codes: list[str]) -> Role:
+        def ensure_role(code, name, codes):
             role = db.query(Role).filter_by(code=code).first()
             if role is None:
                 role = Role(code=code, name=name)
                 db.add(role)
                 db.flush()
-            existing = {rp.permission_id for rp in role.role_permissions}
-            for perm_code in permission_codes:
-                perm = permissions_by_code[perm_code]
-                if perm.id not in existing:
-                    db.add(RolePermission(role_id=role.id, permission_id=perm.id))
+            have = {rp.permission_id for rp in role.role_permissions}
+            for c in codes:
+                if perms[c].id not in have:
+                    db.add(RolePermission(role_id=role.id, permission_id=perms[c].id))
             return role
 
         admin_role = ensure_role("admin", "Admin", ADMIN_PERMISSIONS)
         employee_role = ensure_role("employee", "Employee", EMPLOYEE_PERMISSIONS)
         db.flush()
 
-        def ensure_user(email: str, full_name: str, password: str, role: Role) -> None:
-            user = db.query(User).filter_by(organization_id=org.id, email=email).first()
-            if user is None:
-                user = User(
-                    organization_id=org.id,
-                    full_name=full_name,
-                    email=email,
-                    password_hash=hash_password(password),
-                    status=UserStatus.ACTIVE.value,
-                )
-                db.add(user)
+        regions = {}
+        for name, code in REGIONS:
+            r = db.query(Region).filter_by(organization_id=org.id, code=code).first()
+            if r is None:
+                r = Region(organization_id=org.id, name=name, code=code)
+                db.add(r)
                 db.flush()
-            if not db.query(UserRole).filter_by(user_id=user.id, role_id=role.id).first():
-                db.add(UserRole(user_id=user.id, role_id=role.id))
+            regions[code] = r
 
-        ensure_user("admin@veekay.com", "Admin User", SEED_PASSWORD, admin_role)
-        ensure_user("employee@veekay.com", "Employee User", SEED_PASSWORD, employee_role)
+        stores = {}
+        for name, code, pslug, rcode, state, city, st in STORES:
+            s = db.query(Store).filter_by(partner_organization_id=partners[pslug].id, external_code=code).first()
+            if s is None:
+                s = Store(
+                    organization_id=org.id,
+                    partner_organization_id=partners[pslug].id,
+                    region_id=regions[rcode].id,
+                    name=name, external_code=code, state=state, city=city,
+                    status=st, vendor_name="Local Vendor", vendor_number="9000000000",
+                    poc_name="Store Manager", poc_number="9111111111",
+                )
+                db.add(s)
+                db.flush()
+            stores[code] = s
+
+        def ensure_user(code, name, role, *, platform=None, region=None):
+            u = db.query(User).filter_by(organization_id=org.id, employee_code=code).first()
+            if u is None:
+                u = User(
+                    organization_id=org.id, employee_code=code, full_name=name,
+                    password_hash=hash_password(SEED_PASSWORD), status=UserStatus.ACTIVE.value,
+                )
+                db.add(u)
+                db.flush()
+            if platform is not None:
+                u.platform_organization_id = platform.id
+            if region is not None:
+                u.region_id = region.id
+            if not db.query(UserRole).filter_by(user_id=u.id, role_id=role.id).first():
+                db.add(UserRole(user_id=u.id, role_id=role.id))
+            return u
+
+        from app.models.user_permission import UserPermission
+
+        def grant(user, codes):
+            have = {up.permission_id for up in db.query(UserPermission).filter_by(user_id=user.id)}
+            for c in codes:
+                if perms[c].id not in have:
+                    db.add(UserPermission(user_id=user.id, permission_id=perms[c].id))
+
+        ensure_user("ADMIN001", "Admin User", admin_role)
+        blinkit_emp = ensure_user(
+            "EMP001", "Ravi Kumar (Blinkit / North)", employee_role,
+            platform=partners["blinkit"], region=regions["NORTH"],
+        )
+        zepto_emp = ensure_user(
+            "EMP002", "Sana Sheikh (Zepto)", employee_role, platform=partners["zepto"],
+        )
+        db.flush()
+        grant(blinkit_emp, DEFAULT_EMPLOYEE_GRANTS)
+        grant(zepto_emp, DEFAULT_EMPLOYEE_GRANTS)
+
+        # Zepto: assign Karnataka to the Zepto employee (Telangana stays unassigned).
+        if not db.query(StateAssignment).filter_by(
+            partner_organization_id=partners["zepto"].id, state="Karnataka"
+        ).first():
+            db.add(StateAssignment(
+                organization_id=org.id, partner_organization_id=partners["zepto"].id,
+                state="Karnataka", assigned_user_id=zepto_emp.id,
+            ))
+
+        # A few bottle-count entries.
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        samples = [
+            ("BLK-4821", yesterday, 24, EntrySource.EMPLOYEE, blinkit_emp),
+            ("BLK-4830", yesterday, 12, EntrySource.EMPLOYEE, blinkit_emp),
+            ("BLK-4821", today, 30, EntrySource.EMPLOYEE, blinkit_emp),
+            ("ZEP-1187", yesterday, 18, EntrySource.EMPLOYEE, zepto_emp),
+            ("ZEP-1190", today, 0, EntrySource.EMPLOYEE, zepto_emp),
+        ]
+        for code, d, count, src, emp in samples:
+            s = stores[code]
+            if db.query(OrderEntry).filter_by(store_id=s.id, order_date=d).first():
+                continue
+            db.add(OrderEntry(
+                organization_id=org.id, store_id=s.id, order_date=d,
+                bottle_count=count, source=src.value, marked_by_user_id=emp.id,
+            ))
 
         db.commit()
-        print("Seeded: organization 'veekay', roles admin/employee, 2 users.")
-        print(f"  admin@veekay.com    / {SEED_PASSWORD}  (admin role)")
-        print(f"  employee@veekay.com / {SEED_PASSWORD}  (employee role)")
+        print("Seeded Phase 4.")
+        print("  ADMIN001 / Pass@123  (admin)")
+        print("  EMP001   / Pass@123  (Blinkit, North region)")
+        print("  EMP002   / Pass@123  (Zepto, Karnataka state)")
         print("Login with organization='veekay'.")
     finally:
         db.close()

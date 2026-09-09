@@ -15,8 +15,20 @@ from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db.session import get_db
 from app.models.user import User, UserStatus
 from app.repositories.user_repository import UserRepository
+from app.schemas.common import PageParams
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+MAX_PAGE_SIZE = 100
+
+
+def get_page_params(page: int = 1, page_size: int = 20) -> PageParams:
+    """Shared list pagination. Clamps to sane bounds so a caller can't ask
+    for page 0 or 10_000 rows."""
+    return PageParams(
+        page=max(1, page),
+        page_size=min(max(1, page_size), MAX_PAGE_SIZE),
+    )
 
 
 def get_current_user(

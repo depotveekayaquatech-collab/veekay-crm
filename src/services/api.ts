@@ -61,7 +61,7 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   isRetry?: boolean;
   /** Suppress the automatic error toast — for calls where the caller
@@ -74,7 +74,10 @@ interface RequestOptions {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const isForm = options.body instanceof FormData;
+  const headers: Record<string, string> = {};
+  // Let the browser set the multipart boundary itself for FormData.
+  if (!isForm) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   let res: Response;
@@ -82,7 +85,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     res = await fetch(`${BASE_URL}${path}`, {
       method: options.method ?? "GET",
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: isForm
+        ? (options.body as FormData)
+        : options.body
+          ? JSON.stringify(options.body)
+          : undefined,
     });
   } catch {
     const message = "Unable to connect. Please check your connection and try again.";

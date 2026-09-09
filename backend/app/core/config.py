@@ -56,6 +56,39 @@ class Settings(BaseSettings):
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp"]
     )
 
+    # ---- Order marking ----
+    MIN_BOTTLE_COUNT: int = 0
+    MAX_BOTTLE_COUNT: int = 200
+
+    # Partner platforms (by slug) that use the employee-model: no region
+    # concept, stores routed purely by state -> employee assignment.
+    EMPLOYEE_MODEL_PLATFORM_SLUGS: list[str] = Field(default_factory=lambda: ["zepto"])
+    # Platforms where a state may be assigned to any employee regardless of
+    # the employee's home region (the region label is informational only).
+    REGION_INDEPENDENT_PLATFORM_SLUGS: list[str] = Field(default_factory=lambda: ["zepto"])
+
+    # ---- Store sync from Google Sheets ----
+    # Each entry: "<partner_slug>=<spreadsheet_id>[:<gid>]". The sheet must be
+    # shared as "Anyone with the link - Viewer" (or Published to web); the
+    # backend reads it via the public CSV export endpoint. Example:
+    #   STORE_SYNC_SHEETS='["blinkit=12fo5ar...:0","zepto=1xlxl4...:0"]'
+    STORE_SYNC_SHEETS: list[str] = Field(default_factory=list)
+    STORE_SYNC_ENABLED: bool = Field(default=True)      # run the daily job
+    STORE_SYNC_HOUR: int = Field(default=10)            # local hour, 24h
+    STORE_SYNC_MINUTE: int = Field(default=0)
+    STORE_SYNC_TIMEZONE: str = Field(default="Asia/Kolkata")
+
+    def sheet_sources(self) -> dict[str, tuple[str, str]]:
+        """{partner_slug: (spreadsheet_id, gid)} parsed from STORE_SYNC_SHEETS."""
+        out: dict[str, tuple[str, str]] = {}
+        for raw in self.STORE_SYNC_SHEETS:
+            if "=" not in raw:
+                continue
+            slug, ref = raw.split("=", 1)
+            sheet_id, _, gid = ref.strip().partition(":")
+            out[slug.strip().lower()] = (sheet_id.strip(), gid.strip() or "0")
+        return out
+
 
 @lru_cache
 def get_settings() -> Settings:

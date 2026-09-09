@@ -24,4 +24,6 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     kind: Mapped[str] = mapped_column(String(16), default=OrganizationKind.PARTNER.value)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    users: Mapped[list["User"]] = relationship(back_populates="organization")
+    users: Mapped[list["User"]] = relationship(
+        back_populates="organization", foreign_keys="User.organization_id"
+    )

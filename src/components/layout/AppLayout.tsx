@@ -2,13 +2,15 @@ import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
 import {
-  IconBox,
+  IconActivity,
   IconChart,
+  IconClipboard,
   IconClose,
   IconGrid,
   IconLogout,
+  IconMapPin,
   IconMenu,
-  IconTicket,
+  IconStore,
   IconUsers,
 } from "@/components/ui/icons";
 
@@ -23,11 +25,14 @@ interface NavItem {
 // itself per spec section 8 ("navigation must dynamically change based
 // on permissions") without any component knowing about roles.
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", to: "/dashboard", icon: IconGrid },
-  { label: "Orders", to: "/orders", icon: IconBox, permission: "orders.view" },
-  { label: "Tickets", to: "/tickets", icon: IconTicket, permission: "tickets.view" },
-  { label: "Employees", to: "/employees", icon: IconUsers, permission: "employees.view" },
-  { label: "Reports", to: "/reports", icon: IconChart, permission: "reports.view" },
+  { label: "Dashboard", to: "/", icon: IconGrid },
+  { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.mark" },
+  { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview" },
+  { label: "Correct entries", to: "/orders/correct", icon: IconGrid, permission: "orders.correct" },
+  { label: "Team & access", to: "/team", icon: IconUsers, permission: "employees.view" },
+  { label: "Stores", to: "/stores", icon: IconStore, permission: "stores.view" },
+  { label: "Regions", to: "/regions", icon: IconMapPin, permission: "regions.view" },
+  { label: "Activity", to: "/activity", icon: IconActivity, permission: "activity.view" },
 ];
 
 function formatRoleLabel(role: string): string {
@@ -71,6 +76,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <NavLink
               key={item.to}
               to={item.to}
+              end
               onClick={onNavigate}
               className={({ isActive }) =>
                 `group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
@@ -132,12 +138,14 @@ export function AppLayout() {
   }, [mobileOpen]);
 
   const currentTitle =
-    NAV_ITEMS.find((item) => location.pathname.startsWith(item.to))?.label ?? "Veekay CRM";
+    [...NAV_ITEMS]
+      .filter((item) => location.pathname.startsWith(item.to))
+      .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? "Veekay CRM";
 
   return (
-    <div className="min-h-screen bg-surface-subtle lg:pl-64">
+    <div className="min-h-screen bg-surface-subtle lg:pl-[17rem]">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-surface-border bg-white lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[17rem] border-r border-surface-border bg-white lg:block">
         <SidebarContent />
       </aside>
 
@@ -163,7 +171,7 @@ export function AppLayout() {
       )}
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-surface-border bg-white/85 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-surface-border bg-white/85 px-4 backdrop-blur-md sm:px-6 lg:px-10">
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
@@ -171,10 +179,10 @@ export function AppLayout() {
         >
           <IconMenu className="h-5 w-5" />
         </button>
-        <h1 className="text-base font-semibold text-gray-900">{currentTitle}</h1>
+        <h1 className="text-lg font-semibold text-gray-900">{currentTitle}</h1>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <main className="mx-auto w-full max-w-[1680px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
         <Outlet />
       </main>
     </div>

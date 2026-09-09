@@ -108,3 +108,52 @@ export const IconInfo = (p: IconProps) => (
     <circle cx="12" cy="7.75" r="0.6" fill="currentColor" stroke="none" />
   </Base>
 );
+
+export const IconStore = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 9l1.5-5h13L20 9" />
+    <path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9" />
+    <path d="M4 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" />
+    <path d="M9 20v-5h6v5" />
+  </Base>
+);
+
+export const IconMapPin = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 21s7-6.1 7-11.3A7 7 0 0 0 5 9.7C5 14.9 12 21 12 21Z" />
+    <circle cx="12" cy="9.5" r="2.3" />
+  </Base>
+);
+
+export const IconActivity = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M3 12h4l2 7 4-14 2 7h6" />
+  </Base>
+);
+
+export const IconClipboard = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="6" y="4" width="12" height="17" rx="2" />
+    <path d="M9 4a3 3 0 0 1 6 0" />
+    <path d="M9 11h6M9 15h4" />
+  </Base>
+);
+
+export const IconChevronDown = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M6 9l6 6 6-6" />
+  </Base>
+);
+
+export const IconSearch = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4.3-4.3" />
+  </Base>
+);
+
+export const IconPlus = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Base>
+);

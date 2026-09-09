@@ -3,7 +3,7 @@ import type { CurrentUser } from "@/types/auth";
 
 interface LoginPayload {
   organizationSlug: string;
-  email: string;
+  employeeCode: string;
   password: string;
 }
 
@@ -14,42 +14,51 @@ interface TokenResponse {
 
 interface MeResponse {
   id: string;
+  employee_code: string;
   full_name: string;
-  email: string;
+  email: string | null;
   organization_id: string;
   organization_slug: string;
+  platform_slug: string | null;
+  platform_label: string | null;
+  region_id: string | null;
+  region_name: string | null;
   permissions: string[];
   roles: string[];
+  is_admin: boolean;
 }
 
 function toCurrentUser(res: MeResponse): CurrentUser {
   return {
     id: res.id,
+    employeeCode: res.employee_code,
     fullName: res.full_name,
     email: res.email,
     organizationId: res.organization_id,
     organizationSlug: res.organization_slug,
+    platformSlug: res.platform_slug,
+    platformLabel: res.platform_label,
+    regionId: res.region_id,
+    regionName: res.region_name,
     permissions: res.permissions,
     roles: res.roles,
+    isAdmin: res.is_admin,
   };
 }
 
 export async function login(payload: LoginPayload): Promise<CurrentUser> {
-  // silent: true — LoginPage shows its own inline error instead of a
-  // toast, since the form field is right there for it.
   const tokens = await apiRequest<TokenResponse>("/auth/login", {
     method: "POST",
     silent: true,
     skipAuthRefresh: true,
     body: {
       organization_slug: payload.organizationSlug,
-      email: payload.email,
+      employee_code: payload.employeeCode,
       password: payload.password,
     },
   });
   setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
-  const me = await apiRequest<MeResponse>("/auth/me");
-  return toCurrentUser(me);
+  return toCurrentUser(await apiRequest<MeResponse>("/auth/me"));
 }
 
 export async function logout(): Promise<void> {
@@ -58,6 +67,5 @@ export async function logout(): Promise<void> {
 }
 
 export async function fetchCurrentUser(silent = false): Promise<CurrentUser> {
-  const me = await apiRequest<MeResponse>("/auth/me", { silent });
-  return toCurrentUser(me);
+  return toCurrentUser(await apiRequest<MeResponse>("/auth/me", { silent }));
 }

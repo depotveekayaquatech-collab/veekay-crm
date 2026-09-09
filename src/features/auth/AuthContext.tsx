@@ -1,18 +1,8 @@
-import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchCurrentUser, login as loginRequest, logout as logoutRequest } from "@/services/auth";
 import { getPersistedRefreshToken, setOnSessionExpired, setTokens } from "@/services/api";
+import { AuthContext } from "@/features/auth/auth-context";
 import type { CurrentUser } from "@/types/auth";
-
-interface AuthContextValue {
-  user: CurrentUser | null;
-  isLoading: boolean;
-  login: (organizationSlug: string, email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  hasPermission: (permission: string) => boolean;
-  hasRole: (role: string) => boolean;
-}
-
-export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -45,10 +35,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void restore();
   }, []);
 
-  const login = useCallback(async (organizationSlug: string, email: string, password: string) => {
-    const currentUser = await loginRequest({ organizationSlug, email, password });
-    setUser(currentUser);
-  }, []);
+  const login = useCallback(
+    async (organizationSlug: string, employeeCode: string, password: string) => {
+      const currentUser = await loginRequest({ organizationSlug, employeeCode, password });
+      setUser(currentUser);
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     await logoutRequest();

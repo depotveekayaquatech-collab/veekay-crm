@@ -1,4 +1,4 @@
-"""Auth routes — thin wrappers over AuthService. See spec section 5."""
+"""Auth routes — thin wrappers over AuthService."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -11,10 +11,12 @@ from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+ADMIN_ROLE_CODE = "admin"
+
 
 @router.post("/login", response_model=TokenPair)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenPair:
-    return AuthService(db).login(payload.organization_slug, payload.email, payload.password)
+    return AuthService(db).login(payload.organization_slug, payload.employee_code, payload.password)
 
 
 @router.post("/refresh", response_model=TokenPair)
@@ -24,10 +26,6 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenPair
 
 @router.post("/logout", status_code=204)
 def logout() -> None:
-    # Stateless JWTs: logout is enforced client-side (discard tokens).
-    # jti is already embedded in every token (see security.py) so a
-    # server-side revocation list can be added later without a token
-    # format change, once that's needed.
     return None
 
 
@@ -37,12 +35,19 @@ def get_me(
     permissions: set[str] = Depends(get_current_permissions),
     db: Session = Depends(get_db),
 ) -> CurrentUserResponse:
+    roles = UserRepository(db).get_role_codes(user.id)
     return CurrentUserResponse(
         id=user.id,
+        employee_code=user.employee_code,
         full_name=user.full_name,
         email=user.email,
         organization_id=user.organization_id,
         organization_slug=user.organization.slug,
+        platform_slug=user.platform_organization.slug if user.platform_organization else None,
+        platform_label=user.platform_organization.name if user.platform_organization else None,
+        region_id=user.region_id,
+        region_name=user.region.name if user.region else None,
         permissions=sorted(permissions),
-        roles=UserRepository(db).get_role_codes(user.id),
+        roles=roles,
+        is_admin=ADMIN_ROLE_CODE in roles,
     )

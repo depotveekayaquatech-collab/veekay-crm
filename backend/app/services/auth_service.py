@@ -43,9 +43,9 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
         return org
 
-    def login(self, organization_slug: str, email: str, password: str) -> TokenPair:
+    def login(self, organization_slug: str, employee_code: str, password: str) -> TokenPair:
         org = self._get_organization(organization_slug)
-        user = self.users.get_by_org_and_email(org.id, email)
+        user = self.users.get_by_org_and_code(org.id, employee_code)
 
         if user is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)

@@ -1,8 +1,8 @@
 """
 User = an authenticated person. Always scoped to exactly one
-organization. A Blinkit user and a Veekay employee are the same
-model — what differs is organization_id + assigned roles, which is
-what makes isolation a data property instead of a code branch.
+organization. Field employees log in with an Employee ID
+(`employee_code`) + password; every actual permission is the union of
+their roles' permissions and any direct grants (see UserPermission).
 """
 import uuid
 from enum import StrEnum
@@ -22,14 +22,28 @@ class UserStatus(StrEnum):
 
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("organization_id", "email", name="uq_org_email"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "employee_code", name="uq_org_employee_code"),
+        UniqueConstraint("organization_id", "email", name="uq_org_email"),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
     )
+    # The partner platform (Blinkit / Zepto) a field employee serves. Null for
+    # admins and internal staff.
+    platform_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    # Blinkit employees are scoped to one region; Zepto employees are scoped by
+    # state (see StateAssignment) and leave this null.
+    region_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
+    employee_code: Mapped[str] = mapped_column(String(32), index=True)
     full_name: Mapped[str] = mapped_column(String(128))
-    email: Mapped[str] = mapped_column(String(255), index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     password_hash: Mapped[str] = mapped_column(String(255))
@@ -40,8 +54,17 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # soft-delete / deactivation flag
 
-    organization: Mapped["Organization"] = relationship(back_populates="users")
+    organization: Mapped["Organization"] = relationship(
+        back_populates="users", foreign_keys=[organization_id]
+    )
+    platform_organization: Mapped["Organization | None"] = relationship(
+        foreign_keys=[platform_organization_id]
+    )
+    region: Mapped["Region | None"] = relationship()
     user_roles: Mapped[list["UserRole"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    permission_grants: Mapped[list["UserPermission"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 

@@ -1,15 +1,17 @@
 export interface CurrentUser {
   id: string;
+  employeeCode: string;
   fullName: string;
-  email: string;
+  email: string | null;
   organizationId: string;
   organizationSlug: string;
+  platformSlug: string | null;
+  platformLabel: string | null;
+  regionId: string | null;
+  regionName: string | null;
   permissions: string[];
-  /** Role codes, e.g. "admin", "employee", "blinkit_admin" — used only
-   * to decide which dashboard variant to render (see features/dashboard).
-   * Every actual access-control decision still goes through `permissions`,
-   * never a role name — see spec section 6. */
   roles: string[];
+  isAdmin: boolean;
 }
 
 export interface TokenPair {

@@ -32,7 +32,15 @@ export default {
       },
       borderRadius: { sm: "6px", md: "8px", lg: "12px", xl: "16px" },
       fontFamily: {
-        sans: ['"Inter"', '"Inter Fallback"', "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        sans: [
+          '"Plus Jakarta Sans"',
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "sans-serif",
+        ],
       },
       boxShadow: {
         sm: "0 1px 2px 0 rgba(16, 24, 40, 0.05)",

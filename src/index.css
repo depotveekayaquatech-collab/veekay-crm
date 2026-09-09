@@ -6,14 +6,24 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Root size drives every rem-based Tailwind size + spacing token, so
+       one bump here scales the whole UI up proportionally. */
+    font-size: 17px;
+  }
+
+  @media (max-width: 640px) {
+    html {
+      font-size: 16px;
+    }
   }
 
   body {
     background-color: #f6f7f9;
     color: #111827;
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-feature-settings: "cv11", "ss01";
   }
 
   /* Consistent, visible keyboard focus everywhere — never rely on the
@@ -52,5 +62,51 @@
 @layer components {
   .card {
     @apply rounded-lg border border-surface-border bg-white shadow-card;
+  }
+}
+
+/* Admin data tables: real table on desktop, stacked labelled cards on
+   narrow screens (each <td> shows its column name from data-label). */
+@media (max-width: 700px) {
+  .stacked-table table,
+  .stacked-table thead,
+  .stacked-table tbody,
+  .stacked-table th,
+  .stacked-table td,
+  .stacked-table tr {
+    display: block;
+  }
+  .stacked-table thead {
+    display: none;
+  }
+  .stacked-table table {
+    min-width: 0 !important;
+  }
+  .stacked-table tr {
+    margin: 0.5rem;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    padding: 0.25rem 0.5rem;
+    background: #fff;
+  }
+  .stacked-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 0 !important;
+    padding: 0.4rem 0.25rem !important;
+    text-align: right;
+  }
+  .stacked-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #6b7280;
+    text-align: left;
+  }
+  .stacked-table td:first-child {
+    text-align: left;
+  }
+  .stacked-table td:first-child::before {
+    content: "";
   }
 }
