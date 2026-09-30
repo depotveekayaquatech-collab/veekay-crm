@@ -16,7 +16,7 @@ from app.services import activity_service
 
 _STORE_FIELDS = (
     "name", "external_code", "state", "city", "address",
-    "poc_name", "poc_number", "vendor_name", "vendor_number",
+    "poc_name", "poc_number", "vendor_name", "vendor_number", "start_date",
 )
 
 
@@ -26,6 +26,8 @@ def to_out(store: Store) -> StoreOut:
         name=store.name,
         external_code=store.external_code,
         status=store.status,
+        entity=store.entity,
+        start_date=store.start_date,
         state=store.state,
         city=store.city,
         address=store.address,
@@ -50,6 +52,7 @@ def list_stores(
     partner: str | None = None,
     state: str | None = None,
     store_status: str | None = None,
+    search: str | None = None,
 ) -> Page[StoreOut]:
     stores, total = StoreRepository(db).list(
         actor.organization_id,
@@ -59,6 +62,7 @@ def list_stores(
         partner_slug=partner,
         state=state,
         status=store_status,
+        search=search,
     )
     return Page(
         items=[to_out(s) for s in stores],

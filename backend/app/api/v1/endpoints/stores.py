@@ -1,7 +1,8 @@
 """Store routes — thin wrappers over store_service."""
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_page_params, require_permission
@@ -20,12 +21,13 @@ def list_stores(
     partner: str | None = None,
     state: str | None = None,
     store_status: str | None = None,
+    search: str | None = None,
     params: PageParams = Depends(get_page_params),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Page[StoreOut]:
     return store_service.list_stores(
-        db, user, params, region_id=region_id, partner=partner, state=state, store_status=store_status
+        db, user, params, region_id=region_id, partner=partner, state=state, store_status=store_status, search=search
     )
 
 
@@ -52,6 +54,32 @@ def sync_stores(
     except store_sync_service.SyncError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return [StoreSyncResult(**r.as_dict()) for r in results]
+
+
+@router.post(
+    "/import", response_model=StoreSyncResult,
+    dependencies=[Depends(require_permission("stores.manage"))],
+)
+async def import_stores(
+    platform: str = Form(...),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StoreSyncResult:
+    """Upload a .csv / .xlsx outlet list for one platform. Same column
+    mapping and upsert rules as the Google Sheet sync."""
+    content = await file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
+    try:
+        result = store_sync_service.import_file(db, user, platform, file.filename or "", content)
+    except store_sync_service.SyncError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except DBAPIError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The database rejected a value in this file. Check for unusually long or malformed cells.",
+        ) from exc
+    return StoreSyncResult(**result.as_dict())
 
 
 @router.post(

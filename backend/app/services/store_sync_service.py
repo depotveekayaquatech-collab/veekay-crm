@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,7 +31,7 @@ from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.repositories.store_repository import StoreRepository
-from app.services import activity_service
+from app.services import activity_service, assignment_service
 
 _CSV_URL = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
@@ -39,21 +41,31 @@ _COLUMN_ALIASES: dict[str, list[str]] = {
     "external_code": ["outlet id", "outlet_id", "store id", "store code", "outlet code", "id"],
     "name": ["outlet name", "store name", "outlet", "name"],
     "region": ["zone", "region"],
+    "entity": ["entity"],
+    # Veekay's own start date wins; fall back to the partner's go-live date column.
+    "start_date": ["start date", "start_date", "start date by blinkit", "go-live date", "go live date", "live date"],
     "state": ["state"],
     "city": ["city"],
     "address": ["address", "location"],
     "status": ["status"],
-    "poc_name": ["poc name", "poc"],
-    "poc_number": ["poc contact no", "poc contact", "poc number", "poc contact number", "poc no"],
+    "poc_name": ["poc name", "poc", "store manager name", "store maneger name", "store manager", "manager name"],
+    "poc_number": ["poc contact no", "poc contact", "poc number", "poc contact number", "poc no",
+                   "store manager number", "manager number", "number", "phone", "mobile"],
     "vendor_name": ["vendor", "vendor name"],
-    "vendor_number": ["contact details", "vendor contact", "vendor number", "vendor contact no"],
+    "vendor_number": ["contact details", "vendor contact", "vendor number", "vendor contact no", "contact number"],
 }
 
-_STATUS_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
-    (("live", "active", "running", "working", "operational", "go-live", "go live"), StoreStatus.LIVE.value),
-    (("close", "closed", "inactive", "stopped", "stop", "churn", "terminated", "discontinued", "dead", "lost"), StoreStatus.CLOSE.value),
-    (("pending", "hold", "on-hold", "process", "in progress", "progress", "await", "upcoming", "new", "onboarding", "onboard", "yet to"), StoreStatus.PENDING.value),
-]
+# Order matters: "not live yet" / "inactive" must be caught before the bare
+# words "live" / "active" would claim them. Whole-word matches only, so
+# e.g. "deliver" never counts as "live".
+_PENDING_FIRST = re.compile(
+    r"\b(yet to|not (yet )?(live|started|active)|to go live|to be live|awaiting|await|pending|"
+    r"on[- ]?hold|hold|in[- ]?progress|in process|onboarding|upcoming)\b"
+)
+_CLOSE_RE = re.compile(
+    r"\b(closed?|inactive|stopped|stop|churn(ed)?|terminated|discontinued|dead|lost|shut( down)?)\b"
+)
+_LIVE_RE = re.compile(r"\b(live|active|running|working|operational|go[- ]?live)\b")
 
 
 def normalize_status(raw: str | None) -> str:
@@ -62,9 +74,12 @@ def normalize_status(raw: str | None) -> str:
     if not raw:
         return StoreStatus.PENDING.value
     text = raw.strip().lower()
-    for needles, value in _STATUS_KEYWORDS:
-        if any(n in text for n in needles):
-            return value
+    if _PENDING_FIRST.search(text):
+        return StoreStatus.PENDING.value
+    if _CLOSE_RE.search(text):
+        return StoreStatus.CLOSE.value
+    if _LIVE_RE.search(text):
+        return StoreStatus.LIVE.value
     return StoreStatus.PENDING.value
 
 
@@ -107,6 +122,10 @@ def _fetch_rows(sheet_id: str, gid: str) -> list[dict[str, str]]:
     except urllib.error.URLError as exc:
         raise SyncError(f"Could not reach Google Sheets: {exc.reason}") from exc
 
+    return _parse_csv_text(body)
+
+
+def _parse_csv_text(body: str) -> list[dict[str, str]]:
     reader = csv.reader(io.StringIO(body))
     try:
         header = next(reader)
@@ -114,6 +133,60 @@ def _fetch_rows(sheet_id: str, gid: str) -> list[dict[str, str]]:
         return []
     keys = [h.strip() for h in header]
     return [dict(zip(keys, row)) for row in reader if any(c.strip() for c in row)]
+
+
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+# Column widths from the Store model. Real sheets have long free-text cells
+# (multi-line addresses, several phone numbers in one cell); trim instead of
+# letting one cell fail the whole import with a database error.
+_FIELD_LIMITS = {
+    "name": 128, "entity": 64, "state": 64, "city": 64, "address": 255,
+    "poc_name": 128, "poc_number": 32, "vendor_name": 128, "vendor_number": 32,
+}
+_CODE_LIMIT = 64
+
+
+def _cell_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))  # phone numbers / ids Excel stored as floats
+    return str(value)
+
+
+def _rows_from_xlsx(content: bytes) -> list[dict[str, str]]:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:  # pragma: no cover - dependency is in requirements.txt
+        raise SyncError("Excel files need the 'openpyxl' package on the server.") from exc
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:  # noqa: BLE001 - any parse failure is a bad file
+        raise SyncError("That file could not be read as an Excel workbook.") from exc
+    ws = wb.active
+    it = ws.iter_rows(values_only=True)
+    try:
+        header = next(it)
+    except StopIteration:
+        return []
+    keys = [_cell_text(h).strip() for h in header]
+    return [
+        dict(zip(keys, [_cell_text(c) for c in row]))
+        for row in it
+        if any(_cell_text(c).strip() for c in row)
+    ]
+
+
+def rows_from_upload(filename: str, content: bytes) -> list[dict[str, str]]:
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise SyncError("That file is too large (limit is 5 MB).")
+    name = (filename or "").lower()
+    if name.endswith(".csv") or name.endswith(".txt"):
+        return _parse_csv_text(content.decode("utf-8-sig", "replace"))
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        return _rows_from_xlsx(content)
+    raise SyncError("Upload a .csv or .xlsx file.")
 
 
 def _resolve_columns(sample: dict[str, str]) -> dict[str, str]:
@@ -126,6 +199,37 @@ def _resolve_columns(sample: dict[str, str]) -> dict[str, str]:
                 resolved[field_name] = lower_to_actual[alias]
                 break
     return resolved
+
+
+_DATE_FORMATS = (
+    "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%y", "%d/%m/%y",
+    "%d-%b-%Y", "%d %b %Y", "%d-%B-%Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y",
+)
+
+
+def _parse_date(raw: str | None) -> date | None:
+    """Sheet cell -> date. Day-first for ambiguous forms (Indian sheets); Excel serials accepted."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    parsed: date | None = None
+    if text.isdigit() and 30000 <= int(text) <= 70000:  # Excel serial day number
+        parsed = date(1899, 12, 30) + timedelta(days=int(text))
+    else:
+        for candidate in (text, text[:10]):  # "2026-09-01 00:00:00" -> first 10 chars
+            for fmt in _DATE_FORMATS:
+                try:
+                    parsed = datetime.strptime(candidate, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            if parsed:
+                break
+    if parsed is None or not (2015 <= parsed.year <= date.today().year + 2):
+        return None
+    return parsed
 
 
 def _clean(value: str | None) -> str | None:
@@ -176,7 +280,32 @@ def sync_platform(db: Session, actor: User, partner_slug: str) -> SyncResult:
     if partner is None:
         raise SyncError(f"'{partner_slug}' is not a configured platform in the CRM.")
 
-    rows = _fetch_rows(sheet_id, gid)
+    return _import_rows(db, actor, partner, partner_slug, _fetch_rows(sheet_id, gid), source="sheet")
+
+
+def import_file(db: Session, actor: User, partner_slug: str, filename: str, content: bytes) -> SyncResult:
+    """Import stores for one platform from an uploaded CSV / Excel file."""
+    partner_slug = partner_slug.strip().lower()
+    partner = db.execute(
+        select(Organization).where(
+            Organization.slug == partner_slug,
+            Organization.kind == OrganizationKind.PARTNER.value,
+        )
+    ).scalar_one_or_none()
+    if partner is None:
+        raise SyncError(f"'{partner_slug}' is not a configured platform in the CRM.")
+    return _import_rows(db, actor, partner, partner_slug, rows_from_upload(filename, content), source="file")
+
+
+def _import_rows(
+    db: Session,
+    actor: User,
+    partner: Organization,
+    partner_slug: str,
+    rows: list[dict[str, str]],
+    *,
+    source: str,
+) -> SyncResult:
     result = SyncResult(platform=partner_slug, rows_read=len(rows))
     if not rows:
         result.warnings.append("The sheet has no data rows.")
@@ -196,11 +325,16 @@ def sync_platform(db: Session, actor: User, partner_slug: str) -> SyncResult:
     }
     repo = StoreRepository(db)
     seen_codes: set[str] = set()
+    trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
+    bad_dates: list[int] = []            # rows whose start date couldn't be read
 
     for i, row in enumerate(rows, start=2):  # sheet row number (1 = header)
         code = _clean(row.get(cols["external_code"]))
         name = _clean(row.get(cols["name"]))
         if not code or not name:
+            continue
+        if len(code) > _CODE_LIMIT:
+            result.warnings.append(f"Row {i}: Outlet ID is longer than {_CODE_LIMIT} characters — skipped.")
             continue
         if code in seen_codes:
             result.warnings.append(f"Row {i}: duplicate Outlet ID '{code}' — skipped.")
@@ -213,14 +347,19 @@ def sync_platform(db: Session, actor: User, partner_slug: str) -> SyncResult:
             raw_region = _clean(row.get(cols["region"]))
             if raw_region:
                 key = raw_region.lower().replace(" zone", "").strip()
-                region = regions_by_name.get(key) or regions_by_name.get(raw_region.lower())
-                if region is None:
+                base = re.sub(r"\s*\d+$", "", key).strip()  # "South 2" -> "south"
+                region = regions_by_name.get(key) or regions_by_name.get(raw_region.lower()) or regions_by_name.get(base)
+                if region is None and assignment_service.is_employee_model(partner_slug):
+                    pass  # employee-model platforms (Zepto) are scoped by state, not region — never invent regions
+                elif region is None:
                     region = _create_region(db, actor.organization_id, raw_region, regions_by_name)
                     result.warnings.append(f"Row {i}: created new region '{region.name}' from zone '{raw_region}'.")
-                region_id = region.id
+                region_id = region.id if region is not None else None
 
         fields = {
             "name": name,
+            "entity": _clean(row.get(cols["entity"])) if "entity" in cols else None,
+            "start_date": _parse_date(row.get(cols["start_date"])) if "start_date" in cols else None,
             "state": _clean(row.get(cols["state"])) if "state" in cols else None,
             "city": _clean(row.get(cols["city"])) if "city" in cols else None,
             "address": _clean(row.get(cols["address"])) if "address" in cols else None,
@@ -231,6 +370,15 @@ def sync_platform(db: Session, actor: User, partner_slug: str) -> SyncResult:
             "status": status,
             "region_id": region_id,
         }
+
+        if "start_date" in cols and _clean(row.get(cols["start_date"])) and fields["start_date"] is None:
+            bad_dates.append(i)
+
+        for fname, limit in _FIELD_LIMITS.items():
+            val = fields.get(fname)
+            if isinstance(val, str) and len(val) > limit:
+                fields[fname] = val[:limit].rstrip()
+                trimmed.setdefault(fname, []).append(i)
 
         existing = repo.get_by_code(partner.id, code)
         if existing is None:
@@ -255,10 +403,23 @@ def sync_platform(db: Session, actor: User, partner_slug: str) -> SyncResult:
             else:
                 result.unchanged += 1
 
+    if bad_dates:
+        result.warnings.append(
+            f"{len(bad_dates)} row{'s' if len(bad_dates) > 1 else ''} had a start date that could not be read "
+            f"and was left blank (first: row {bad_dates[0]})."
+        )
+
+    for fname, rows_hit in trimmed.items():
+        result.warnings.append(
+            f"{len(rows_hit)} row{'s' if len(rows_hit) > 1 else ''} had a '{fname}' value longer than "
+            f"{_FIELD_LIMITS[fname]} characters and was trimmed (first: row {rows_hit[0]})."
+        )
+
     activity_service.record(
         db, actor=actor, action="store.synced", entity_type="store", entity_id=partner.id,
         metadata={
             "platform": partner_slug,
+            "source": source,
             "created": result.created,
             "updated": result.updated,
             "rows_read": result.rows_read,

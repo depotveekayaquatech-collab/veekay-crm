@@ -4,6 +4,8 @@ from app.api.v1.endpoints import (
     activity,
     assignments,
     auth,
+    cards,
+    compliance,
     employees,
     health,
     orders,
@@ -24,3 +26,6 @@ api_router.include_router(assignments.router)
 api_router.include_router(permissions.router)
 api_router.include_router(orders.router)
 api_router.include_router(activity.router)
+api_router.include_router(compliance.router)
+api_router.include_router(cards.router)
+api_router.include_router(cards.public_router)

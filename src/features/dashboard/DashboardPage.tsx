@@ -1,5 +1,5 @@
 import { useMemo, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { getCalendar } from "@/services/orders";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -11,7 +11,8 @@ import { usePermission } from "@/hooks/usePermission";
 import { useEmployees } from "@/features/team/useTeam";
 import { useInsights, useMyStores } from "@/features/orders/useOrders";
 import { listActivity } from "@/services/activity";
-import { AreaChart, BarList, DonutChart } from "@/features/dashboard/charts";
+import { BarList, DonutChart } from "@/features/dashboard/charts";
+import { AlertStrip, DeepInsights, PerformanceKpis, TrendCard } from "@/features/dashboard/InsightsPanel";
 import {
   IconActivity,
   IconChart,
@@ -33,7 +34,7 @@ const toneRing: Record<Tone, string> = {
   brand: "bg-brand-50 text-brand-600",
   success: "bg-status-success-soft text-status-success",
   warning: "bg-status-warning-soft text-status-warning",
-  info: "bg-status-info-soft text-status-info",
+  info: "bg-aqua-50 text-aqua-600",
 };
 
 function StatCard({
@@ -52,18 +53,18 @@ function StatCard({
   loading?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-surface-border bg-white p-5 shadow-card transition-shadow hover:shadow-md">
+    <div className={`tile ${tone === "info" ? "tile-aqua" : `tile-${tone}`} rounded-xl border border-surface-border bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
           {loading ? (
             <Skeleton className="mt-2 h-8 w-16" />
           ) : (
-            <p className="mt-1.5 text-2xl font-semibold tabular-nums text-gray-900">{value}</p>
+            <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-gray-900">{value}</p>
           )}
           {hint && !loading && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
         </div>
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${toneRing[tone]}`}>
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${toneRing[tone]}`}>
           <Icon className="h-5 w-5" />
         </span>
       </div>
@@ -94,8 +95,8 @@ function Card({
 }) {
   return (
     <section className={`rounded-xl border border-surface-border bg-white shadow-card ${className}`}>
-      <header className="flex items-center justify-between gap-3 border-b border-surface-border px-5 py-3.5">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      <header className="flex items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
+        <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         {action}
       </header>
       <div className="p-5">{children}</div>
@@ -131,9 +132,9 @@ function trendDelta(today: number, yesterday: number): { text: string; tone: Ton
 /* ------------------------------------------------------------------ */
 
 const STATUS_COLORS: Record<string, string> = {
-  LIVE: "#15803d",
-  PENDING: "#b45309",
-  CLOSE: "#9ca3af",
+  LIVE: "#0f7b57",
+  PENDING: "#d99a2b",
+  CLOSE: "#98a0b5",
 };
 
 function AdminDashboard() {
@@ -182,6 +183,8 @@ function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
+      <AlertStrip insights={insights} />
+
       {/* KPI row */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -218,21 +221,11 @@ function AdminDashboard() {
         />
       </div>
 
+      <PerformanceKpis insights={insights} />
+
       {/* Trend + status */}
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <Card
-          title="Bottles marked — last 14 days"
-          action={<CardLink to="/orders/overview">Daily overview →</CardLink>}
-        >
-          {isLoading || !insights ? (
-            <Skeleton className="h-48" />
-          ) : (
-            <AreaChart
-              data={insights.trend.map((t) => ({ label: t.label, value: t.bottles }))}
-              valueSuffix=" bottles"
-            />
-          )}
-        </Card>
+        <TrendCard />
 
         <Card title="Store status">
           {isLoading || !insights ? (
@@ -300,6 +293,8 @@ function AdminDashboard() {
           )}
         </Card>
       </div>
+
+      <DeepInsights insights={insights} />
 
       {/* Store coverage + attention — same `stores` data as the Stores page / Sheet sync */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -636,12 +631,16 @@ function EmployeeDashboard() {
 export function DashboardPage() {
   const { user } = useAuth();
   const isAdmin = usePermission("orders.overview");
+  const canOrders = usePermission("orders.view");
+  const isAccountant = usePermission("accounts.view");
   const firstName = user?.fullName?.split(" ")[0] ?? "there";
   const dateLabel = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
+
+  if (isAccountant && !canOrders && !isAdmin) return <Navigate to="/accounts" replace />;
 
   return (
     <div className="flex flex-col gap-6">

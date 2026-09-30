@@ -157,3 +157,21 @@ export const IconPlus = (p: IconProps) => (
     <path d="M12 5v14M5 12h14" />
   </Base>
 );
+
+export const IconDownload = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+  </Base>
+);
+
+export const IconRefresh = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7" />
+  </Base>
+);
+
+export const IconUpload = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+  </Base>
+);

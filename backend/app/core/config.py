@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
 
     # Login protection
+    PASSWORD_MIN_LENGTH: int = 10
+    REFRESH_REUSE_GRACE_SECONDS: int = 15   # tolerate two tabs refreshing with the same token at once
+    LOGIN_IP_MAX_FAILURES: int = 20         # failed logins per IP per window before it is blocked
+    LOGIN_IP_WINDOW_MINUTES: int = 10
+    TRUST_PROXY_HEADERS: bool = False       # set true behind a reverse proxy (Render) so the real client IP is used
+    BOOTSTRAP_ADMIN_PASSWORD: str = Field(default="")  # production seed: creates ADMIN001 with this password (forced change)
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
 
@@ -55,6 +61,25 @@ class Settings(BaseSettings):
     ALLOWED_UPLOAD_CONTENT_TYPES: list[str] = Field(
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp"]
     )
+
+    # ---- Compliance / bill file storage ----
+    # Local folder for uploaded cards & bills (relative paths resolve from the
+    # backend working dir). On hosts with an ephemeral disk, point this at a
+    # persistent volume — or swap app/core/storage.py for object storage.
+    UPLOAD_DIR: str = Field(default="storage")
+    COMPLIANCE_MAX_FILE_MB: int = Field(default=12)
+    BILL_DUE_DAYS_AFTER_MONTH_END: int = Field(default=45)
+    COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")  # cards/bills start here
+    COMPLIANCE_MAX_MONTHS_BACK: int = Field(default=12)
+
+    # ---- Vendor cards ----
+    COMPANY_NAME: str = Field(default="Veekay Aquatech Pvt. Ltd.")
+    COMPANY_TAGLINE: str = Field(default="Packaged Drinking Water")
+    COMPANY_EMAIL: str = Field(default="")              # shown on the card band when set
+    CARD_LOGO_PATH: str = Field(default="")             # optional PNG/JPG; a built-in "V" mark is drawn otherwise
+    # Base URL of the web app. The QR code on each card opens <PUBLIC_APP_URL>/count?...
+    PUBLIC_APP_URL: str = Field(default="http://localhost:5173")
+    QR_SIGNING_SECRET: str = Field(default="")          # falls back to JWT_SECRET_KEY
 
     # ---- Order marking ----
     MIN_BOTTLE_COUNT: int = 0

@@ -344,3 +344,45 @@ export function toOverview(w: OverviewWire): DailyOverview {
     })),
   };
 }
+
+export interface OrderImportResult {
+  platform: string;
+  sheets: string[];
+  rowsRead: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  keptExisting: number;
+  unknownStores: number;
+  invalidValues: number;
+  futureSkipped: number;
+  warnings: string[];
+}
+
+export function toOrderImportResult(w: {
+  platform: string;
+  sheets: string[];
+  rows_read: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  kept_existing: number;
+  unknown_stores: number;
+  invalid_values: number;
+  future_skipped: number;
+  warnings: string[];
+}): OrderImportResult {
+  return {
+    platform: w.platform,
+    sheets: w.sheets,
+    rowsRead: w.rows_read,
+    created: w.created,
+    updated: w.updated,
+    unchanged: w.unchanged,
+    keptExisting: w.kept_existing,
+    unknownStores: w.unknown_stores,
+    invalidValues: w.invalid_values,
+    futureSkipped: w.future_skipped,
+    warnings: w.warnings,
+  };
+}

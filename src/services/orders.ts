@@ -3,11 +3,13 @@ import {
   toCalendar,
   toInsights,
   toMyStore,
+  toOrderImportResult,
   toOverview,
   type DashboardInsights,
   type DailyOverview,
   type MyStore,
   type OrderCalendar,
+  type OrderImportResult,
 } from "@/types/order";
 
 export async function getMyStores(): Promise<MyStore[]> {
@@ -55,4 +57,13 @@ export async function getInsights(): Promise<DashboardInsights> {
 export async function getDailyOverview(partner: string, dayOffset: number): Promise<DailyOverview> {
   const qs = new URLSearchParams({ partner, day_offset: String(dayOffset) });
   return toOverview(await apiRequest(`/orders/daily-overview?${qs}`));
+}
+
+export async function importOrdersFile(platform: string, file: File, overwrite: boolean): Promise<OrderImportResult> {
+  const body = new FormData();
+  body.append("platform", platform);
+  body.append("overwrite", String(overwrite));
+  body.append("file", file);
+  const wire = await apiRequest<Parameters<typeof toOrderImportResult>[0]>("/orders/import", { method: "POST", body });
+  return toOrderImportResult(wire);
 }

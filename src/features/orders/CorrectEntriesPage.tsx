@@ -16,13 +16,20 @@ export function CorrectEntriesPage() {
   const { data: stores = [] } = useAllStores(true);
   const [partner, setPartner] = useState("");
   const [storeId, setStoreId] = useState("");
+  const [storeFilter, setStoreFilter] = useState("");
   const [editing, setEditing] = useState<CalendarDay | null>(null);
   const [value, setValue] = useState("");
 
   const correct = useCorrectEntry();
   const { data: calendar, isLoading } = useCalendar(storeId || null);
 
-  const visibleStores = stores.filter((s) => !partner || s.partnerSlug === partner);
+  const visibleStores = stores.filter((s) => {
+    const q = storeFilter.trim().toLowerCase();
+    return (
+      (!partner || s.partnerSlug === partner) &&
+      (!q || [s.name, s.externalCode, s.city, s.state].some((f) => (f ?? "").toLowerCase().includes(q)))
+    );
+  });
 
   function openDay(d: CalendarDay) {
     if (d.isFuture) return;
@@ -42,7 +49,7 @@ export function CorrectEntriesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Correct entries" subtitle="Admins can overwrite or clear any day for any store." />
 
-      <div className="grid gap-3 sm:max-w-lg sm:grid-cols-2">
+      <div className="grid gap-3 sm:max-w-2xl sm:grid-cols-3">
         <Select
           label="Platform"
           value={partner}
@@ -52,6 +59,13 @@ export function CorrectEntriesPage() {
           }}
           placeholder="All platforms"
           options={partners.map((p) => ({ value: p.slug, label: p.name }))}
+        />
+        <Input
+          label="Find store"
+          value={storeFilter}
+          onChange={(e) => setStoreFilter(e.target.value)}
+          placeholder="Name, code or city"
+          hint={`${visibleStores.length} of ${stores.length} stores`}
         />
         <Select
           label="Store"

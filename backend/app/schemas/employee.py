@@ -48,3 +48,19 @@ class EmployeeOut(BaseModel):
     direct_permissions: list[str] = []
 
     model_config = {"from_attributes": True}
+
+
+class ImportedCredential(BaseModel):
+    employee_code: str
+    full_name: str
+    temp_password: str
+
+
+class EmployeeImportResult(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+    skipped: int
+    assignments: int
+    credentials: list[ImportedCredential]
+    warnings: list[str]

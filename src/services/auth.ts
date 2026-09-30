@@ -1,4 +1,4 @@
-import { apiRequest, setTokens } from "@/services/api";
+import { apiRequest, getCurrentRefreshToken, setTokens } from "@/services/api";
 import type { CurrentUser } from "@/types/auth";
 
 interface LoginPayload {
@@ -26,6 +26,7 @@ interface MeResponse {
   permissions: string[];
   roles: string[];
   is_admin: boolean;
+  must_change_password?: boolean;
 }
 
 function toCurrentUser(res: MeResponse): CurrentUser {
@@ -43,6 +44,7 @@ function toCurrentUser(res: MeResponse): CurrentUser {
     permissions: res.permissions,
     roles: res.roles,
     isAdmin: res.is_admin,
+    mustChangePassword: res.must_change_password ?? false,
   };
 }
 
@@ -62,8 +64,43 @@ export async function login(payload: LoginPayload): Promise<CurrentUser> {
 }
 
 export async function logout(): Promise<void> {
-  await apiRequest("/auth/logout", { method: "POST", silent: true }).catch(() => undefined);
+  // Revoke the session server-side (best effort), then forget the tokens locally.
+  const rt = getCurrentRefreshToken();
+  await apiRequest("/auth/logout", { method: "POST", body: { refresh_token: rt }, silent: true, skipAuthRefresh: true }).catch(() => undefined);
   setTokens(null);
+}
+
+/** Change your own password. Every device is signed out; this one gets a fresh session. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<CurrentUser> {
+  const tokens = await apiRequest<TokenResponse>("/auth/change-password", {
+    method: "POST",
+    body: { current_password: currentPassword, new_password: newPassword },
+    silent: true,
+  });
+  setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
+  return toCurrentUser(await apiRequest<MeResponse>("/auth/me"));
+}
+
+export interface SessionInfo {
+  id: string;
+  current: boolean;
+  signedInAt: string;
+  lastActiveAt: string;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+export async function listSessions(): Promise<SessionInfo[]> {
+  const rows = await apiRequest<
+    { id: string; current: boolean; signed_in_at: string; last_active_at: string; ip: string | null; user_agent: string | null }[]
+  >("/auth/sessions");
+  return rows.map((r) => ({
+    id: r.id, current: r.current, signedInAt: r.signed_in_at, lastActiveAt: r.last_active_at, ip: r.ip, userAgent: r.user_agent,
+  }));
+}
+
+export async function revokeSession(id: string): Promise<void> {
+  await apiRequest(`/auth/sessions/${id}`, { method: "DELETE" });
 }
 
 export async function fetchCurrentUser(silent = false): Promise<CurrentUser> {

@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
+from app.core.security import generate_temp_password, hash_password
 from app.models.organization import Organization, OrganizationKind
 from app.models.role import Role
 from app.models.user import User, UserRole, UserStatus
@@ -18,7 +18,7 @@ from app.repositories.region_repository import RegionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.common import Page, PageParams
 from app.schemas.employee import EmployeeCreate, EmployeeOut, EmployeeUpdate
-from app.services import activity_service
+from app.services import activity_service, session_service
 
 
 def to_out(db: Session, user: User) -> EmployeeOut:
@@ -92,6 +92,7 @@ def create_employee(db: Session, actor: User, payload: EmployeeCreate) -> Employ
         email=payload.email.lower() if payload.email else None,
         phone=payload.phone,
         password_hash=hash_password(payload.password),
+        must_change_password=True,  # the admin chose it, so the person must replace it
         status=UserStatus.ACTIVE.value,
     )
     db.add(user)
@@ -114,6 +115,8 @@ def update_employee(
     data = payload.model_dump(exclude_unset=True)
     if "password" in data and data["password"]:
         user.password_hash = hash_password(data.pop("password"))
+        user.must_change_password = True
+        session_service.revoke_user_sessions(db, user.id)  # old devices are signed out
     if "email" in data and data["email"]:
         data["email"] = data["email"].lower()
     for field, value in data.items():
@@ -143,6 +146,7 @@ def deactivate_employee(db: Session, actor: User, employee_id: uuid.UUID) -> Non
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "You cannot deactivate yourself.")
     user.is_active = False
     user.status = UserStatus.DEACTIVATED.value
+    session_service.revoke_user_sessions(db, user.id)
     activity_service.record(
         db, actor=actor, action="employee.deactivated", entity_type="employee", entity_id=user.id,
     )
@@ -165,3 +169,23 @@ def _validate_platform(db: Session, platform_id: uuid.UUID) -> None:
     org = db.get(Organization, platform_id)
     if org is None or org.kind != OrganizationKind.PARTNER.value:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid platform.")
+
+
+def reset_password(db: Session, actor: User, employee_id: uuid.UUID) -> str:
+    """Give an employee a new random temporary password (returned once), unlock the account,
+    sign every device out and require a change at next sign-in."""
+    user = require_employee(db, actor, employee_id)
+    temp = generate_temp_password()
+    user.password_hash = hash_password(temp)
+    user.must_change_password = True
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    if user.status == UserStatus.LOCKED.value:
+        user.status = UserStatus.ACTIVE.value
+    session_service.revoke_user_sessions(db, user.id)
+    activity_service.record(
+        db, actor=actor, action="employee.password_reset", entity_type="employee", entity_id=user.id,
+        metadata={"employee_code": user.employee_code},  # never the password
+    )
+    db.commit()
+    return temp

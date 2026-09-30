@@ -45,6 +45,26 @@ services:
       # (use the real veekay-web URL Render assigns).
       - key: CORS_ORIGINS
         sync: false
+      # The web app's public URL — printed into the QR code on every vendor card
+      # (e.g. https://veekay-web.onrender.com). Cards printed before it is set
+      # would point at localhost, so set it before generating cards.
+      - key: PUBLIC_APP_URL
+        sync: false
+      # Render sits behind a proxy: trust X-Forwarded-For so the login throttle sees real client IPs.
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      # FIRST DEPLOY ONLY: the password for the initial ADMIN001 account (they must change it at first
+      # sign-in). Production never creates demo users. Remove the value once you have signed in.
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      # Shown on the vendor-card header (optional).
+      - key: COMPANY_EMAIL
+        sync: false
+      # Where compliance cards / bills are stored. Render's free disk is wiped on
+      # every deploy: attach a persistent disk (paid plan) mounted at /var/data and
+      # set UPLOAD_DIR=/var/data/uploads, or these files will disappear.
+      - key: UPLOAD_DIR
+        value: storage
 
   - type: web
     name: veekay-web

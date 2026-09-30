@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { IconUpload } from "@/components/ui/icons";
+import { usePermission } from "@/hooks/usePermission";
+import { ImportOrdersModal } from "@/features/orders/ImportOrdersModal";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -10,7 +15,10 @@ import { useCalendar, useMarkOrder, useMyStores } from "@/features/orders/useOrd
 export function MarkOrdersPage() {
   const { data: stores, isLoading, isError, refetch } = useMyStores();
   const [vendor, setVendor] = useState("");
-  const [storeId, setStoreId] = useState("");
+  const [params] = useSearchParams();
+  const [storeId, setStoreId] = useState(params.get("store") ?? "");
+  const [importing, setImporting] = useState(false);
+  const canImport = usePermission("orders.correct");
   const mark = useMarkOrder();
   const { data: calendar, isLoading: calLoading } = useCalendar(storeId || null);
 
@@ -32,7 +40,19 @@ export function MarkOrdersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Mark orders" subtitle="Log the daily bottle count for each of your stores." />
+      <PageHeader
+        title="Mark orders"
+        subtitle="Log the daily bottle count for each of your stores."
+        action={
+          canImport && (
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              <IconUpload className="h-4 w-4" />
+              Import order sheet
+            </Button>
+          )
+        }
+      />
+      {importing && <ImportOrdersModal onClose={() => setImporting(false)} />}
 
       {isLoading && <Skeleton className="h-24" />}
       {isError && <ErrorState message="Couldn't load your stores." onRetry={() => refetch()} />}

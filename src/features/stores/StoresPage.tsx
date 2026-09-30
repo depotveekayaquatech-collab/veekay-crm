@@ -7,7 +7,9 @@ import { Select } from "@/components/ui/Select";
 import { Table, Td, Th, TableEmpty } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { IconPlus } from "@/components/ui/icons";
+import { IconDownload, IconPlus, IconUpload } from "@/components/ui/icons";
+import { ImportStoresModal } from "@/features/stores/ImportStoresModal";
+import { downloadCsv } from "@/lib/csv";
 import { usePermission } from "@/hooks/usePermission";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { StoreFormModal } from "@/features/stores/StoreFormModal";
@@ -27,6 +29,7 @@ export function StoresPage() {
   const [partner, setPartner] = useState("");
   const [storeStatus, setStoreStatus] = useState("LIVE");
   const [editing, setEditing] = useState<Store | null | undefined>(undefined);
+  const [importing, setImporting] = useState(false);
 
   const canManage = usePermission("stores.manage");
   const { data: regions = [] } = useAllRegions();
@@ -46,17 +49,40 @@ export function StoresPage() {
         title="Stores"
         subtitle="Partner outlets your teams deliver water to. Live stores are the ones in work."
         action={
-          canManage && (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => sync.mutate(undefined)} isLoading={sync.isPending}>
-                Sync from Sheet
-              </Button>
-              <Button onClick={() => setEditing(null)}>
-                <IconPlus className="h-4 w-4" />
-                Add store
-              </Button>
-            </div>
-          )
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!data?.items.length}
+              onClick={() =>
+                data &&
+                downloadCsv(
+                  `stores-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ["Store", "Code", "Partner", "Region", "State", "City", "Start date", "Status", "POC", "POC number"],
+                  data.items.map((x) => [
+                    x.name, x.externalCode, x.partnerName, x.regionName, x.state, x.city, x.startDate, x.status, x.pocName, x.pocNumber,
+                  ]),
+                )
+              }
+            >
+              <IconDownload className="h-4 w-4" />
+              Export CSV
+            </Button>
+            {canManage && (
+              <>
+                <Button variant="secondary" onClick={() => setImporting(true)}>
+                  <IconUpload className="h-4 w-4" />
+                  Import file
+                </Button>
+                <Button variant="secondary" onClick={() => sync.mutate(undefined)} isLoading={sync.isPending}>
+                  Sync from Sheet
+                </Button>
+                <Button onClick={() => setEditing(null)}>
+                  <IconPlus className="h-4 w-4" />
+                  Add store
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -142,13 +168,14 @@ export function StoresPage() {
                 <Th>Partner</Th>
                 <Th>Region</Th>
                 <Th>State</Th>
+                <Th>Start date</Th>
                 <Th>Status</Th>
                 {canManage && <Th className="w-20 text-right">Actions</Th>}
               </tr>
             </thead>
             <tbody>
               {data.items.length === 0 && (
-                <TableEmpty colSpan={canManage ? 7 : 6}>No stores match these filters.</TableEmpty>
+                <TableEmpty colSpan={canManage ? 8 : 7}>No stores match these filters.</TableEmpty>
               )}
               {data.items.map((store) => (
                 <tr key={store.id}>
@@ -157,6 +184,7 @@ export function StoresPage() {
                   <Td>{store.partnerName}</Td>
                   <Td>{store.regionName ?? "—"}</Td>
                   <Td>{store.state ?? "—"}</Td>
+                  <Td>{store.startDate ?? <span className="text-gray-400">—</span>}</Td>
                   <Td>
                     <Badge
                       tone={
@@ -183,6 +211,8 @@ export function StoresPage() {
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
         </>
       )}
+
+      {importing && <ImportStoresModal onClose={() => setImporting(false)} />}
 
       {editing !== undefined && (
         <StoreFormModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} store={editing ?? null} />

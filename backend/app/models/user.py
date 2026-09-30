@@ -7,7 +7,9 @@ their roles' permissions and any direct grants (see UserPermission).
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +49,9 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     password_hash: Mapped[str] = mapped_column(String(255))
+    # True for admin-set / generated / imported passwords: the person must choose their own before doing anything else.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default=UserStatus.ACTIVE.value)
 
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)

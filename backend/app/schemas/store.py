@@ -1,5 +1,6 @@
 """Store request/response contracts."""
 import uuid
+from datetime import date
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,7 @@ class StoreBase(BaseModel):
     poc_number: str | None = Field(default=None, max_length=32)
     vendor_name: str | None = Field(default=None, max_length=128)
     vendor_number: str | None = Field(default=None, max_length=32)
+    start_date: date | None = None
 
 
 class StoreCreate(StoreBase):
@@ -35,6 +37,7 @@ class StoreUpdate(BaseModel):
     poc_number: str | None = Field(default=None, max_length=32)
     vendor_name: str | None = Field(default=None, max_length=128)
     vendor_number: str | None = Field(default=None, max_length=32)
+    start_date: date | None = None
     status: StoreStatus | None = None
 
 
@@ -43,6 +46,8 @@ class StoreOut(BaseModel):
     name: str
     external_code: str
     status: str
+    entity: str | None = None
+    start_date: date | None = None
     state: str | None
     city: str | None
     address: str | None

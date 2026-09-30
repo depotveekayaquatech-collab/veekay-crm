@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { closeStore, createStore, listStores, syncStores, updateStore } from "@/services/stores";
+import { closeStore, createStore, importStoresFile, listStores, syncStores, updateStore } from "@/services/stores";
 import { listPartners } from "@/services/partners";
 import { pushToast } from "@/lib/toast";
 import type { StoreInput } from "@/types/store";
@@ -66,5 +66,16 @@ export function useStoreMutations() {
     },
   });
 
-  return { create, update, close, sync };
+  const importFile = useMutation({
+    mutationFn: ({ platform, file }: { platform: string; file: File }) => importStoresFile(platform, file),
+    onSuccess: (r) => {
+      // refetch every store list + dashboard numbers so the new stores show up immediately
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["order-insights"] });
+      qc.invalidateQueries({ queryKey: ["pending"] });
+      pushToast(`Import done — ${r.created} added, ${r.updated} updated.`, "success");
+    },
+  });
+
+  return { create, update, close, sync, importFile };
 }

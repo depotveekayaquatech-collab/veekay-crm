@@ -5,6 +5,7 @@ export interface Store {
   name: string;
   externalCode: string;
   status: StoreStatus;
+  startDate: string | null;
   state: string | null;
   city: string | null;
   address: string | null;
@@ -24,6 +25,7 @@ export interface StoreWire {
   name: string;
   external_code: string;
   status: StoreStatus;
+  start_date?: string | null;
   state: string | null;
   city: string | null;
   address: string | null;
@@ -44,6 +46,7 @@ export function toStore(w: StoreWire): Store {
     name: w.name,
     externalCode: w.external_code,
     status: w.status,
+    startDate: w.start_date ?? null,
     state: w.state,
     city: w.city,
     address: w.address,
@@ -98,5 +101,6 @@ export interface StoreInput {
   poc_number?: string | null;
   vendor_name?: string | null;
   vendor_number?: string | null;
+  start_date?: string | null;
   status?: StoreStatus;
 }

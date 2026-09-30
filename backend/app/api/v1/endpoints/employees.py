@@ -1,15 +1,24 @@
 """Employee routes — thin wrappers over employee_service."""
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_page_params, require_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
-from app.schemas.employee import EmployeeCreate, EmployeeOut, EmployeeUpdate, PermissionSet
-from app.services import employee_service
+from app.schemas.employee import (
+    EmployeeCreate,
+    EmployeeImportResult,
+    EmployeeOut,
+    EmployeeUpdate,
+    PermissionSet,
+)
+from pydantic import BaseModel
+
+from app.services import employee_import_service, employee_service
+from app.services.store_sync_service import SyncError
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -29,6 +38,44 @@ def list_employees(
     return employee_service.list_employees(
         db, user, params, q=q, region_id=region_id, platform_id=platform_id
     )
+
+
+@router.post(
+    "/import", response_model=EmployeeImportResult,
+    dependencies=[Depends(require_permission("employees.create"))],
+)
+async def import_employees(
+    keep_sheet_passwords: bool = Form(False),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeImportResult:
+    """Bulk-create employees from the old EMPLOYEES sheet (and Zepto state assignments)."""
+    content = await file.read(employee_import_service.MAX_UPLOAD_BYTES + 1)
+    try:
+        result = employee_import_service.import_employees(
+            db, user, file.filename or "", content, keep_sheet_passwords=keep_sheet_passwords
+        )
+    except SyncError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return EmployeeImportResult(**result.as_dict())
+
+
+class ResetPasswordOut(BaseModel):
+    temp_password: str
+
+
+@router.post(
+    "/{employee_id}/reset-password", response_model=ResetPasswordOut,
+    dependencies=[Depends(require_permission("employees.update"))],
+)
+def reset_password(
+    employee_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ResetPasswordOut:
+    """Issue a one-time temporary password. The employee must choose their own at next sign-in."""
+    return ResetPasswordOut(temp_password=employee_service.reset_password(db, user, employee_id))
 
 
 @router.post(

@@ -5,6 +5,7 @@ import {
   getDailyOverview,
   getInsights,
   getMyStores,
+  importOrdersFile,
   markOrder,
 } from "@/services/orders";
 import { pushToast } from "@/lib/toast";
@@ -55,6 +56,21 @@ export function useCorrectEntry() {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
       qc.invalidateQueries({ queryKey: ["daily-overview"] });
       pushToast(vars.count === null ? "Entry cleared." : "Entry corrected.", "success");
+    },
+  });
+}
+
+export function useImportOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ platform, file, overwrite }: { platform: string; file: File; overwrite: boolean }) =>
+      importOrdersFile(platform, file, overwrite),
+    onSuccess: (r) => {
+      // everything that shows order numbers must refetch
+      for (const key of ["calendar", "daily-overview", "order-insights", "report", "pending", "my-stores"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+      pushToast(`Order sheet imported — ${r.created} added, ${r.updated} updated.`, "success");
     },
   });
 }

@@ -1,8 +1,9 @@
 """Order-entry (bottle-count) routes."""
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_permissions, get_current_user, require_permission
@@ -15,8 +16,11 @@ from app.schemas.order import (
     MarkRequest,
     MyStore,
     OrderCalendar,
+    OrderImportResult,
 )
-from app.services import order_service
+from app.schemas.inventory import Inventory
+from app.schemas.report import PendingEntries, SalesReport
+from app.services import inventory_service, order_import_service, order_service, report_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -102,3 +106,75 @@ def daily_overview(
     db: Session = Depends(get_db),
 ) -> DailyOverview:
     return order_service.daily_overview(db, user, partner, day_offset)
+
+
+@router.get(
+    "/report", response_model=SalesReport,
+    dependencies=[Depends(require_permission("orders.overview"))],
+)
+def report(
+    start: date | None = None,
+    end: date | None = None,
+    group_by: str = "region",
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SalesReport:
+    end = end or date.today()
+    start = start or end - timedelta(days=29)
+    return report_service.sales_report(db, user, start, end, group_by)
+
+
+@router.get(
+    "/pending", response_model=PendingEntries,
+    dependencies=[Depends(require_permission("orders.overview"))],
+)
+def pending(
+    day_offset: int = 0,
+    partner: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PendingEntries:
+    return report_service.pending_entries(db, user, day_offset, partner)
+
+
+@router.post(
+    "/import", response_model=OrderImportResult,
+    dependencies=[Depends(require_permission("orders.correct"))],
+)
+async def import_orders(
+    platform: str = Form(...),
+    overwrite: bool = Form(False),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrderImportResult:
+    """Bulk-mark orders from an order sheet (one row per store, one column per date)."""
+    content = await file.read(order_import_service.MAX_UPLOAD_BYTES + 1)
+    try:
+        result = order_import_service.import_orders(
+            db, user, platform, file.filename or "", content, overwrite=overwrite
+        )
+    except order_import_service.OrderImportError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except DBAPIError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The database rejected a value in this file. Check for malformed cells.",
+        ) from exc
+    return OrderImportResult(**result.as_dict())
+
+
+@router.get(
+    "/inventory", response_model=Inventory,
+    dependencies=[Depends(require_permission("orders.view"))],
+)
+def inventory(
+    partner: str | None = None,
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Inventory:
+    """Stores with vendor/POC details and pending days. Employees get their own
+    stores; admins (orders.correct) get every live store, optionally per platform."""
+    return inventory_service.inventory(db, user, is_admin=_is_admin(perms), partner_slug=partner)

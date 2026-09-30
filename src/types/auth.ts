@@ -12,6 +12,7 @@ export interface CurrentUser {
   permissions: string[];
   roles: string[];
   isAdmin: boolean;
+  mustChangePassword: boolean;
 }
 
 export interface TokenPair {

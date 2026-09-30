@@ -8,6 +8,8 @@ from app.models.store import Store, StoreStatus
 from app.models.state_assignment import StateAssignment
 from app.models.order_entry import EntrySource, OrderEntry
 from app.models.audit_log import AuditLog
+from app.models.refresh_session import RefreshSession
+from app.models.compliance_document import BillStatus, ComplianceDocument, DocKind
 
 __all__ = [
     "Organization",
@@ -25,4 +27,8 @@ __all__ = [
     "EntrySource",
     "OrderEntry",
     "AuditLog",
+    "RefreshSession",
+    "ComplianceDocument",
+    "DocKind",
+    "BillStatus",
 ]

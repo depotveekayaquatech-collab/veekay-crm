@@ -142,3 +142,17 @@ class DashboardInsights(BaseModel):
     attention_stores: list[AttentionStore]
     all_stores: list[AttentionStore]
     last_store_sync: datetime | None = None
+
+
+class OrderImportResult(BaseModel):
+    platform: str
+    sheets: list[str]
+    rows_read: int
+    created: int
+    updated: int
+    unchanged: int
+    kept_existing: int
+    unknown_stores: int
+    invalid_values: int
+    future_skipped: int
+    warnings: list[str]

@@ -6,6 +6,7 @@ export interface AuthContextValue {
   isLoading: boolean;
   login: (organizationSlug: string, employeeCode: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string) => boolean;
 }

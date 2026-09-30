@@ -45,7 +45,7 @@ export function AreaChart({
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" preserveAspectRatio="none" role="img" aria-label="Trend chart">
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgb(47 111 237)" stopOpacity="0.22" />
+            <stop offset="0%" stopColor="rgb(47 111 237)" stopOpacity="0.20" />
             <stop offset="100%" stopColor="rgb(47 111 237)" stopOpacity="0" />
           </linearGradient>
         </defs>

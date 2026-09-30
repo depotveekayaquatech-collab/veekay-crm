@@ -18,7 +18,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 
     return (
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={inputId} className="text-sm font-medium text-gray-700">
+        <label htmlFor={inputId} className="text-[13px] font-semibold text-gray-700">
           {label}
         </label>
         <div className="relative">
@@ -27,7 +27,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             aria-invalid={Boolean(error)}
             aria-describedby={describedBy}
-            className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-gray-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:ring-2 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-500 ${
+            className={`h-11 w-full rounded-lg border bg-white px-3.5 text-sm text-gray-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:ring-2 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-500 ${
               error
                 ? "border-status-danger focus:border-status-danger focus:ring-status-danger/20"
                 : "border-surface-border focus:border-brand-500 focus:ring-brand-500/20"

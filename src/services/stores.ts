@@ -16,6 +16,7 @@ interface ListParams {
   partner?: string;
   state?: string;
   storeStatus?: string;
+  search?: string;
 }
 
 export async function listStores(params: ListParams = {}): Promise<Page<Store>> {
@@ -26,6 +27,7 @@ export async function listStores(params: ListParams = {}): Promise<Page<Store>> 
   if (params.partner) qs.set("partner", params.partner);
   if (params.state) qs.set("state", params.state);
   if (params.storeStatus) qs.set("store_status", params.storeStatus);
+  if (params.search) qs.set("search", params.search);
   const wire = await apiRequest<PageWire<StoreWire>>(`/stores?${qs}`);
   return mapPage(wire, toStore);
 }
@@ -48,4 +50,12 @@ export async function syncStores(platform?: string): Promise<StoreSyncResult[]> 
     method: "POST",
   });
   return wire.map(toSyncResult);
+}
+
+export async function importStoresFile(platform: string, file: File): Promise<StoreSyncResult> {
+  const body = new FormData();
+  body.append("platform", platform);
+  body.append("file", file);
+  const wire = await apiRequest<Parameters<typeof toSyncResult>[0]>("/stores/import", { method: "POST", body });
+  return toSyncResult(wire);
 }

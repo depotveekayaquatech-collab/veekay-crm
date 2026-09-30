@@ -1,15 +1,20 @@
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 import {
   IconActivity,
   IconChart,
   IconClipboard,
+  IconTicket,
   IconClose,
   IconGrid,
   IconLogout,
+  IconAlertTriangle,
+  IconBox,
   IconMapPin,
   IconMenu,
+  IconSearch,
   IconStore,
   IconUsers,
 } from "@/components/ui/icons";
@@ -27,7 +32,13 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/", icon: IconGrid },
   { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.mark" },
+  { label: "Inventory", to: "/inventory", icon: IconBox, permission: "orders.view" },
+  { label: "Vendor cards", to: "/cards", icon: IconGrid, permission: "orders.view" },
+  { label: "Compliance", to: "/compliance", icon: IconTicket, permission: "compliance.upload" },
+  { label: "Accounts", to: "/accounts", icon: IconClipboard, permission: "accounts.view" },
   { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview" },
+  { label: "Pending entries", to: "/pending", icon: IconAlertTriangle, permission: "orders.overview" },
+  { label: "Reports", to: "/reports", icon: IconChart, permission: "orders.overview" },
   { label: "Correct entries", to: "/orders/correct", icon: IconGrid, permission: "orders.correct" },
   { label: "Team & access", to: "/team", icon: IconUsers, permission: "employees.view" },
   { label: "Stores", to: "/stores", icon: IconStore, permission: "stores.view" },
@@ -50,10 +61,13 @@ function initials(name: string): string {
 function BrandMark() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white shadow-sm">
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 via-brand-600 to-aqua-500 text-sm font-extrabold text-white shadow-glow ring-1 ring-white/20">
         V
       </span>
-      <span className="text-[15px] font-semibold tracking-tight text-gray-900">Veekay CRM</span>
+      <div className="leading-tight">
+        <div className="text-[15px] font-bold tracking-tight text-white">Veekay CRM</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">Aquatech</div>
+      </div>
     </div>
   );
 }
@@ -65,11 +79,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center px-5">
+      <div className="flex h-[4.5rem] shrink-0 items-center border-b border-white/5 px-5">
         <BrandMark />
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
         {visibleItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -79,18 +93,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               end
               onClick={onNavigate}
               className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-gray-600 hover:bg-surface-subtle hover:text-gray-900"
+                    ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+                    : "text-white/60 hover:bg-white/5 hover:text-white"
                 }`
               }
             >
               {({ isActive }) => (
                 <>
+                  {isActive && (
+                    <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-aqua-300 to-brand-400" />
+                  )}
                   <Icon
                     className={`h-[18px] w-[18px] shrink-0 ${
-                      isActive ? "text-brand-600" : "text-gray-400 group-hover:text-gray-600"
+                      isActive ? "text-aqua-300" : "text-white/40 group-hover:text-white/70"
                     }`}
                   />
                   {item.label}
@@ -101,21 +118,26 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-surface-border p-3">
-        <div className="flex items-center gap-3 rounded-md px-2 py-2">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+      <div className="shrink-0 border-t border-white/5 p-3">
+        <NavLink
+          to="/account"
+          onClick={onNavigate}
+          title="My account"
+          className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-700 text-xs font-bold text-white ring-2 ring-white/10">
             {initials(user?.fullName ?? "")}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-gray-900">{user?.fullName}</div>
+            <div className="truncate text-sm font-semibold text-white">{user?.fullName}</div>
             {primaryRole && (
-              <div className="truncate text-xs text-gray-500">{formatRoleLabel(primaryRole)}</div>
+              <div className="truncate text-xs text-white/50">{formatRoleLabel(primaryRole)}</div>
             )}
           </div>
-        </div>
+        </NavLink>
         <button
           onClick={() => void logout()}
-          className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-status-danger-soft hover:text-status-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white/60 transition-colors hover:bg-status-danger/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         >
           <IconLogout className="h-[18px] w-[18px]" />
           Sign out
@@ -128,6 +150,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 export function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const { hasPermission } = useAuth();
+  const pages = NAV_ITEMS.filter((i) => !i.permission || hasPermission(i.permission));
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Lock body scroll while the mobile drawer is open.
   useEffect(() => {
@@ -140,12 +176,12 @@ export function AppLayout() {
   const currentTitle =
     [...NAV_ITEMS]
       .filter((item) => location.pathname.startsWith(item.to))
-      .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? "Veekay CRM";
+      .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? (location.pathname.startsWith("/account") ? "My account" : "Veekay CRM");
 
   return (
     <div className="min-h-screen bg-surface-subtle lg:pl-[17rem]">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[17rem] border-r border-surface-border bg-white lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[17rem] bg-ink-900 lg:block">
         <SidebarContent />
       </aside>
 
@@ -153,15 +189,15 @@ export function AppLayout() {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div
-            className="absolute inset-0 animate-fade-in bg-gray-900/40"
+            className="absolute inset-0 animate-fade-in bg-ink-950/50"
             onClick={() => setMobileOpen(false)}
             aria-hidden="true"
           />
-          <aside className="absolute inset-y-0 left-0 w-72 max-w-[80vw] animate-slide-up border-r border-surface-border bg-white shadow-lg">
+          <aside className="absolute inset-y-0 left-0 w-72 max-w-[80vw] animate-slide-up bg-ink-900 shadow-lg">
             <button
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
-              className="absolute right-3 top-4 rounded-md p-1.5 text-gray-500 hover:bg-surface-subtle hover:text-gray-900"
+              className="absolute right-3 top-5 rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
             >
               <IconClose className="h-5 w-5" />
             </button>
@@ -171,7 +207,7 @@ export function AppLayout() {
       )}
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-surface-border bg-white/85 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+      <header className="sticky top-0 z-20 flex h-[4.5rem] items-center gap-3 border-b border-surface-border/70 bg-white/75 px-4 backdrop-blur-md sm:px-6 lg:px-10">
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
@@ -179,8 +215,27 @@ export function AppLayout() {
         >
           <IconMenu className="h-5 w-5" />
         </button>
-        <h1 className="text-lg font-semibold text-gray-900">{currentTitle}</h1>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-gray-400">Veekay</span>
+          <span className="text-gray-300">/</span>
+          <h1 className="font-semibold text-ink-900">{currentTitle}</h1>
+        </div>
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="ml-auto flex items-center gap-2 rounded-lg border border-surface-border bg-white px-3 py-1.5 text-sm text-gray-400 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-600"
+        >
+          <IconSearch className="h-4 w-4" />
+          <span className="hidden sm:inline">Search…</span>
+          <kbd className="hidden rounded border border-surface-border px-1.5 text-[10px] font-semibold sm:inline">Ctrl K</kbd>
+        </button>
       </header>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        pages={pages.map((p) => ({ label: p.label, to: p.to }))}
+        canSearchStores={hasPermission("stores.view")}
+      />
 
       <main className="mx-auto w-full max-w-[1680px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
         <Outlet />

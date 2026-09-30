@@ -32,26 +32,30 @@ export function LoginPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel — hidden on small screens */}
-      <div className="relative hidden overflow-hidden bg-brand-700 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+      <div className="relative hidden overflow-hidden bg-ink-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div
-          className="pointer-events-none absolute inset-0 opacity-30"
+          className="pointer-events-none absolute inset-0"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.25), transparent 45%), radial-gradient(circle at 80% 60%, rgba(255,255,255,0.18), transparent 40%)",
+              "radial-gradient(600px circle at 15% 10%, rgba(47,111,237,0.55), transparent 60%), radial-gradient(520px circle at 90% 85%, rgba(42,169,189,0.45), transparent 60%), linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
+            backgroundSize: "auto, auto, 44px 44px, 44px 44px",
           }}
         />
         <div className="relative flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-lg font-bold">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 via-brand-600 to-aqua-500 text-lg font-extrabold shadow-glow ring-1 ring-white/20">
             V
           </span>
           <span className="text-lg font-semibold tracking-tight">Veekay Aquatech</span>
         </div>
 
         <div className="relative max-w-md">
-          <h2 className="text-3xl font-semibold leading-snug">
+          <span className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-aqua-200 ring-1 ring-white/10">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-success-soft" /> Operations workspace
+          </span>
+          <h2 className="text-[2.1rem] font-bold leading-tight tracking-tight">
             Packaged drinking water, delivered to Blinkit and Zepto stores.
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-white/80">
+          <p className="mt-5 text-sm leading-relaxed text-white/70">
             Trusted by quick-commerce partners for over 14 years — keeping shelves
             stocked with clean, reliable water, day in and day out.
           </p>
@@ -61,8 +65,8 @@ export function LoginPage() {
       </div>
 
       {/* Form panel */}
-      <div className="flex items-center justify-center bg-surface-subtle px-4 py-10 sm:px-6">
-        <div className="w-full max-w-sm">
+      <div className="flex items-center justify-center bg-white px-4 py-10 sm:px-6">
+        <div className="w-full max-w-sm animate-slide-up">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white">
               V
@@ -70,8 +74,8 @@ export function LoginPage() {
             <span className="text-base font-semibold text-gray-900">Veekay Aquatech</span>
           </div>
 
-          <h1 className="text-xl font-semibold text-gray-900">Sign in to your workspace</h1>
-          <p className="mt-1 text-sm text-gray-500">Enter your credentials to continue.</p>
+          <h1 className="text-2xl font-bold text-ink-900">Welcome back</h1>
+          <p className="mt-1.5 text-sm text-gray-500">Sign in to your workspace. Enter your credentials to continue.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>
             <Input
@@ -122,12 +126,14 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 space-y-1 rounded-md bg-white px-3 py-2.5 text-xs text-gray-500 shadow-sm ring-1 ring-surface-border">
-            <p className="font-medium text-gray-700">Demo access (password Pass@123)</p>
-            <p><code className="text-gray-700">ADMIN001</code> — admin</p>
-            <p><code className="text-gray-700">EMP001</code> — Blinkit, North region</p>
-            <p><code className="text-gray-700">EMP002</code> — Zepto, Karnataka</p>
-          </div>
+          {import.meta.env.DEV && (
+            <div className="mt-6 space-y-1 rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-500 ring-1 ring-surface-border">
+              <p className="font-medium text-gray-700">Demo access (password Pass@123)</p>
+              <p><code className="text-gray-700">ADMIN001</code> — admin</p>
+              <p><code className="text-gray-700">EMP001</code> — Blinkit, North region</p>
+              <p><code className="text-gray-700">EMP002</code> — Zepto, Karnataka</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

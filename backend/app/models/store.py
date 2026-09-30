@@ -11,9 +11,10 @@ Which employee services a store is not stored here — it is resolved from
 the store's region (Blinkit) or state (Zepto); see assignment_service.
 """
 import uuid
+from datetime import date
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import Date, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +50,10 @@ class Store(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     state: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     city: Mapped[str | None] = mapped_column(String(64), nullable=True)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    entity: Mapped[str | None] = mapped_column(String(64), nullable=True)  # company entity, e.g. BCPL
+    # The day supply to this store began. Optional; days before it are never counted as pending.
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     poc_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     poc_number: Mapped[str | None] = mapped_column(String(32), nullable=True)

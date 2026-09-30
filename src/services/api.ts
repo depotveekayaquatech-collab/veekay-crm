@@ -37,6 +37,15 @@ export function setOnSessionExpired(handler: () => void) {
   onSessionExpired = handler;
 }
 
+let onPasswordChangeRequired: (() => void) | null = null;
+
+/** Called when the server says a temporary password must be replaced before anything else. */
+export function setOnPasswordChangeRequired(handler: () => void) {
+  onPasswordChangeRequired = handler;
+}
+
+const PASSWORD_GATE = "PASSWORD_CHANGE_REQUIRED";
+
 export class ApiError extends Error {
   status: number;
 
@@ -46,18 +55,44 @@ export class ApiError extends Error {
   }
 }
 
-async function refreshAccessToken(): Promise<boolean> {
-  const tokenToUse = refreshToken ?? getPersistedRefreshToken();
-  if (!tokenToUse) return false;
-  const res = await fetch(`${BASE_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: tokenToUse }),
-  });
-  if (!res.ok) return false;
-  const data = await res.json();
-  setTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
-  return true;
+async function doRefresh(tokenToUse: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: tokenToUse }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    setTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/** One refresh at a time: parallel 401s share it, so a rotated refresh token is never presented twice. */
+function refreshAccessToken(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const used = refreshToken ?? getPersistedRefreshToken();
+      if (!used) return false;
+      if (await doRefresh(used)) return true;
+      // Another tab may have rotated the token a moment ago — try whatever is stored now.
+      const latest = getPersistedRefreshToken();
+      return latest && latest !== used ? doRefresh(latest) : false;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/** The refresh token to revoke server-side on sign-out. */
+export function getCurrentRefreshToken(): string | null {
+  return refreshToken ?? getPersistedRefreshToken();
 }
 
 interface RequestOptions {
@@ -111,6 +146,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 403 && body.detail === PASSWORD_GATE) {
+      onPasswordChangeRequired?.();
+      throw new ApiError(403, "Please choose a new password to continue.");
+    }
     const message: string = body.detail ?? "Something went wrong. Please try again.";
     if (!options.silent) pushToast(message, "error");
     throw new ApiError(res.status, message);
@@ -118,4 +157,45 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Authenticated binary download/view (e.g. a stored document). Refreshes the token once on 401. */
+export async function apiBlob(
+  path: string,
+  options: { method?: "GET" | "POST"; body?: unknown; isRetry?: boolean } = {},
+): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (options.body) headers["Content-Type"] = "application/json";
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    const message = "Unable to connect. Please check your connection and try again.";
+    pushToast(message, "error");
+    throw new ApiError(0, message);
+  }
+
+  if (res.status === 401 && !options.isRetry) {
+    if (await refreshAccessToken()) return apiBlob(path, { ...options, isRetry: true });
+    setTokens(null);
+    onSessionExpired?.();
+    throw new ApiError(401, "Your session has expired. Please sign in again.");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 403 && body.detail === PASSWORD_GATE) {
+      onPasswordChangeRequired?.();
+      throw new ApiError(403, "Please choose a new password to continue.");
+    }
+    const message: string = body.detail ?? "Couldn't load that file.";
+    pushToast(message, "error");
+    throw new ApiError(res.status, message);
+  }
+  return res.blob();
 }

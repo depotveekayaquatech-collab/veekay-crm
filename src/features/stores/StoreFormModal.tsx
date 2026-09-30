@@ -32,6 +32,7 @@ export function StoreFormModal({ onClose, store }: Props) {
     poc_number: store?.pocNumber ?? "",
     vendor_name: store?.vendorName ?? "",
     vendor_number: store?.vendorNumber ?? "",
+    start_date: store?.startDate ?? "",
     status: (store?.status ?? "LIVE") as StoreStatus,
   });
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function StoreFormModal({ onClose, store }: Props) {
       poc_number: f.poc_number || null,
       vendor_name: f.vendor_name || null,
       vendor_number: f.vendor_number || null,
+      start_date: f.start_date || null,
       status: f.status,
     };
     try {
@@ -107,6 +109,14 @@ export function StoreFormModal({ onClose, store }: Props) {
             options={STATUSES.map((s) => ({ value: s, label: s }))}
           />
         </div>
+        <Input
+          label="Start date"
+          type="date"
+          value={f.start_date}
+          onChange={(e) => set("start_date")(e.target.value)}
+          max={new Date().toISOString().slice(0, 10)}
+          hint="The day supply to this store began. Days before it are never counted as pending. Optional."
+        />
         <Select
           label="Region"
           value={f.region_id}

@@ -7,7 +7,9 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Table, Td, Th, TableEmpty } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { IconPlus } from "@/components/ui/icons";
+import { IconPlus, IconUpload } from "@/components/ui/icons";
+import { ImportEmployeesModal } from "@/features/team/ImportEmployeesModal";
+import { ResetPasswordModal } from "@/features/team/ResetPasswordModal";
 import { usePermission } from "@/hooks/usePermission";
 import { EmployeeAccessModal } from "@/features/team/EmployeeAccessModal";
 import { StateBoardPanel } from "@/features/team/StateBoardPanel";
@@ -18,6 +20,9 @@ export function TeamPage() {
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Employee | null | undefined>(undefined);
+  const [importing, setImporting] = useState(false);
+  const [resetting, setResetting] = useState<Employee | null>(null);
+  const canReset = usePermission("employees.update");
 
   const canCreate = usePermission("employees.create");
   const canAssign = usePermission("assignments.manage");
@@ -32,9 +37,14 @@ export function TeamPage() {
         subtitle="Employee IDs, platform / region scope, and what each person can see."
         action={
           canCreate && (
-            <Button onClick={() => setEditing(null)}>
-              <IconPlus className="h-4 w-4" /> New employee
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setImporting(true)}>
+                <IconUpload className="h-4 w-4" /> Import employees
+              </Button>
+              <Button onClick={() => setEditing(null)}>
+                <IconPlus className="h-4 w-4" /> New employee
+              </Button>
+            </div>
           )
         }
       />
@@ -61,7 +71,7 @@ export function TeamPage() {
                 <Th>Scope</Th>
                 <Th>Permissions</Th>
                 <Th>Status</Th>
-                {(canCreate || canDeactivate) && <Th className="text-right">Actions</Th>}
+                {(canCreate || canDeactivate || canReset) && <Th className="text-right">Actions</Th>}
               </tr>
             </thead>
             <tbody>
@@ -76,12 +86,17 @@ export function TeamPage() {
                   <Td>
                     <Badge tone={e.isActive ? "success" : "neutral"}>{e.isActive ? "Active" : "Deactivated"}</Badge>
                   </Td>
-                  {(canCreate || canDeactivate) && (
+                  {(canCreate || canDeactivate || canReset) && (
                     <Td className="text-right">
                       <div className="flex justify-end gap-3 text-sm font-medium">
                         {canCreate && (
                           <button className="text-brand-600 hover:text-brand-700" onClick={() => setEditing(e)}>
                             Edit
+                          </button>
+                        )}
+                        {canReset && e.isActive && (
+                          <button className="text-brand-600 hover:text-brand-700" onClick={() => setResetting(e)}>
+                            Reset password
                           </button>
                         )}
                         {canDeactivate && e.isActive && (
@@ -108,6 +123,8 @@ export function TeamPage() {
       {editing !== undefined && (
         <EmployeeAccessModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} employee={editing ?? null} />
       )}
+      {importing && <ImportEmployeesModal onClose={() => setImporting(false)} />}
+      {resetting && <ResetPasswordModal employee={resetting} onClose={() => setResetting(null)} />}
     </div>
   );
 }

@@ -1,5 +1,17 @@
 """
-Fresh-database seed for Phase 4.
+Database seed.
+
+    python scripts/seed.py
+
+In development (ENVIRONMENT != production) it also creates demo users
+(ADMIN001 / EMP001 / EMP002 with a known password), demo stores and sample
+entries. In PRODUCTION it creates none of that — only the organization,
+platforms, permissions, roles and regions — so no account with a known
+password ever exists. To get the first admin into a fresh production
+database, set BOOTSTRAP_ADMIN_PASSWORD: ADMIN001 is created with it (once)
+and must choose a new password at first sign-in.
+
+Original description:
 
     python scripts/seed.py
 
@@ -15,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.order_entry import EntrySource, OrderEntry
@@ -41,6 +54,10 @@ PERMISSIONS = [
     ("employees.deactivate", "Deactivate employees"),
     ("assignments.manage", "Assign regions and states to employees"),
     ("activity.view", "View the activity log"),
+    ("compliance.upload", "Upload compliance cards and bills for your own stores"),
+    ("compliance.manage", "Upload, view and remove cards and bills for any store"),
+    ("accounts.view", "Accountant dashboard: bill due alerts, search, view and download documents"),
+    ("accounts.clear", "Mark bills as cleared"),
 ]
 
 ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]
@@ -48,7 +65,8 @@ ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]
 # access is the exact set of per-user permission checkboxes an admin ticks
 # (so an admin can also take capability away, not only add it).
 EMPLOYEE_PERMISSIONS: list[str] = []
-DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark"]
+DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload"]
+ACCOUNTANT_PERMISSIONS = ["accounts.view", "accounts.clear"]
 
 SEED_PASSWORD = "Pass@123"
 
@@ -108,6 +126,7 @@ def main() -> None:
 
         admin_role = ensure_role("admin", "Admin", ADMIN_PERMISSIONS)
         employee_role = ensure_role("employee", "Employee", EMPLOYEE_PERMISSIONS)
+        ensure_role("accountant", "Accountant", ACCOUNTANT_PERMISSIONS)
         db.flush()
 
         regions = {}
@@ -119,8 +138,10 @@ def main() -> None:
                 db.flush()
             regions[code] = r
 
+        demo = settings.ENVIRONMENT.strip().lower() != "production"
+
         stores = {}
-        for name, code, pslug, rcode, state, city, st in STORES:
+        for name, code, pslug, rcode, state, city, st in (STORES if demo else []):
             s = db.query(Store).filter_by(partner_organization_id=partners[pslug].id, external_code=code).first()
             if s is None:
                 s = Store(
@@ -135,12 +156,13 @@ def main() -> None:
                 db.flush()
             stores[code] = s
 
-        def ensure_user(code, name, role, *, platform=None, region=None):
+        def ensure_user(code, name, role, *, platform=None, region=None, password=None, must_change=False):
             u = db.query(User).filter_by(organization_id=org.id, employee_code=code).first()
             if u is None:
                 u = User(
                     organization_id=org.id, employee_code=code, full_name=name,
-                    password_hash=hash_password(SEED_PASSWORD), status=UserStatus.ACTIVE.value,
+                    password_hash=hash_password(password or SEED_PASSWORD), status=UserStatus.ACTIVE.value,
+                    must_change_password=must_change,
                 )
                 db.add(u)
                 db.flush()
@@ -160,52 +182,63 @@ def main() -> None:
                 if perms[c].id not in have:
                     db.add(UserPermission(user_id=user.id, permission_id=perms[c].id))
 
-        ensure_user("ADMIN001", "Admin User", admin_role)
-        blinkit_emp = ensure_user(
-            "EMP001", "Ravi Kumar (Blinkit / North)", employee_role,
-            platform=partners["blinkit"], region=regions["NORTH"],
-        )
-        zepto_emp = ensure_user(
-            "EMP002", "Sana Sheikh (Zepto)", employee_role, platform=partners["zepto"],
-        )
-        db.flush()
-        grant(blinkit_emp, DEFAULT_EMPLOYEE_GRANTS)
-        grant(zepto_emp, DEFAULT_EMPLOYEE_GRANTS)
+        if demo:
+            ensure_user("ADMIN001", "Admin User", admin_role)
+            blinkit_emp = ensure_user(
+                "EMP001", "Ravi Kumar (Blinkit / North)", employee_role,
+                platform=partners["blinkit"], region=regions["NORTH"],
+            )
+            zepto_emp = ensure_user(
+                "EMP002", "Sana Sheikh (Zepto)", employee_role, platform=partners["zepto"],
+            )
+            db.flush()
+            grant(blinkit_emp, DEFAULT_EMPLOYEE_GRANTS)
+            grant(zepto_emp, DEFAULT_EMPLOYEE_GRANTS)
 
-        # Zepto: assign Karnataka to the Zepto employee (Telangana stays unassigned).
-        if not db.query(StateAssignment).filter_by(
-            partner_organization_id=partners["zepto"].id, state="Karnataka"
-        ).first():
-            db.add(StateAssignment(
-                organization_id=org.id, partner_organization_id=partners["zepto"].id,
-                state="Karnataka", assigned_user_id=zepto_emp.id,
-            ))
+            # Zepto: assign Karnataka to the Zepto employee (Telangana stays unassigned).
+            if not db.query(StateAssignment).filter_by(
+                partner_organization_id=partners["zepto"].id, state="Karnataka"
+            ).first():
+                db.add(StateAssignment(
+                    organization_id=org.id, partner_organization_id=partners["zepto"].id,
+                    state="Karnataka", assigned_user_id=zepto_emp.id,
+                ))
 
-        # A few bottle-count entries.
-        today = date.today()
-        yesterday = today - timedelta(days=1)
-        samples = [
-            ("BLK-4821", yesterday, 24, EntrySource.EMPLOYEE, blinkit_emp),
-            ("BLK-4830", yesterday, 12, EntrySource.EMPLOYEE, blinkit_emp),
-            ("BLK-4821", today, 30, EntrySource.EMPLOYEE, blinkit_emp),
-            ("ZEP-1187", yesterday, 18, EntrySource.EMPLOYEE, zepto_emp),
-            ("ZEP-1190", today, 0, EntrySource.EMPLOYEE, zepto_emp),
-        ]
-        for code, d, count, src, emp in samples:
-            s = stores[code]
-            if db.query(OrderEntry).filter_by(store_id=s.id, order_date=d).first():
-                continue
-            db.add(OrderEntry(
-                organization_id=org.id, store_id=s.id, order_date=d,
-                bottle_count=count, source=src.value, marked_by_user_id=emp.id,
-            ))
+            # A few bottle-count entries.
+            today = date.today()
+            yesterday = today - timedelta(days=1)
+            samples = [
+                ("BLK-4821", yesterday, 24, EntrySource.EMPLOYEE, blinkit_emp),
+                ("BLK-4830", yesterday, 12, EntrySource.EMPLOYEE, blinkit_emp),
+                ("BLK-4821", today, 30, EntrySource.EMPLOYEE, blinkit_emp),
+                ("ZEP-1187", yesterday, 18, EntrySource.EMPLOYEE, zepto_emp),
+                ("ZEP-1190", today, 0, EntrySource.EMPLOYEE, zepto_emp),
+            ]
+            for code, d, count, src, emp in samples:
+                s = stores[code]
+                if db.query(OrderEntry).filter_by(store_id=s.id, order_date=d).first():
+                    continue
+                db.add(OrderEntry(
+                    organization_id=org.id, store_id=s.id, order_date=d,
+                    bottle_count=count, source=src.value, marked_by_user_id=emp.id,
+                ))
+
+
+        else:
+            boot = settings.BOOTSTRAP_ADMIN_PASSWORD
+            if boot:
+                exists = db.query(User).filter_by(organization_id=org.id, employee_code="ADMIN001").first()
+                if exists is None:
+                    ensure_user("ADMIN001", "Administrator", admin_role, password=boot, must_change=True)
+                    print("Created ADMIN001 from BOOTSTRAP_ADMIN_PASSWORD (must change it at first sign-in).")
 
         db.commit()
-        print("Seeded Phase 4.")
-        print("  ADMIN001 / Pass@123  (admin)")
-        print("  EMP001   / Pass@123  (Blinkit, North region)")
-        print("  EMP002   / Pass@123  (Zepto, Karnataka state)")
-        print("Login with organization='veekay'.")
+        print("Seeded (production: no demo users, stores or entries)." if not demo else "Seeded Phase 4.")
+        if demo:
+            print("  ADMIN001 / Pass@123  (admin)")
+            print("  EMP001   / Pass@123  (Blinkit, North region)")
+            print("  EMP002   / Pass@123  (Zepto, Karnataka state)")
+            print("Login with organization='veekay'.")
     finally:
         db.close()
 

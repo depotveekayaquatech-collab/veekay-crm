@@ -5,29 +5,31 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Brand — the only accent colour in the product.
         brand: {
-          50: "#eef4ff",
-          100: "#dbe6ff",
-          200: "#bcd0ff",
-          300: "#8eb0ff",
-          400: "#5a86fa",
-          500: "#2f6fed",
-          600: "#2557c7",
-          700: "#1d449e",
-          800: "#1b3c82",
-          900: "#1a366c",
+          50: "#eef3ff", 100: "#dde7ff", 200: "#bccffe", 300: "#8fb0fc", 400: "#5b88f6",
+          500: "#2f6fed", 600: "#2559c9", 700: "#1e46a0", 800: "#1c3b82", 900: "#1a336a",
         },
-        surface: { DEFAULT: "#ffffff", subtle: "#f6f7f9", muted: "#eef0f3", border: "#e4e7ec" },
+        // Secondary accent — water/teal. Used sparingly: tiles, highlights, success-adjacent UI.
+        aqua: {
+          50: "#e7f7fa", 100: "#c6edf2", 200: "#94dbe6", 300: "#5cc4d4", 400: "#2aa9bd",
+          500: "#0e8ea4", 600: "#0b7285", 700: "#0a5b6a",
+        },
+        // Neutrals — every gray-* utility resolves to this ink-tinted scale.
+        gray: {
+          50: "#f7f8fc", 100: "#eef0f6", 200: "#e2e5ee", 300: "#c9cedc", 400: "#98a0b5",
+          500: "#687189", 600: "#4b546c", 700: "#343c53", 800: "#1e2640", 900: "#0f1629",
+        },
+        // Deep navy for the sidebar / dark surfaces.
+        ink: { 950: "#070c18", 900: "#0b1222", 800: "#111a30", 700: "#1a2542", 600: "#26345a" },
+        surface: { DEFAULT: "#ffffff", subtle: "#f5f6fa", muted: "#eceef4", border: "#e2e5ee" },
+        // Semantic status colours (info intentionally reuses the brand blue).
         status: {
-          success: "#15803d",
-          "success-soft": "#dcfce7",
-          warning: "#b45309",
-          "warning-soft": "#fef3c7",
-          danger: "#dc2626",
-          "danger-soft": "#fee2e2",
-          info: "#2563eb",
-          "info-soft": "#dbeafe",
-          neutral: "#6b7280",
+          success: "#0f7b57", "success-soft": "#ddf4ea",
+          warning: "#a86412", "warning-soft": "#fcf0d6",
+          danger: "#c8323f", "danger-soft": "#fde5e8",
+          info: "#2559c9", "info-soft": "#dde7ff",
+          neutral: "#687189",
         },
       },
       borderRadius: { sm: "6px", md: "8px", lg: "12px", xl: "16px" },
@@ -43,10 +45,11 @@ export default {
         ],
       },
       boxShadow: {
-        sm: "0 1px 2px 0 rgba(16, 24, 40, 0.05)",
-        card: "0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px -1px rgba(16, 24, 40, 0.04)",
-        md: "0 4px 12px -2px rgba(16, 24, 40, 0.10), 0 2px 6px -2px rgba(16, 24, 40, 0.06)",
-        lg: "0 12px 32px -8px rgba(16, 24, 40, 0.16)",
+        sm: "0 1px 2px 0 rgba(11, 18, 34, 0.05)",
+        card: "0 1px 2px rgba(11, 18, 34, 0.04), 0 4px 16px -6px rgba(11, 18, 34, 0.08)",
+        md: "0 6px 16px -4px rgba(11, 18, 34, 0.12), 0 2px 6px -2px rgba(11, 18, 34, 0.06)",
+        lg: "0 20px 44px -12px rgba(11, 18, 34, 0.28)",
+        glow: "0 8px 22px -6px rgba(47, 111, 237, 0.55)",
         focus: "0 0 0 3px rgba(47, 111, 237, 0.20)",
       },
       keyframes: {

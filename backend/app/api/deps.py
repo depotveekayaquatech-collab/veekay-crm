@@ -11,10 +11,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from app.core.security import InvalidTokenError, TokenType, decode_token
+from app.core.security import InvalidTokenError, TokenClaims, TokenType, decode_claims
 from app.db.session import get_db
 from app.models.user import User, UserStatus
 from app.repositories.user_repository import UserRepository
+from app.services import session_service
 from app.schemas.common import PageParams
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -31,10 +32,7 @@ def get_page_params(page: int = 1, page_size: int = 20) -> PageParams:
     )
 
 
-def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User:
+def _authenticate(token: str | None, db: Session) -> tuple[User, TokenClaims]:
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Your session has expired. Please sign in again.",
@@ -42,15 +40,38 @@ def get_current_user(
     )
     if token is None:
         raise unauthorized
-
     try:
-        user_id: uuid.UUID = decode_token(token, TokenType.ACCESS)
+        claims = decode_claims(token, TokenType.ACCESS)
     except InvalidTokenError as exc:
         raise unauthorized from exc
 
-    user = UserRepository(db).get_by_id(user_id)
+    user = UserRepository(db).get_by_id(claims.user_id)
     if user is None or not user.is_active or user.status != UserStatus.ACTIVE.value:
         raise unauthorized
+    # The session must still be alive server-side: logout, "sign out everywhere",
+    # a password change or detected token theft all end it immediately.
+    if not session_service.family_active(db, user.id, claims.family_id):
+        raise unauthorized
+    return user, claims
+
+
+def get_current_user_allow_pending(
+    token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> User:
+    """Authenticated user, even if they still owe a password change (used by the auth/account routes)."""
+    return _authenticate(token, db)[0]
+
+
+def get_current_family(
+    token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> uuid.UUID:
+    return _authenticate(token, db)[1].family_id
+
+
+def get_current_user(user: User = Depends(get_current_user_allow_pending)) -> User:
+    """Authenticated user for everything else. A temporary / admin-set password must be replaced first."""
+    if user.must_change_password:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="PASSWORD_CHANGE_REQUIRED")
     return user
 
 

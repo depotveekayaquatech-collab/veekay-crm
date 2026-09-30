@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.organization import Organization
@@ -42,8 +42,22 @@ class StoreRepository:
         partner_slug: str | None = None,
         state: str | None = None,
         status: str | None = None,
+        search: str | None = None,
     ) -> tuple[list[Store], int]:
         base = self._loaded(select(Store)).where(Store.organization_id == org_id)
+        if search and search.strip():
+            raw = search.strip()
+            for ch in ("\\", "%", "_"):
+                raw = raw.replace(ch, "\\" + ch)
+            like = f"%{raw}%"
+            base = base.where(
+                or_(
+                    Store.name.ilike(like, escape="\\"),
+                    Store.external_code.ilike(like, escape="\\"),
+                    Store.city.ilike(like, escape="\\"),
+                    Store.state.ilike(like, escape="\\"),
+                )
+            )
         if region_id is not None:
             base = base.where(Store.region_id == region_id)
         if partner_slug:
