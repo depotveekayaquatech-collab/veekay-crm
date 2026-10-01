@@ -9,9 +9,9 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.compliance import (
-    ComplianceStorePage, DocBrief, DownloadRequest, DueBills, SearchPage,
+    BulkUploadResult, ComplianceStorePage, DocBrief, DownloadRequest, DueBills, SearchPage, SummaryPdfRequest,
 )
-from app.services import compliance_service
+from app.services import compliance_repo_service, compliance_service
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -30,17 +30,60 @@ def _require_any(perms: set[str], *codes: str) -> None:
 def stores(
     month: str | None = None,
     partner: str | None = None,
+    region: uuid.UUID | None = None,
+    city: str | None = None,
+    manager: str | None = None,
+    missing: str | None = Query(None, pattern="^(any|card|bill|payment)$"),
+    range: str | None = Query(None, pattern="^(0-25|26-50|51-75|76-99|100)$"),
+    status: str | None = Query(None, pattern="^(?i:pending|partial|complete)$"),
     q: str | None = None,
+    sort: str = Query("name", pattern="^(name|city|channel|manager|status|percent|card|bill|payment)$"),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=200),
     perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ComplianceStorePage:
-    """Stores (yours, or all for admins) with this month's card / bill status."""
+    """The monthly compliance repository: stores (yours, or all for admins) with the card, invoice and
+    payment proof, status, KPIs and filter options."""
     _require_any(perms, "compliance.upload", "compliance.manage")
-    return compliance_service.list_stores(
-        db, user, perms, month_str=month, partner=partner, q=q, page=page, page_size=page_size
+    return compliance_repo_service.repository(
+        db, user, perms, month_str=month, partner=partner, region=region, city=city, manager=manager,
+        missing=missing, rng=range, status_filter=status, q=q, sort=sort, direction=dir, page=page, page_size=page_size,
+    )
+
+
+@router.post("/bulk", response_model=BulkUploadResult)
+async def bulk(
+    month: str = Form(...),
+    kind: str = Form(...),
+    files: list[UploadFile] = File(...),
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BulkUploadResult:
+    """Many files at once for one month and one document type. Each file is matched to a store by the
+    store code at the start of its name (e.g. 9451.pdf, 9451_page2.jpg); photos for one store are merged."""
+    _require_any(perms, "compliance.upload", "compliance.manage")
+    cap = settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1
+    blobs = [(f.filename or "file", await f.read(cap)) for f in files]
+    return compliance_repo_service.bulk_upload(db, user, perms, month, kind, blobs)
+
+
+@router.post("/summary-pdf")
+def summary_pdf(
+    payload: SummaryPdfRequest,
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """A printable one-table summary of the selected stores' card, invoice and payment proof for a month."""
+    _require_any(perms, "compliance.upload", "compliance.manage")
+    data = compliance_repo_service.summary_pdf(db, user, perms, payload.store_ids, payload.month)
+    return Response(
+        content=data, media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="compliance-summary.pdf"', "Cache-Control": "private, no-store"},
     )
 
 
@@ -82,7 +125,7 @@ def search(
     city: str | None = None,
     vendor: str | None = None,
     q: str | None = None,
-    kind: str = Query("any", pattern="^(any|card|bill|both)$"),
+    kind: str = Query("any", pattern="^(any|card|bill|payment|all)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     user: User = Depends(get_current_user),
@@ -130,6 +173,5 @@ def file(
     data, content_type, name = compliance_service.read_file(db, user, perms, doc_id)
     return Response(
         content=data, media_type=content_type,
-        headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "private, no-store",
-                 "X-Content-Type-Options": "nosniff"},
+        headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "private, no-store"},
     )

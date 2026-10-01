@@ -28,13 +28,17 @@ class EmployeeRepository:
             .scalar_subquery()
         )
 
+    def _role_ids_subquery(self, *codes: str):
+        return select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code.in_(codes)).scalar_subquery()
+
     def get(self, org_id: uuid.UUID, user_id: uuid.UUID) -> User | None:
         stmt = (
             select(User)
             .where(
                 User.organization_id == org_id,
                 User.id == user_id,
-                User.id.in_(self._employee_ids_subquery()),
+                User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant")),
+                User.id.not_in(self._role_ids_subquery("admin")),
             )
             .options(joinedload(User.region), joinedload(User.platform_organization))
         )
@@ -62,15 +66,29 @@ class EmployeeRepository:
         q: str | None = None,
         region_id: uuid.UUID | None = None,
         platform_id: uuid.UUID | None = None,
+        category: str | None = None,
     ) -> tuple[list[User], int]:
+        # The Team page shows all staff — admins, accounts and field employees — split by category.
         base = (
             select(User)
             .where(
                 User.organization_id == org_id,
-                User.id.in_(self._employee_ids_subquery()),
+                User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant", "admin")),
             )
             .options(joinedload(User.region), joinedload(User.platform_organization))
         )
+        admin_ids = self._role_ids_subquery("admin")
+        accountant_ids = self._role_ids_subquery("accountant")
+        if category == "admin":
+            base = base.where(User.id.in_(admin_ids))
+        elif category == "accounts":
+            base = base.where(User.id.in_(accountant_ids), User.id.not_in(admin_ids))
+        elif category in ("blinkit", "zepto"):
+            from app.models.organization import Organization
+
+            base = base.join(Organization, Organization.id == User.platform_organization_id).where(
+                func.lower(Organization.slug) == category, User.id.not_in(admin_ids), User.id.not_in(accountant_ids)
+            )
         if q:
             like = f"%{q.lower()}%"
             base = base.where(

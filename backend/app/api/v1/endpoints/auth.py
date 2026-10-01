@@ -17,6 +17,7 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     CurrentUserResponse,
     LoginRequest,
+    LoginResponse,
     LogoutRequest,
     RefreshRequest,
     SessionOut,
@@ -34,8 +35,8 @@ def _meta(request: Request) -> dict:
     return {"user_agent": request.headers.get("user-agent"), "ip": client_ip(request)}
 
 
-@router.post("/login", response_model=TokenPair)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
+@router.post("/login", response_model=LoginResponse)
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     meta = _meta(request)
     wait = login_failures.blocked_for(meta["ip"])
     if wait:
@@ -45,7 +46,10 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             headers={"Retry-After": str(wait)},
         )
     try:
-        return AuthService(db).login(payload.organization_slug, payload.employee_code, payload.password, **meta)
+        return AuthService(db).login(
+            payload.organization_slug, payload.employee_code, payload.password, **meta,
+            latitude=payload.latitude, longitude=payload.longitude, accuracy=payload.accuracy,
+        )
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED and exc.detail == GENERIC_LOGIN_ERROR:
             login_failures.record_failure(meta["ip"])
@@ -103,10 +107,13 @@ def change_password(
     payload: ChangePasswordRequest,
     request: Request,
     user: User = Depends(get_current_user_allow_pending),
+    family: uuid.UUID = Depends(get_current_family),
     db: Session = Depends(get_db),
 ) -> TokenPair:
     """Verify the current password, apply the policy, sign every device out, return a fresh session."""
-    return AuthService(db).change_password(user, payload.current_password, payload.new_password, **_meta(request))
+    return AuthService(db).change_password(
+        user, payload.current_password, payload.new_password, current_family=family, **_meta(request)
+    )
 
 
 @router.get("/sessions", response_model=list[SessionOut])

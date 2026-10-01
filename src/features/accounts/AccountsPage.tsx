@@ -26,14 +26,14 @@ const EMPTY: SearchFilters = { month: complianceMonths()[0], partner: "", entity
 const field =
   "h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
-function DocPill({ doc, label }: { doc: DocBrief | null; label: string }) {
-  if (!doc) return <span className="text-xs text-gray-400">No {label}</span>;
+function DocPill({ doc, label }: { doc: DocBrief | null; label: "card" | "bill" | "payment" }) {
+  if (!doc) return <span className="text-xs text-gray-400">No {label === "bill" ? "invoice" : label === "payment" ? "payment proof" : label}</span>;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {label === "bill" ? (
         doc.status === "CLEARED" ? <Badge tone="success">Cleared</Badge> : <Badge tone={doc.overdue ? "danger" : "warning"}>{doc.overdue ? "Overdue" : "Pending"}</Badge>
       ) : (
-        <Badge tone="success">Card</Badge>
+        <Badge tone="success">{label === "payment" ? "Paid" : "Card"}</Badge>
       )}
       <button onClick={() => void openDocument(doc.id)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">View</button>
     </div>
@@ -61,8 +61,9 @@ export function AccountsPage() {
   const selectedDocIds = useMemo(() => {
     const ids: string[] = [];
     rows.filter((r) => selected.has(rowKey(r))).forEach((r) => {
-      if (r.card && applied.kind !== "bill") ids.push(r.card.id);
-      if (r.bill && applied.kind !== "card") ids.push(r.bill.id);
+      if (r.card && (applied.kind === "any" || applied.kind === "card" || applied.kind === "all")) ids.push(r.card.id);
+      if (r.bill && applied.kind !== "card" && applied.kind !== "payment") ids.push(r.bill.id);
+      if (r.payment && (applied.kind === "any" || applied.kind === "payment" || applied.kind === "all")) ids.push(r.payment.id);
     });
     return ids;
   }, [rows, selected, applied.kind]);
@@ -103,7 +104,7 @@ export function AccountsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Accounts" subtitle="Bill due alerts, and every card and bill on file — search, view, print or download." />
+      <PageHeader title="Accounts" subtitle="Invoice due alerts, and every card, invoice and payment proof on file — search, view, print or download." />
 
       {/* Due alerts */}
       <section className="rounded-xl border border-surface-border bg-white shadow-card">
@@ -172,10 +173,11 @@ export function AccountsPage() {
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Document
           <select className={field} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as SearchFilters["kind"] })}>
-            <option value="any">Card or bill</option>
+            <option value="any">Any document</option>
             <option value="card">Card only</option>
-            <option value="bill">Bill only</option>
-            <option value="both">Both on file</option>
+            <option value="bill">Invoice only</option>
+            <option value="payment">Payment proof only</option>
+            <option value="all">All three on file</option>
           </select>
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
@@ -251,7 +253,8 @@ export function AccountsPage() {
                   <th className="px-3 py-3">Location</th>
                   <th className="px-3 py-3">Vendor</th>
                   <th className="px-3 py-3">Card</th>
-                  <th className="px-4 py-3">Bill</th>
+                  <th className="px-3 py-3">Invoice</th>
+                  <th className="px-4 py-3">Payment proof</th>
                 </tr>
               </thead>
               <tbody>
@@ -281,7 +284,8 @@ export function AccountsPage() {
                     <td className="px-3 py-3 text-gray-600" data-label="Location">{[r.city, r.state].filter(Boolean).join(", ") || "—"}</td>
                     <td className="px-3 py-3 text-gray-600" data-label="Vendor">{r.vendorName ?? "—"}</td>
                     <td className="px-3 py-3" data-label="Card"><DocPill doc={r.card} label="card" /></td>
-                    <td className="px-4 py-3" data-label="Bill"><DocPill doc={r.bill} label="bill" /></td>
+                    <td className="px-3 py-3" data-label="Invoice"><DocPill doc={r.bill} label="bill" /></td>
+                    <td className="px-4 py-3" data-label="Payment proof"><DocPill doc={r.payment} label="payment" /></td>
                   </tr>
                 ))}
               </tbody>

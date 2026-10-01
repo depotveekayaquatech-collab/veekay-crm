@@ -1,7 +1,7 @@
 """Employee routes — thin wrappers over employee_service."""
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_page_params, require_permission
@@ -31,12 +31,13 @@ def list_employees(
     q: str | None = None,
     region_id: uuid.UUID | None = None,
     platform_id: uuid.UUID | None = None,
+    category: str | None = Query(None, pattern="^(admin|accounts|blinkit|zepto)$"),
     params: PageParams = Depends(get_page_params),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Page[EmployeeOut]:
     return employee_service.list_employees(
-        db, user, params, q=q, region_id=region_id, platform_id=platform_id
+        db, user, params, q=q, region_id=region_id, platform_id=platform_id, category=category
     )
 
 

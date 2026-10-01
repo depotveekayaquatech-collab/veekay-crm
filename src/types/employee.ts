@@ -12,6 +12,8 @@ export interface Employee {
   regionName: string | null;
   states: string[];
   roles: string[];
+  category: "admin" | "accounts" | "blinkit" | "zepto" | "other";
+  categoryLabel: string;
   directPermissions: string[];
 }
 
@@ -29,6 +31,8 @@ export interface EmployeeWire {
   region_name: string | null;
   states: string[];
   roles: string[];
+  category?: "admin" | "accounts" | "blinkit" | "zepto" | "other";
+  category_label?: string;
   direct_permissions: string[];
 }
 
@@ -47,6 +51,8 @@ export function toEmployee(w: EmployeeWire): Employee {
     regionName: w.region_name,
     states: w.states,
     roles: w.roles,
+    category: w.category ?? "other",
+    categoryLabel: w.category_label ?? "",
     directPermissions: w.direct_permissions,
   };
 }

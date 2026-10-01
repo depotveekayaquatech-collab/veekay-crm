@@ -16,6 +16,7 @@ interface ListParams {
   q?: string;
   regionId?: string;
   platformId?: string;
+  category?: string;
 }
 
 export async function listEmployees(params: ListParams = {}): Promise<Page<Employee>> {
@@ -25,6 +26,7 @@ export async function listEmployees(params: ListParams = {}): Promise<Page<Emplo
   if (params.q) qs.set("q", params.q);
   if (params.regionId) qs.set("region_id", params.regionId);
   if (params.platformId) qs.set("platform_id", params.platformId);
+  if (params.category) qs.set("category", params.category);
   const wire = await apiRequest<PageWire<EmployeeWire>>(`/employees?${qs}`);
   return mapPage(wire, toEmployee);
 }

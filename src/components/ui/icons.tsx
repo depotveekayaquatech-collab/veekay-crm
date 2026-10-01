@@ -175,3 +175,46 @@ export const IconUpload = (p: IconProps) => (
     <path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
   </Base>
 );
+
+export const IconEdit = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" />
+    <path d="M13.5 6.5l3 3" />
+  </Base>
+);
+
+export const IconCard = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="9" cy="11" r="2" />
+    <path d="M6 16c.6-1.6 1.8-2.4 3-2.4s2.4.8 3 2.4M15 10h3M15 13h3" />
+  </Base>
+);
+
+export const IconShield = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z" />
+    <path d="M9 12l2 2 4-4" />
+  </Base>
+);
+
+export const IconReceipt = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
+    <path d="M9 8h6M9 12h6" />
+  </Base>
+);
+
+export const IconReport = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M6 3h9l4 4v14H6V3z" />
+    <path d="M14 3v5h5M9 17v-3M12 17v-6M15 17v-4" />
+  </Base>
+);
+
+export const IconClock = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Base>
+);

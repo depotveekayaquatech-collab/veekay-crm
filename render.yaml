@@ -27,7 +27,7 @@ services:
       alembic upgrade head &&
       python scripts/seed.py &&
       uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /api/v1/health   # liveness only; point your uptime monitor at /api/v1/ready
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
@@ -65,6 +65,27 @@ services:
       # set UPLOAD_DIR=/var/data/uploads, or these files will disappear.
       - key: UPLOAD_DIR
         value: storage
+      # Strongly recommended: keep uploads in S3-compatible object storage (AWS S3, Cloudflare R2, Backblaze B2...).
+      # Set STORAGE_BACKEND=s3 plus the S3_* values, then run scripts/migrate_storage.py once. See DEPLOY.md.
+      - key: STORAGE_BACKEND
+        value: local
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # Error tracking (optional): a Sentry DSN turns it on. RELEASE is shown on each event.
+      - key: SENTRY_DSN
+        sync: false
+      - key: LOG_JSON
+        value: "true"
+      - key: DOCS_ENABLED
+        value: "false"
 
   - type: web
     name: veekay-web
@@ -84,3 +105,18 @@ services:
       - path: /assets/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: geolocation=(self), camera=(), microphone=()
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000

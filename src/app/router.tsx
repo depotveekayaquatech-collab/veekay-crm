@@ -8,6 +8,7 @@ import { MarkOrdersPage } from "@/features/orders/MarkOrdersPage";
 import { DailyOverviewPage } from "@/features/orders/DailyOverviewPage";
 import { CorrectEntriesPage } from "@/features/orders/CorrectEntriesPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
+import { AttendancePage } from "@/features/attendance/AttendancePage";
 import { AccountPage } from "@/features/account/AccountPage";
 import { ForcedPasswordChange } from "@/features/auth/ForcedPasswordChange";
 import { CardsPage } from "@/features/cards/CardsPage";
@@ -61,6 +62,7 @@ export function AppRoutes() {
         <Route path="/orders" element={<Require permission="orders.mark"><MarkOrdersPage /></Require>} />
         <Route path="/orders/overview" element={<Require permission="orders.overview"><DailyOverviewPage /></Require>} />
         <Route path="/orders/correct" element={<Require permission="orders.correct"><CorrectEntriesPage /></Require>} />
+        <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/cards" element={<Require permission="orders.view"><CardsPage /></Require>} />
         <Route path="/compliance" element={<Require permission="compliance.upload"><CompliancePage /></Require>} />

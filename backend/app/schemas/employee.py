@@ -45,6 +45,8 @@ class EmployeeOut(BaseModel):
     region_name: str | None = None
     states: list[str] = []
     roles: list[str] = []
+    category: str = "other"        # admin | accounts | blinkit | zepto | other
+    category_label: str = ""
     direct_permissions: list[str] = []
 
     model_config = {"from_attributes": True}

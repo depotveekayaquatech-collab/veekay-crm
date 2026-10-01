@@ -1,18 +1,23 @@
 """
-Vendor supply cards: one PDF per vendor, one A4 card per live store.
+Monthwise virtual cards: one PDF per vendor, one A4 card per LIVE store of that vendor.
 
-Each card: company band (logo, name, email, the responsible employee's phone),
-store details, two daily log tables (days 1-15 and 16-31 + a total row) and a
-signed QR code that opens a public page showing bottles supplied this month and
-last month.
+This reproduces the original Apps Script ("Vendor Standard Cards") rules exactly:
 
-  - Admins (orders.correct) can print any store on a platform; employees only
-    the stores assigned to them.
-  - "Cards with entry" pre-fills the month's dates, filled-bottle counts and the
-    total. Empty-bottle and signature columns always stay blank.
-  - Contact number = phone of the region's employee (Blinkit) or of the
-    employee the state is assigned to (Zepto).
-  - The QR carries an HMAC signature, so only codes printed by us resolve.
+  BLANK card      — a "Month of – ________" write-in line on top; the two log tables are empty.
+  CARD WITH ENTRY — "Month of – SEP-2026"; the tables are pre-filled, row by row in order, with the
+                    Date and Filled-bottle count of every day that has an entry (a marked 0 counts),
+                    and TOTAL COUNT. Empty-bottle and Signature columns always stay blank.
+
+  Card layout     — month line / company band (name, email, contact number) / logo | title, channel,
+                    vendor | QR / store details (name, outlet ID, entity, region, state, city) /
+                    two log tables of 15 and 16 rows, the second ending in TOTAL COUNT.
+  Contact number  — Blinkit: the phone(s) of the active employee(s) of the store's REGION (max 2,
+                    joined with " / "); Zepto: the employee the store's STATE is assigned to.
+                    Number only, no name.
+  QR code         — HMAC-signed link to a public page with the store's bottle count for this month
+                    (till date) and last month (only once last month is on/after CARDS_FIRST_MONTH).
+
+Who may print: admins any store on a platform; employees only the stores assigned to them.
 """
 from __future__ import annotations
 
@@ -20,8 +25,11 @@ import calendar
 import hashlib
 import hmac
 import io
+import re
 import uuid
+import zipfile
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -35,21 +43,64 @@ from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.services import assignment_service
 
-_MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
-           "August", "September", "October", "November", "December"]
 NO_VENDOR = "No vendor"
+MAX_STORES_PER_PDF = 600
+MAX_STORES_PER_ZIP = 1500
+MAX_CONTACTS_ON_CARD = 2
 
-# palette (mirrors the web app)
-BRAND = (0.145, 0.349, 0.788)     # #2559c9
-AQUA = (0.055, 0.557, 0.643)      # #0e8ea4
-INK = (0.059, 0.086, 0.161)       # #0f1629
-MUTED = (0.408, 0.443, 0.537)     # #687189
-LINE = (0.784, 0.808, 0.863)      # #c8ced9
-SOFT = (0.933, 0.941, 0.965)      # #eef0f6
+# palette of the original card (blue theme)
+C_MAIN = (0x0B / 255, 0x6F / 255, 0xB8 / 255)    # #0B6FB8
+C_DARK = (0x08 / 255, 0x4B / 255, 0x7C / 255)    # #084B7C
+C_LIGHT = (0xE8 / 255, 0xF2 / 255, 0xFA / 255)   # #E8F2FA
+C_BORDER = (0xCF / 255, 0xD6 / 255, 0xD3 / 255)  # #CFD6D3
+C_GRID = (0x8A / 255, 0x8A / 255, 0x8A / 255)    # #8A8A8A
+C_MUTED = (0.4, 0.4, 0.4)
+C_TEXT = (0.07, 0.07, 0.07)
 
 
 def _today() -> date:
     return datetime.now(timezone.utc).date()
+
+
+def month_label(d: date) -> str:
+    """'SEP-2026' — the label printed on cards and the public page."""
+    return f"{calendar.month_abbr[d.month].upper()}-{d.year}"
+
+
+def first_month() -> date:
+    y, m = (int(x) for x in settings.CARDS_FIRST_MONTH.split("-"))
+    return date(y, m, 1)
+
+
+def _prev_month(d: date) -> date:
+    return date(d.year - 1, 12, 1) if d.month == 1 else date(d.year, d.month - 1, 1)
+
+
+def available_months() -> list[dict]:
+    """Months a card can be filled for: this month (till date) and every earlier month back to the first active one."""
+    cur = _today().replace(day=1)
+    out, m = [], cur
+    while m >= first_month():
+        out.append({"value": f"{m:%Y-%m}", "label": month_label(m) + (" (till date)" if m == cur else " (full month)")})
+        m = _prev_month(m)
+    return out
+
+
+def parse_card_month(value: str | None) -> date | None:
+    """None = blank cards. Otherwise a YYYY-MM between the first active month and this month."""
+    if not value:
+        return None
+    try:
+        y, m = (int(x) for x in value.split("-"))
+        d = date(y, m, 1)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Month must look like 2026-09.") from exc
+    if d > _today().replace(day=1) or d < first_month():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Choose a month from {month_label(first_month())} to {month_label(_today().replace(day=1))}, or leave it blank.",
+        )
+    return d
 
 
 # --------------------------------------------------------------------------
@@ -72,8 +123,16 @@ def qr_url(store_id: uuid.UUID) -> str:
     return f"{settings.PUBLIC_APP_URL.rstrip('/')}/count?s={store_id}&sig={sign_store(store_id)}"
 
 
+def _month_total(db: Session, store_id: uuid.UUID, start: date, end: date) -> int:
+    return int(db.execute(
+        select(func.coalesce(func.sum(OrderEntry.bottle_count), 0)).where(
+            OrderEntry.store_id == store_id, OrderEntry.order_date >= start, OrderEntry.order_date <= end
+        )
+    ).scalar_one())
+
+
 def public_count(db: Session, store_id: uuid.UUID, sig: str) -> dict:
-    """Bottles supplied this month and last — no login, but only for a correctly signed store id."""
+    """The page the QR opens: bottles supplied this month (till date) and, when available, last month. Totals only."""
     if not verify_signature(store_id, sig):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This QR code isn't valid.")
     store = db.execute(
@@ -83,37 +142,23 @@ def public_count(db: Session, store_id: uuid.UUID, sig: str) -> dict:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This QR code isn't valid.")
 
     today = _today()
-    this_start = today.replace(day=1)
-    last_end = this_start.fromordinal(this_start.toordinal() - 1)
-    last_start = last_end.replace(day=1)
-
-    def totals(start: date, end: date) -> tuple[int, int]:
-        row = db.execute(
-            select(func.coalesce(func.sum(OrderEntry.bottle_count), 0), func.count(OrderEntry.id)).where(
-                OrderEntry.store_id == store.id, OrderEntry.order_date >= start, OrderEntry.order_date <= end
-            )
-        ).one()
-        return int(row[0]), int(row[1])
-
-    tb, te = totals(this_start, today)
-    lb, le = totals(last_start, last_end)
-    daily = db.execute(
-        select(OrderEntry.order_date, OrderEntry.bottle_count)
-        .where(OrderEntry.store_id == store.id, OrderEntry.order_date >= this_start, OrderEntry.order_date <= today)
-        .order_by(OrderEntry.order_date)
-    ).all()
-    return {
-        "store_name": store.name, "store_code": store.external_code,
+    cur = today.replace(day=1)
+    prev = _prev_month(cur)
+    out = {
+        "store_name": store.name, "store_code": store.external_code, "vendor_name": store.vendor_name,
         "platform": store.partner_organization.name if store.partner_organization else None,
-        "city": store.city, "state": store.state,
-        "this_month_label": f"{_MONTHS[today.month]} {today.year}", "this_month_bottles": tb, "this_month_entries": te,
-        "last_month_label": f"{_MONTHS[last_start.month]} {last_start.year}", "last_month_bottles": lb, "last_month_entries": le,
-        "daily": [{"date": d, "bottles": int(c)} for d, c in daily],
+        "this_month_label": month_label(cur), "this_month_bottles": _month_total(db, store.id, cur, today),
+        "last_month_label": None, "last_month_bottles": None,
+        "as_on": datetime.now(timezone.utc),
     }
+    if prev >= first_month():  # "last month" only appears once the previous month is an active one
+        out["last_month_label"] = month_label(prev)
+        out["last_month_bottles"] = _month_total(db, store.id, prev, date(prev.year, prev.month, calendar.monthrange(prev.year, prev.month)[1]))
+    return out
 
 
 # --------------------------------------------------------------------------
-# store selection
+# store selection + vendors
 # --------------------------------------------------------------------------
 
 def _stores(db: Session, user: User, *, is_admin: bool, partner: str | None) -> list[Store]:
@@ -144,51 +189,63 @@ def list_vendors(db: Session, user: User, *, is_admin: bool, partner: str | None
     return sorted(
         ({"vendor": v, "stores": len(ss), "number": next((s.vendor_number for s in ss if s.vendor_number), None)}
          for v, ss in groups.items()),
-        key=lambda x: (-x["stores"], x["vendor"].lower()),
+        key=lambda x: x["vendor"].lower(),
     )
 
 
 # --------------------------------------------------------------------------
-# contact number
+# contact number(s)
 # --------------------------------------------------------------------------
 
 class _Contacts:
-    """Phone of the employee responsible for a store, cached per region / state."""
+    """Phone number(s) printed on a card, cached per region / state."""
 
     def __init__(self, db: Session, org_id: uuid.UUID):
         self.db, self.org_id = db, org_id
-        self._region: dict[tuple, str | None] = {}
-        self._state: dict[tuple, str | None] = {}
+        self._region: dict[tuple, list[str]] = {}
+        self._state: dict[tuple, list[str]] = {}
 
-    def for_store(self, s: Store) -> str | None:
+    @staticmethod
+    def _clean(p: str | None) -> str:
+        return re.sub(r"\.0+$", "", (p or "").strip())
+
+    def for_store(self, s: Store) -> str:
         slug = s.partner_organization.slug if s.partner_organization else None
-        if assignment_service.is_employee_model(slug):          # Zepto: state -> assigned employee
+        if assignment_service.is_employee_model(slug):          # Zepto: the employee the STATE is assigned to
             key = (s.partner_organization_id, (s.state or "").strip().lower())
             if key not in self._state:
-                row = self.db.execute(
+                self._state[key] = [self._clean(p) for p in self.db.execute(
                     select(User.phone)
                     .join(StateAssignment, StateAssignment.assigned_user_id == User.id)
                     .where(StateAssignment.partner_organization_id == s.partner_organization_id,
-                           func.lower(StateAssignment.state) == key[1], User.phone.is_not(None))
-                ).scalars().first()
-                self._state[key] = row
-            return self._state[key]
-        if s.region_id is None:
-            return None
-        key = (s.partner_organization_id, s.region_id)          # Blinkit: region's employee
-        if key not in self._region:
-            self._region[key] = self.db.execute(
-                select(User.phone).where(
-                    User.organization_id == self.org_id, User.platform_organization_id == s.partner_organization_id,
-                    User.region_id == s.region_id, User.is_active.is_(True), User.phone.is_not(None),
-                ).order_by(User.employee_code)
-            ).scalars().first()
-        return self._region[key]
+                           func.lower(StateAssignment.state) == key[1], User.is_active.is_(True), User.phone.is_not(None))
+                ).scalars() if self._clean(p)]
+            phones = self._state[key][:1]
+        else:                                                    # Blinkit: active employees of the store's REGION
+            if s.region_id is None:
+                return ""
+            key = (s.partner_organization_id, s.region_id)
+            if key not in self._region:
+                self._region[key] = [self._clean(p) for p in self.db.execute(
+                    select(User.phone).where(
+                        User.organization_id == self.org_id, User.platform_organization_id == s.partner_organization_id,
+                        User.region_id == s.region_id, User.is_active.is_(True), User.phone.is_not(None),
+                    ).order_by(User.employee_code)
+                ).scalars() if self._clean(p)]
+            phones = self._region[key]
+        return " / ".join(phones[:MAX_CONTACTS_ON_CARD])
 
 
 # --------------------------------------------------------------------------
-# PDF
+# PDF drawing (A4 portrait; sizes are the original CSS pixels x 0.75)
 # --------------------------------------------------------------------------
+
+PX = 0.75
+W, H = 595.27, 841.89
+CARD_W = 720 * PX          # 540 pt
+LEFT = (W - CARD_W) / 2
+TOP = H - 8 * 2.835        # 8 mm page margin
+
 
 def _wrap(c, text: str, font: str, size: float, width: float, max_lines: int) -> list[str]:
     words, lines, cur = (text or "").split(), [], ""
@@ -205,28 +262,49 @@ def _wrap(c, text: str, font: str, size: float, width: float, max_lines: int) ->
     if len(lines) > max_lines:
         lines = lines[:max_lines]
         lines[-1] = lines[-1].rstrip(" .,") + "…"
-    return lines
+    return lines or [""]
 
 
-def _draw_logo(c, x: float, y: float, size: float) -> None:
+LOGO_FILE = Path(__file__).resolve().parent.parent / "assets" / "watr-logo.png"
+
+
+def logo_path() -> Path | None:
+    """The logo printed on cards and PDFs: CARD_LOGO_PATH if set, else the bundled WaTR logo."""
+    for p in (Path(settings.CARD_LOGO_PATH) if settings.CARD_LOGO_PATH else None, LOGO_FILE):
+        if p is not None and p.is_file():
+            return p
+    return None
+
+
+def draw_logo(c, x: float, y: float, w: float, h: float) -> bool:
+    """Draw the logo inside the box (aspect ratio kept). Returns False if no logo file is available."""
     from reportlab.lib.utils import ImageReader
-    path = settings.CARD_LOGO_PATH
-    if path:
-        try:
-            c.drawImage(ImageReader(path), x, y, size, size, preserveAspectRatio=True, mask="auto")
-            return
-        except Exception:  # noqa: BLE001 — fall back to the built-in mark
-            pass
-    c.setFillColorRGB(1, 1, 1)
-    c.roundRect(x, y, size, size, 9, stroke=0, fill=1)
-    c.setFillColorRGB(*BRAND)
-    c.setFont("Helvetica-Bold", size * 0.62)
-    c.drawCentredString(x + size / 2, y + size * 0.22, "V")
+
+    p = logo_path()
+    if p is None:
+        return False
+    try:
+        c.drawImage(ImageReader(str(p)), x, y, w, h, preserveAspectRatio=True, anchor="c", mask="auto")
+        return True
+    except Exception:  # noqa: BLE001 — a bad image must never break the PDF
+        return False
+
+
+def _logo(c, x: float, y: float, w: float, h: float) -> None:
+    if draw_logo(c, x, y, w, h):
+        return
+    c.setFillColorRGB(*C_MAIN)
+    c.setFont("Helvetica-Bold", 30)
+    c.drawCentredString(x + w / 2, y + h / 2 - 6, "WaTR")
+    c.setFillColorRGB(*C_MUTED)
+    c.setFont("Helvetica", 6.5)
+    c.drawCentredString(x + w / 2, y + h / 2 - 17, "VEE KAY AQUATECH")
 
 
 def _qr_reader(url: str):
     import qrcode
     from reportlab.lib.utils import ImageReader
+
     qr = qrcode.QRCode(border=1, box_size=8, error_correction=qrcode.constants.ERROR_CORRECT_M)
     qr.add_data(url)
     qr.make(fit=True)
@@ -236,178 +314,264 @@ def _qr_reader(url: str):
     return ImageReader(buf)
 
 
-def _draw_card(c, s: Store, month: date, entries: dict[int, int], with_entry: bool, phone: str | None) -> None:
-    W, H = 595.27, 841.89
-    M = 28.0
-    days = calendar.monthrange(month.year, month.month)[1]
+def _fmt_day(d: date) -> str:
+    return f"{d.day}-{calendar.month_abbr[d.month]}-{d.year}"   # 2-Sep-2026
 
-    # ---- company band ----
-    band_h = 96.0
-    c.setFillColorRGB(*BRAND)
-    c.rect(0, H - band_h, W, band_h, stroke=0, fill=1)
-    c.setFillColorRGB(*AQUA)
-    c.rect(0, H - band_h - 4, W, 4, stroke=0, fill=1)
-    _draw_logo(c, M, H - band_h + 24, 48)
+
+def _log_table(c, x: float, y_top: float, first_no: int, rows: int, with_total: bool, entries: list[tuple[date, int]] | None, total: int) -> float:
+    """One of the two log tables. Returns the y of its bottom edge. Entries fill the rows in order."""
+    cols = [24 * PX, 66 * PX, 80 * PX, 80 * PX, 98 * PX]       # '#', Date, Filled, Empty, Signature  (348 px)
+    head_h, row_h = 28 * PX, 38 * PX
+    heads = [("#",), ("Date",), ("Filled", "Bottle"), ("Empty", "Bottle"), ("Signature",)]
+    tw = sum(cols)
+
+    c.setFillColorRGB(*C_MAIN)
+    c.setStrokeColorRGB(*C_MAIN)
+    c.rect(x, y_top - head_h, tw, head_h, stroke=1, fill=1)
     c.setFillColorRGB(1, 1, 1)
-    c.setFont("Helvetica-Bold", 17)
-    c.drawString(M + 60, H - 46, settings.COMPANY_NAME.upper())
-    c.setFont("Helvetica", 10)
-    c.drawString(M + 60, H - 62, settings.COMPANY_TAGLINE)
-    c.setFont("Helvetica", 9.5)
-    ry = H - 40
-    if settings.COMPANY_EMAIL:
-        c.drawRightString(W - M, ry, f"Email: {settings.COMPANY_EMAIL}")
-        ry -= 15
-    c.drawRightString(W - M, ry, f"Contact: {phone or '—'}")
+    c.setFont("Helvetica-Bold", 9 * PX)
+    cx = x
+    for w, h in zip(cols, heads):
+        if len(h) == 1:
+            c.drawCentredString(cx + w / 2, y_top - head_h / 2 - 2.4, h[0])
+        else:
+            c.drawCentredString(cx + w / 2, y_top - head_h / 2 + 1.2, h[0])
+            c.drawCentredString(cx + w / 2, y_top - head_h / 2 - 6.3, h[1])
+        cx += w
 
-    # ---- title ----
-    y = H - band_h - 34
-    c.setFillColorRGB(*INK)
-    c.setFont("Helvetica-Bold", 15)
-    c.drawCentredString(W / 2, y, "WATER SUPPLY LOG CARD")
-    c.setFillColorRGB(*MUTED)
-    c.setFont("Helvetica", 10.5)
-    c.drawCentredString(W / 2, y - 16, f"{_MONTHS[month.month]} {month.year}")
+    y = y_top - head_h
+    c.setStrokeColorRGB(*C_GRID)
+    c.setLineWidth(0.75)
+    for r in range(rows):
+        e = entries[first_no - 1 + r] if entries and first_no - 1 + r < len(entries) else None
+        c.rect(x, y - row_h, tw, row_h, stroke=1, fill=0)
+        cx = x
+        for w in cols[:-1]:
+            cx += w
+            c.line(cx, y - row_h, cx, y)
+        base = y - row_h / 2 - 3
+        c.setFillColorRGB(*C_MUTED)
+        c.setFont("Helvetica", 9 * PX)
+        c.drawCentredString(x + cols[0] / 2, base, str(first_no + r))
+        if e:
+            c.setFillColorRGB(*C_TEXT)
+            c.setFont("Helvetica-Bold", 10.5 * PX)
+            c.drawCentredString(x + cols[0] + cols[1] / 2, base, _fmt_day(e[0]))
+            c.drawCentredString(x + cols[0] + cols[1] + cols[2] / 2, base, str(e[1]))
+        y -= row_h
 
-    # ---- store details ----
-    box_top = y - 30
-    box_h = 104.0
-    c.setFillColorRGB(*SOFT)
-    c.setStrokeColorRGB(*LINE)
-    c.roundRect(M, box_top - box_h, W - 2 * M, box_h, 8, stroke=1, fill=1)
-    colw = (W - 2 * M) / 2
-    left = [
-        ("Store", s.name), ("Code", s.external_code),
-        ("Platform", " · ".join(x for x in [s.partner_organization.name if s.partner_organization else None, s.entity] if x)),
-        ("Location", ", ".join(x for x in [s.city, s.state] if x)),
-    ]
-    right = [
-        ("POC", " · ".join(x for x in [s.poc_name, s.poc_number] if x)),
-        ("Vendor", " · ".join(x for x in [s.vendor_name, s.vendor_number] if x)),
-        ("Address", s.address or ""),
-    ]
-
-    def block(items, x0, y0, width):
-        yy = y0
-        for label, value in items:
-            c.setFillColorRGB(*MUTED)
-            c.setFont("Helvetica-Bold", 8.5)
-            c.drawString(x0, yy, label.upper())
-            c.setFillColorRGB(*INK)
-            c.setFont("Helvetica", 10)
-            lines = _wrap(c, value or "—", "Helvetica", 10, width - 62, 2 if label == "Address" else 1)
-            for i, ln in enumerate(lines):
-                c.drawString(x0 + 58, yy - i * 12, ln)
-            yy -= 22 + (len(lines) - 1) * 12
-
-    block(left, M + 14, box_top - 20, colw)
-    block(right, M + colw + 6, box_top - 20, colw - 18)  # extra right padding so long addresses stay inside the box
-
-    # ---- log tables ----
-    row_h = 19.5
-    tw = (W - 2 * M - 14) / 2
-    cols = [0.27, 0.27, 0.22, 0.24]
-    heads = ["DATE", "BOTTLES FILLED", "EMPTY", "SIGNATURE"]
-    top = box_top - box_h - 18
-
-    def table(x0: float, first_day: int, last_day: int, total_row: bool) -> None:
-        c.setFillColorRGB(*BRAND)
-        c.rect(x0, top - 22, tw, 22, stroke=0, fill=1)
+    if with_total:
+        c.setFillColorRGB(*C_LIGHT)
+        c.setStrokeColorRGB(*C_DARK)
+        c.setLineWidth(1.5)
+        c.rect(x, y - row_h, cols[0] + cols[1], row_h, stroke=1, fill=1)
         c.setFillColorRGB(1, 1, 1)
-        c.setFont("Helvetica-Bold", 7.6)
-        cx = x0
-        for w, h in zip(cols, heads):
-            c.drawCentredString(cx + w * tw / 2, top - 14.5, h)
-            cx += w * tw
-        yy = top - 22
-        n_rows = last_day - first_day + 1 + (1 if total_row else 0)
-        for i in range(n_rows):
-            is_total = total_row and i == n_rows - 1
-            day = first_day + i
-            yy_bottom = yy - row_h
-            if is_total:
-                c.setFillColorRGB(*SOFT)
-                c.rect(x0, yy_bottom, tw, row_h, stroke=0, fill=1)
-            c.setStrokeColorRGB(*LINE)
-            c.rect(x0, yy_bottom, tw, row_h, stroke=1, fill=0)
-            cx = x0
-            for w in cols[:-1]:
-                cx += w * tw
-                c.line(cx, yy_bottom, cx, yy_bottom + row_h)
-            base = yy_bottom + 6
-            c.setFillColorRGB(*INK)
-            if is_total:
-                c.setFont("Helvetica-Bold", 9)
-                c.drawCentredString(x0 + cols[0] * tw / 2, base, "TOTAL")
-                if with_entry:
-                    c.drawCentredString(x0 + cols[0] * tw + cols[1] * tw / 2, base, str(sum(entries.values())))
-            elif day <= days:
-                if with_entry:
-                    c.setFont("Helvetica", 9)
-                    c.drawCentredString(x0 + cols[0] * tw / 2, base, f"{day:02d}-{month.month:02d}-{month.year}")
-                    if day in entries:
-                        c.drawCentredString(x0 + cols[0] * tw + cols[1] * tw / 2, base, str(entries[day]))
-            else:  # past month end: grey the row out
-                c.setFillColorRGB(0.95, 0.95, 0.95)
-                c.rect(x0 + 0.5, yy_bottom + 0.5, tw - 1, row_h - 1, stroke=0, fill=1)
-            yy = yy_bottom
+        c.rect(x + cols[0] + cols[1], y - row_h, tw - cols[0] - cols[1], row_h, stroke=1, fill=1)
+        c.setFillColorRGB(*C_DARK)
+        c.setFont("Helvetica-Bold", 10 * PX)
+        c.drawCentredString(x + (cols[0] + cols[1]) / 2, y - row_h / 2 - 2.6, "TOTAL COUNT")
+        if entries is not None:
+            c.setFillColorRGB(*C_TEXT)
+            c.setFont("Helvetica-Bold", 14 * PX)
+            c.drawCentredString(x + cols[0] + cols[1] + (tw - cols[0] - cols[1]) / 2, y - row_h / 2 - 3.6, str(total))
+        y -= row_h
+    c.setLineWidth(1)
+    return y
 
-    table(M, 1, 15, False)
-    table(M + tw + 14, 16, 31, True)
 
-    # ---- footer: signatures + QR ----
-    fy = top - 22 - 16 * row_h - row_h - 26
-    c.setStrokeColorRGB(*INK)
-    c.setLineWidth(0.8)
-    c.line(M, fy - 34, M + 150, fy - 34)
-    c.line(M + 190, fy - 34, M + 340, fy - 34)
-    c.setFillColorRGB(*MUTED)
-    c.setFont("Helvetica", 8.5)
-    c.drawString(M, fy - 46, "Vendor signature")
-    c.drawString(M + 190, fy - 46, "Store stamp")
-    qs = 92.0
-    c.drawImage(_qr_reader(qr_url(s.id)), W - M - qs, fy - qs + 14, qs, qs)
-    c.setFont("Helvetica", 7.5)
-    c.drawRightString(W - M, fy - qs + 6, "Scan: bottles supplied")
-    c.setFont("Helvetica", 7)
-    c.setFillColorRGB(*LINE)
-    c.drawString(M, 18, f"Generated {_today():%d %b %Y}  ·  {settings.COMPANY_NAME}")
+def _draw_card(c, s: Store, vendor: str, channel: str, month: date | None, entries: list[tuple[date, int]] | None, phone: str) -> None:
+    x0, y = LEFT, TOP
+    top_edge = y
+
+    # ---- 1. month line (write-in on a blank card; the month on a card with entry) ----
+    h = 34 * PX
+    c.setFillColorRGB(*C_DARK)
+    c.setFont("Helvetica-Bold", 13 * PX)
+    prefix = "Month of  -  "
+    c.drawString(x0 + 10 * PX, y - h / 2 - 3.4, prefix)
+    px_ = x0 + 10 * PX + c.stringWidth(prefix, "Helvetica-Bold", 13 * PX)
+    c.setFillColorRGB(*C_TEXT)
+    c.drawString(px_, y - h / 2 - 3.4, month_label(month) if month else "______________________________")
+    y -= h
+    c.setStrokeColorRGB(*C_MAIN)
+    c.setLineWidth(1.5)
+    c.line(x0, y, x0 + CARD_W, y)
+
+    # ---- 2. company band: name + email + contact (dark text on a light band) ----
+    h = 58 * PX
+    c.setFillColorRGB(*C_LIGHT)
+    c.rect(x0, y - h, CARD_W, h, stroke=0, fill=1)
+    c.setFillColorRGB(*C_DARK)
+    c.setFont("Helvetica-Bold", 19 * PX)
+    c.drawCentredString(x0 + CARD_W / 2, y - 25 * PX, settings.COMPANY_NAME)
+    c.setFont("Helvetica-Bold", 11 * PX)
+    parts = ([f"Email: {settings.COMPANY_EMAIL}"] if settings.COMPANY_EMAIL else []) + ([f"Contact: {phone}"] if phone else [])
+    c.drawCentredString(x0 + CARD_W / 2, y - 46 * PX, "   |   ".join(parts))
+    y -= h
+    c.line(x0, y, x0 + CARD_W, y)
+
+    # ---- 3. logo | title, channel, vendor | QR ----
+    h = 134 * PX
+    _logo(c, x0 + 10 * PX, y - h + 8 * PX, 150 * PX, h - 16 * PX)
+    mid = x0 + 170 * PX + 396 * PX / 2
+    c.setFillColorRGB(*C_DARK)
+    c.setFont("Helvetica-Bold", 15 * PX)
+    c.drawCentredString(mid, y - 44 * PX, "BOTTLE DELIVERY CARD")
+
+    def kv(label: str, value: str, ypos: float) -> None:
+        size = 12 * PX
+        lw = c.stringWidth(label + " ", "Helvetica", size)
+        total_w = lw + c.stringWidth(value, "Helvetica-Bold", size)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.setFont("Helvetica", size)
+        c.drawString(mid - total_w / 2, ypos, label + " ")
+        c.setFont("Helvetica-Bold", size)
+        c.drawString(mid - total_w / 2 + lw, ypos, value)
+
+    kv("Channel:", channel, y - 66 * PX)
+    kv("Vendor:", _wrap(c, vendor, "Helvetica-Bold", 12 * PX, 330 * PX, 1)[0], y - 84 * PX)
+    qs = 92 * PX
+    qx = x0 + 170 * PX + 396 * PX + (150 * PX - qs) / 2
+    c.drawImage(_qr_reader(qr_url(s.id)), qx, y - 12 * PX - qs, qs, qs)
+    c.setFillColorRGB(0.27, 0.27, 0.27)
+    c.setFont("Helvetica", 8 * PX)
+    c.drawCentredString(qx + qs / 2, y - 12 * PX - qs - 9 * PX, "Scan to check bottle")
+    c.drawCentredString(qx + qs / 2, y - 12 * PX - qs - 18 * PX, "count till date")
+    y -= h
+    c.setStrokeColorRGB(*C_MAIN)
+    c.setLineWidth(3)
+    c.line(x0, y, x0 + CARD_W, y)
+    c.setLineWidth(1)
+
+    # ---- 4. store details: two rows of three ----
+    cw = CARD_W / 3
+
+    def cell(cx: float, cy_top: float, rh: float, label: str, val: str | None, big: bool = False) -> None:
+        c.setStrokeColorRGB(*C_BORDER)
+        c.rect(cx, cy_top - rh, cw, rh, stroke=1, fill=0)
+        c.setFillColorRGB(*C_MUTED)
+        c.setFont("Helvetica", 8 * PX)
+        c.drawString(cx + 8 * PX, cy_top - 13 * PX, label.upper())
+        size = (15 if big else 12) * PX
+        c.setFillColorRGB(*(C_DARK if big else C_TEXT))
+        c.setFont("Helvetica-Bold", size)
+        for i, ln in enumerate(_wrap(c, (val or "").strip() or "—", "Helvetica-Bold", size, cw - 16 * PX, 2)):
+            c.drawString(cx + 8 * PX, cy_top - 28 * PX - i * (size + 2), ln)
+
+    r1, r2 = 58 * PX, 46 * PX
+    cell(x0, y, r1, "Store name", s.name)
+    cell(x0 + cw, y, r1, "Store / Outlet ID", s.external_code, big=True)
+    cell(x0 + 2 * cw, y, r1, "Entity", s.entity)
+    y -= r1
+    cell(x0, y, r2, "Region", s.region.name if s.region else None)
+    cell(x0 + cw, y, r2, "State", s.state)
+    cell(x0 + 2 * cw, y, r2, "City", s.city)
+    y -= r2
+
+    # ---- 5. the two log tables ----
+    y -= 10 * PX
+    total = sum(n for _, n in entries) if entries is not None else 0
+    tx = x0 + 4 * PX
+    bottom_l = _log_table(c, tx, y, 1, 15, False, entries, total)
+    bottom_r = _log_table(c, tx + 348 * PX + 8 * PX, y, 16, 16, True, entries, total)
+    bottom = min(bottom_l, bottom_r) - 6 * PX
+
+    # outer border of the whole card
+    c.setStrokeColorRGB(*C_MAIN)
+    c.setLineWidth(1.5)
+    c.rect(x0, bottom, CARD_W, top_edge - bottom, stroke=1, fill=0)
+    c.setLineWidth(1)
+
+
+def _entries_for(db: Session, store_ids: list[uuid.UUID], month: date) -> dict[uuid.UUID, list[tuple[date, int]]]:
+    end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
+    out: dict[uuid.UUID, list[tuple[date, int]]] = {sid: [] for sid in store_ids}
+    for sid, d, n in db.execute(
+        select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count)
+        .where(OrderEntry.store_id.in_(store_ids), OrderEntry.order_date >= month, OrderEntry.order_date <= end)
+        .order_by(OrderEntry.order_date)
+    ):
+        out[sid].append((d, int(n)))
+    return out
+
+
+def _render(stores: list[Store], vendor: str, month: date | None, contacts: _Contacts, entries: dict | None) -> bytes:
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(W, H))
+    c.setTitle(f"Monthwise virtual card - {vendor}" + (f" - {month_label(month)}" if month else ""))
+    c.setAuthor(settings.COMPANY_NAME)
+    for s in stores:
+        platform = (s.partner_organization.name if s.partner_organization else "").upper()
+        _draw_card(c, s, vendor, platform, month, entries[s.id] if entries is not None else None, contacts.for_store(s))
+        c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def _safe_name(*parts: str) -> str:
+    return re.sub(r"[^\w]+", "_", "_".join(p for p in parts if p)).strip("_")
 
 
 def build_pdf(
     db: Session, user: User, *, is_admin: bool, partner: str | None, vendor: str | None,
-    month: date, with_entry: bool, store_id: uuid.UUID | None = None,
-) -> tuple[bytes, int]:
-    from reportlab.pdfgen import canvas
-
+    month: date | None, store_id: uuid.UUID | None = None,
+) -> tuple[bytes, int, str]:
+    """One PDF: a card per live store of the vendor (or a single store). month=None -> blank cards."""
     stores = _stores(db, user, is_admin=is_admin, partner=partner)
     if store_id is not None:
         stores = [s for s in stores if s.id == store_id]
+        vendor = vendor or (_vendor_key(stores[0]) if stores else "")
     elif vendor:
         stores = [s for s in stores if _vendor_key(s).lower() == vendor.strip().lower()]
     if not stores:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No stores found for that selection.")
-    if len(stores) > 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That's more than 400 stores — pick a vendor or a platform first.")
+    if len(stores) > MAX_STORES_PER_PDF:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"That's more than {MAX_STORES_PER_PDF} stores — pick fewer.")
+    stores.sort(key=lambda s: s.name.lower())
+    entries = _entries_for(db, [s.id for s in stores], month) if month else None
+    data = _render(stores, vendor or "", month, _Contacts(db, user.organization_id), entries)
+    plat = stores[0].partner_organization.name if stores[0].partner_organization else ""
+    name = _safe_name("Cards", f"Entry_{month:%Y-%m}" if month else "", plat, vendor or "store") + ".pdf"
+    return data, len(stores), name
 
-    entries: dict[uuid.UUID, dict[int, int]] = {}
-    if with_entry:
-        end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
-        for sid, d, n in db.execute(
-            select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count).where(
-                OrderEntry.store_id.in_([s.id for s in stores]),
-                OrderEntry.order_date >= month, OrderEntry.order_date <= end,
-            )
-        ):
-            entries.setdefault(sid, {})[d.day] = int(n)
 
+def build_zip(
+    db: Session, user: User, *, is_admin: bool, partner: str | None, vendors: list[str], month: date | None,
+) -> tuple[bytes, int, int, str]:
+    """A ZIP holding one PDF per selected vendor. Returns (bytes, vendors, cards, filename)."""
+    wanted = {v.strip().lower() for v in vendors if v and v.strip()}
+    if not wanted:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one vendor.")
+    groups: dict[str, list[Store]] = {}
+    for s in _stores(db, user, is_admin=is_admin, partner=partner):
+        if _vendor_key(s).lower() in wanted:
+            groups.setdefault(_vendor_key(s), []).append(s)
+    if not groups:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No stores found for those vendors.")
+    total = sum(len(v) for v in groups.values())
+    if total > MAX_STORES_PER_ZIP:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"That's {total} cards — the limit is {MAX_STORES_PER_ZIP} per ZIP. Pick fewer vendors.")
+
+    all_stores = [s for v in groups.values() for s in v]
+    entries = _entries_for(db, [s.id for s in all_stores], month) if month else None   # one query for every vendor
     contacts = _Contacts(db, user.organization_id)
+
     buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=(595.27, 841.89))
-    c.setTitle(f"Supply cards - {vendor or 'stores'} - {_MONTHS[month.month]} {month.year}")
-    c.setAuthor(settings.COMPANY_NAME)
-    for s in stores:
-        _draw_card(c, s, month, entries.get(s.id, {}), with_entry, contacts.for_store(s))
-        c.showPage()
-    c.save()
-    return buf.getvalue(), len(stores)
+    used: set[str] = set()
+    plat = (all_stores[0].partner_organization.name if partner and all_stores[0].partner_organization else "")
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for vendor in sorted(groups, key=str.lower):
+            stores = sorted(groups[vendor], key=lambda s: s.name.lower())
+            pdf = _render(stores, vendor, month, contacts, entries)
+            p0 = stores[0].partner_organization.name if stores[0].partner_organization else ""
+            name = _safe_name("Cards", f"Entry_{month:%Y-%m}" if month else "", p0, vendor) + ".pdf"
+            base, n = name, 1
+            while name in used:
+                n += 1
+                name = base[:-4] + f"_{n}.pdf"
+            used.add(name)
+            zf.writestr(name, pdf)
+    zip_name = _safe_name("Monthwise_cards", f"Entry_{month:%Y-%m}" if month else "Blank", plat) + ".zip"
+    return buf.getvalue(), len(groups), total, zip_name

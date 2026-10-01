@@ -19,12 +19,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 
-from jose import JWTError, jwt
+import jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=settings.BCRYPT_ROUNDS)
 
 # Used to keep login timing identical whether or not the account exists.
 _DUMMY_HASH = pwd_context.hash("not-a-real-password")
@@ -136,8 +136,10 @@ def decode_claims(token: str, expected_type: TokenType) -> TokenClaims:
     malformed, wrong type, or missing the session family. Callers never see jose's
     exceptions directly."""
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError as exc:
+        payload = jwt.decode(
+            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM], options={"require": ["exp", "sub"]}
+        )
+    except jwt.PyJWTError as exc:
         raise InvalidTokenError("Token is invalid or expired") from exc
 
     if payload.get("type") != expected_type.value:

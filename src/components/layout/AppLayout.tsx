@@ -2,19 +2,25 @@ import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   IconActivity,
-  IconChart,
-  IconClipboard,
-  IconTicket,
-  IconClose,
-  IconGrid,
-  IconLogout,
   IconAlertTriangle,
   IconBox,
+  IconCard,
+  IconChart,
+  IconClipboard,
+  IconClock,
+  IconClose,
+  IconEdit,
+  IconGrid,
+  IconLogout,
   IconMapPin,
   IconMenu,
+  IconReceipt,
+  IconReport,
   IconSearch,
+  IconShield,
   IconStore,
   IconUsers,
 } from "@/components/ui/icons";
@@ -26,25 +32,61 @@ interface NavItem {
   permission?: string;
 }
 
+interface NavGroup {
+  title: string;
+  items: NavItem[];
+}
+
 // Nav items are declarative + permission-tagged, so the sidebar filters
 // itself per spec section 8 ("navigation must dynamically change based
-// on permissions") without any component knowing about roles.
-const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", to: "/", icon: IconGrid },
-  { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.mark" },
-  { label: "Inventory", to: "/inventory", icon: IconBox, permission: "orders.view" },
-  { label: "Vendor cards", to: "/cards", icon: IconGrid, permission: "orders.view" },
-  { label: "Compliance", to: "/compliance", icon: IconTicket, permission: "compliance.upload" },
-  { label: "Accounts", to: "/accounts", icon: IconClipboard, permission: "accounts.view" },
-  { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview" },
-  { label: "Pending entries", to: "/pending", icon: IconAlertTriangle, permission: "orders.overview" },
-  { label: "Reports", to: "/reports", icon: IconChart, permission: "orders.overview" },
-  { label: "Correct entries", to: "/orders/correct", icon: IconGrid, permission: "orders.correct" },
-  { label: "Team & access", to: "/team", icon: IconUsers, permission: "employees.view" },
-  { label: "Stores", to: "/stores", icon: IconStore, permission: "stores.view" },
-  { label: "Regions", to: "/regions", icon: IconMapPin, permission: "regions.view" },
-  { label: "Activity", to: "/activity", icon: IconActivity, permission: "activity.view" },
+// on permissions") without any component knowing about roles. They are
+// grouped by what people do with them; a group with nothing visible is hidden.
+const NAV_GROUPS: NavGroup[] = [
+  {
+    title: "Overview",
+    items: [{ label: "Dashboard", to: "/", icon: IconGrid }],
+  },
+  {
+    title: "Orders",
+    items: [
+      { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.mark" },
+      { label: "Correct entries", to: "/orders/correct", icon: IconEdit, permission: "orders.correct" },
+      { label: "Pending entries", to: "/pending", icon: IconAlertTriangle, permission: "orders.overview" },
+      { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview" },
+    ],
+  },
+  {
+    title: "Stores & network",
+    items: [
+      { label: "Inventory", to: "/inventory", icon: IconBox, permission: "orders.view" },
+      { label: "Stores", to: "/stores", icon: IconStore, permission: "stores.view" },
+      { label: "Regions", to: "/regions", icon: IconMapPin, permission: "regions.view" },
+      { label: "Monthwise virtual card", to: "/cards", icon: IconCard, permission: "orders.view" },
+    ],
+  },
+  {
+    title: "Compliance & accounts",
+    items: [
+      { label: "Compliance", to: "/compliance", icon: IconShield, permission: "compliance.upload" },
+      { label: "Accounts", to: "/accounts", icon: IconReceipt, permission: "accounts.view" },
+    ],
+  },
+  {
+    title: "Reports",
+    items: [{ label: "Reports", to: "/reports", icon: IconReport, permission: "orders.overview" }],
+  },
+  {
+    title: "People",
+    items: [
+      { label: "Team & access", to: "/team", icon: IconUsers, permission: "employees.view" },
+      // No permission: everyone can open it — admins see the whole team, everyone else sees their own record.
+      { label: "Attendance", to: "/attendance", icon: IconClock },
+      { label: "Activity", to: "/activity", icon: IconActivity, permission: "activity.view" },
+    ],
+  },
 ];
+
+const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 function formatRoleLabel(role: string): string {
   return role
@@ -61,9 +103,7 @@ function initials(name: string): string {
 function BrandMark() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 via-brand-600 to-aqua-500 text-sm font-extrabold text-white shadow-glow ring-1 ring-white/20">
-        V
-      </span>
+      <BrandLogo tile height={30} />
       <div className="leading-tight">
         <div className="text-[15px] font-bold tracking-tight text-white">Veekay CRM</div>
         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">Aquatech</div>
@@ -74,7 +114,10 @@ function BrandMark() {
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, hasPermission, logout } = useAuth();
-  const visibleItems = NAV_ITEMS.filter((item) => !item.permission || hasPermission(item.permission));
+  const visibleGroups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((item) => !item.permission || hasPermission(item.permission)),
+  })).filter((g) => g.items.length > 0);
   const primaryRole = user?.roles[0];
 
   return (
@@ -83,39 +126,46 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <BrandMark />
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-        {visibleItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
-                    : "text-white/60 hover:bg-white/5 hover:text-white"
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-aqua-300 to-brand-400" />
+      <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2" aria-label="Main">
+        {visibleGroups.map((group) => (
+          <div key={group.title} className="mt-4 first:mt-1">
+            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white/30">{group.title}</p>
+            <div className="space-y-0.5">
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+                        : "text-white/60 hover:bg-white/5 hover:text-white"
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-aqua-300 to-brand-400" />
+                      )}
+                      <Icon
+                        className={`h-[18px] w-[18px] shrink-0 ${
+                          isActive ? "text-aqua-300" : "text-white/40 group-hover:text-white/70"
+                        }`}
+                      />
+                      {item.label}
+                    </>
                   )}
-                  <Icon
-                    className={`h-[18px] w-[18px] shrink-0 ${
-                      isActive ? "text-aqua-300" : "text-white/40 group-hover:text-white/70"
-                    }`}
-                  />
-                  {item.label}
-                </>
-              )}
-            </NavLink>
-          );
-        })}
+                </NavLink>
+              );
+            })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="shrink-0 border-t border-white/5 p-3">

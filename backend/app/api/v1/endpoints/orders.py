@@ -2,7 +2,7 @@
 import uuid
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from app.schemas.order import (
 )
 from app.schemas.inventory import Inventory
 from app.schemas.report import PendingEntries, SalesReport
-from app.services import inventory_service, order_import_service, order_service, report_service
+from app.services import inventory_service, matrix_service, order_import_service, order_service, report_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -178,3 +178,46 @@ def inventory(
     """Stores with vendor/POC details and pending days. Employees get their own
     stores; admins (orders.correct) get every live store, optionally per platform."""
     return inventory_service.inventory(db, user, is_admin=_is_admin(perms), partner_slug=partner)
+
+
+@router.get(
+    "/matrix",
+    dependencies=[Depends(require_permission("orders.overview"))],
+)
+def matrix(
+    start: date,
+    end: date,
+    partner: str | None = None,
+    state: str | None = None,
+    city: str | None = None,
+    page: int = 1,
+    page_size: int = 25,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Daily distribution: one row per store, one column per day (max 62 days)."""
+    return matrix_service.matrix(
+        db, user, start, end, partner=partner, state=state, city=city,
+        page=max(1, page), page_size=min(max(1, page_size), 200),
+    )
+
+
+@router.get(
+    "/matrix/export",
+    dependencies=[Depends(require_permission("orders.overview"))],
+)
+def matrix_export(
+    start: date,
+    end: date,
+    partner: str | None = None,
+    state: str | None = None,
+    city: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="daily-distribution-{start}_{end}.xlsx"'},
+    )

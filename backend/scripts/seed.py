@@ -58,6 +58,8 @@ PERMISSIONS = [
     ("compliance.manage", "Upload, view and remove cards and bills for any store"),
     ("accounts.view", "Accountant dashboard: bill due alerts, search, view and download documents"),
     ("accounts.clear", "Mark bills as cleared"),
+    ("attendance.view", "View everyone's attendance (sign-in / sign-out times and location)"),
+    ("attendance.manage", "Set the office locations used to recognise 'at the office'"),
 ]
 
 ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]

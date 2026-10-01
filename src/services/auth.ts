@@ -10,6 +10,8 @@ interface LoginPayload {
 interface TokenResponse {
   access_token: string;
   refresh_token: string;
+  /** true when this sign-in counts as attendance (employees / accounts — never admins) */
+  attendance?: boolean;
 }
 
 interface MeResponse {
@@ -48,7 +50,11 @@ function toCurrentUser(res: MeResponse): CurrentUser {
   };
 }
 
-export async function login(payload: LoginPayload): Promise<CurrentUser> {
+/**
+ * Sign in. `afterSignIn` runs right after a successful login, but only when the server says this sign-in
+ * counts as attendance — that is the one moment the device location is read. Admins never trigger it.
+ */
+export async function login(payload: LoginPayload, afterSignIn?: () => Promise<void>): Promise<CurrentUser> {
   const tokens = await apiRequest<TokenResponse>("/auth/login", {
     method: "POST",
     silent: true,
@@ -60,6 +66,13 @@ export async function login(payload: LoginPayload): Promise<CurrentUser> {
     },
   });
   setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
+  if (tokens.attendance && afterSignIn) {
+    try {
+      await afterSignIn();
+    } catch {
+      /* a missing location never blocks signing in */
+    }
+  }
   return toCurrentUser(await apiRequest<MeResponse>("/auth/me"));
 }
 
@@ -105,4 +118,9 @@ export async function revokeSession(id: string): Promise<void> {
 
 export async function fetchCurrentUser(silent = false): Promise<CurrentUser> {
   return toCurrentUser(await apiRequest<MeResponse>("/auth/me", { silent }));
+}
+
+/** Attach the device location to the sign-in that just happened (allowed once, right after login). */
+export async function recordLoginLocation(loc: { latitude: number; longitude: number; accuracy: number }): Promise<void> {
+  await apiRequest("/attendance/location", { method: "POST", body: loc, silent: true }).catch(() => undefined);
 }

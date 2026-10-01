@@ -153,10 +153,10 @@ export interface BarItem {
 export function BarList({ items }: { items: BarItem[] }) {
   return (
     <div className="flex flex-col gap-3.5">
-      {items.map((it) => {
+      {items.map((it, i) => {
         const pct = it.max > 0 ? Math.round((it.value / it.max) * 100) : 0;
         return (
-          <div key={it.label}>
+          <div key={`${it.label}-${i}`}>
             <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
               <span className="truncate font-medium text-gray-800">{it.label}</span>
               <span className="shrink-0 tabular-nums text-gray-500">

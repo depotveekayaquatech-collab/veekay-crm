@@ -1,7 +1,8 @@
 """
 ComplianceDocument = one uploaded file for one store and one month.
 
-kind 'card' — the store's compliance card.
+kind 'card'    — the store's compliance card for the month.
+kind 'payment' — proof of payment for the month's invoice.
 kind 'bill' — the month's bill; carries a due date (month-end + 45 days) and a
               PENDING / CLEARED status that an accountant flips.
 
@@ -21,8 +22,12 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class DocKind(StrEnum):
-    CARD = "card"
-    BILL = "bill"
+    CARD = "card"        # the month's compliance card
+    BILL = "bill"        # the month's invoice
+    PAYMENT = "payment"  # proof that the invoice was paid
+
+
+VALID_KINDS = (DocKind.CARD.value, DocKind.BILL.value, DocKind.PAYMENT.value)
 
 
 class BillStatus(StrEnum):

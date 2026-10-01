@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { IconAlertTriangle } from "@/components/ui/icons";
 import { useAuth } from "@/features/auth/useAuth";
+import { BrandLogo } from "@/components/ui/BrandLogo";
+import { getDeviceLocation } from "@/lib/geo";
+import { recordLoginLocation } from "@/services/auth";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -14,17 +17,29 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(organizationSlug, employeeCode, password);
+      // The location is read once, right after a successful sign-in, and only for employees / accounts (the server
+      // says which). Admins are never asked. If the browser can't or won't share it, signing in still works.
+      await login(organizationSlug, employeeCode, password, async () => {
+        setLocating(true);
+        try {
+          const loc = await getDeviceLocation();
+          if (loc) await recordLoginLocation(loc);
+        } finally {
+          setLocating(false);
+        }
+      });
       navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
     } finally {
+      setLocating(false);
       setIsSubmitting(false);
     }
   }
@@ -42,9 +57,7 @@ export function LoginPage() {
           }}
         />
         <div className="relative flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 via-brand-600 to-aqua-500 text-lg font-extrabold shadow-glow ring-1 ring-white/20">
-            V
-          </span>
+          <BrandLogo tile height={44} />
           <span className="text-lg font-semibold tracking-tight">Veekay Aquatech</span>
         </div>
 
@@ -68,9 +81,7 @@ export function LoginPage() {
       <div className="flex items-center justify-center bg-white px-4 py-10 sm:px-6">
         <div className="w-full max-w-sm animate-slide-up">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500 text-sm font-bold text-white">
-              V
-            </span>
+            <BrandLogo height={40} />
             <span className="text-base font-semibold text-gray-900">Veekay Aquatech</span>
           </div>
 
@@ -122,9 +133,14 @@ export function LoginPage() {
             )}
 
             <Button type="submit" size="lg" fullWidth isLoading={isSubmitting} className="mt-1">
-              Sign in
+              {locating ? "Checking your location…" : "Sign in"}
             </Button>
           </form>
+
+          <p className="mt-4 text-xs leading-relaxed text-gray-500">
+            Employees: your sign-in time and location are recorded for attendance, only at the moment you sign in. If your browser
+            asks to share your location, choose <b>Allow</b>.
+          </p>
 
           {import.meta.env.DEV && (
             <div className="mt-6 space-y-1 rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-500 ring-1 ring-surface-border">

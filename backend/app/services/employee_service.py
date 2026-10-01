@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.roles import CATEGORY_LABELS, staff_category
 from app.core.security import generate_temp_password, hash_password
 from app.models.organization import Organization, OrganizationKind
 from app.models.role import Role
@@ -24,6 +25,8 @@ from app.services import activity_service, session_service
 def to_out(db: Session, user: User) -> EmployeeOut:
     erepo = EmployeeRepository(db)
     urepo = UserRepository(db)
+    roles = erepo.role_codes(user.id)
+    category = staff_category(roles, user.platform_organization.slug if user.platform_organization else None)
     return EmployeeOut(
         id=user.id,
         employee_code=user.employee_code,
@@ -37,7 +40,9 @@ def to_out(db: Session, user: User) -> EmployeeOut:
         region_id=user.region_id,
         region_name=user.region.name if user.region else None,
         states=erepo.states_for(user.id),
-        roles=erepo.role_codes(user.id),
+        roles=roles,
+        category=category,
+        category_label=CATEGORY_LABELS[category],
         direct_permissions=sorted(urepo.get_direct_permission_codes(user.id)),
     )
 
@@ -50,10 +55,11 @@ def list_employees(
     q: str | None = None,
     region_id: uuid.UUID | None = None,
     platform_id: uuid.UUID | None = None,
+    category: str | None = None,
 ) -> Page[EmployeeOut]:
     users, total = EmployeeRepository(db).list(
         actor.organization_id, offset=params.offset, limit=params.limit,
-        q=q, region_id=region_id, platform_id=platform_id,
+        q=q, region_id=region_id, platform_id=platform_id, category=category,
     )
     return Page(
         items=[to_out(db, u) for u in users],

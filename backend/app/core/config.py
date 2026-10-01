@@ -72,11 +72,40 @@ class Settings(BaseSettings):
     COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")  # cards/bills start here
     COMPLIANCE_MAX_MONTHS_BACK: int = Field(default=12)
 
+    # ---- Security / operations ----
+    BCRYPT_ROUNDS: int = Field(default=12)              # tests lower this; production keeps 12
+    SECURITY_HEADERS_ENABLED: bool = Field(default=True)
+    DOCS_ENABLED: bool | None = Field(default=None)     # None = on in development, off in production
+    MAX_REQUEST_BYTES: int = Field(default=150 * 1024 * 1024)   # largest accepted request body (bulk uploads)
+    RATE_LIMIT_ENABLED: bool = Field(default=True)
+    RATE_LIMIT_DEFAULT_PER_MIN: int = Field(default=600)    # any API call, per client IP
+    RATE_LIMIT_HEAVY_PER_MIN: int = Field(default=30)       # uploads, imports, PDF / Excel generation, per client IP
+    RATE_LIMIT_PUBLIC_PER_MIN: int = Field(default=60)      # unauthenticated endpoints (QR page)
+    LOG_LEVEL: str = Field(default="INFO")
+    LOG_JSON: bool | None = Field(default=None)         # None = JSON lines in production, readable text otherwise
+    SENTRY_DSN: str = Field(default="")                 # set to forward unhandled errors to Sentry
+    RELEASE: str = Field(default="")                    # e.g. the git commit; tags logs / Sentry events
+
+    # ---- File storage ----
+    STORAGE_BACKEND: str = Field(default="local")       # local | s3 (any S3-compatible service: AWS, Cloudflare R2, Backblaze, MinIO)
+    S3_BUCKET: str = Field(default="")
+    S3_ENDPOINT_URL: str = Field(default="")            # blank for AWS; set for R2 / Backblaze / MinIO
+    S3_REGION: str = Field(default="auto")
+    S3_ACCESS_KEY_ID: str = Field(default="")
+    S3_SECRET_ACCESS_KEY: str = Field(default="")
+    S3_PREFIX: str = Field(default="veekay/")
+
+    # ---- Attendance ----
+    ATTENDANCE_TIMEZONE: str = Field(default="Asia/Kolkata")   # which local day a sign-in belongs to
+    ATTENDANCE_ACTIVE_WINDOW_MINUTES: int = Field(default=30)  # still 'active' if seen this recently
+    OFFICE_DEFAULT_RADIUS_M: int = Field(default=100)
+
     # ---- Vendor cards ----
-    COMPANY_NAME: str = Field(default="Veekay Aquatech Pvt. Ltd.")
+    COMPANY_NAME: str = Field(default="VEE KAY AQUATECH PVT. LTD.")
     COMPANY_TAGLINE: str = Field(default="Packaged Drinking Water")
-    COMPANY_EMAIL: str = Field(default="")              # shown on the card band when set
-    CARD_LOGO_PATH: str = Field(default="")             # optional PNG/JPG; a built-in "V" mark is drawn otherwise
+    COMPANY_EMAIL: str = Field(default="info1.veekayaquatech@gmail.com")   # printed on every card
+    CARDS_FIRST_MONTH: str = Field(default="2026-09")   # earliest month a card can be filled for / shown as "last month"
+    CARD_LOGO_PATH: str = Field(default="")             # override the logo printed on cards / PDFs (default: app/assets/watr-logo.png)
     # Base URL of the web app. The QR code on each card opens <PUBLIC_APP_URL>/count?...
     PUBLIC_APP_URL: str = Field(default="http://localhost:5173")
     QR_SIGNING_SECRET: str = Field(default="")          # falls back to JWT_SECRET_KEY

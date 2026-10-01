@@ -28,7 +28,8 @@ export function TeamPage() {
   const canAssign = usePermission("assignments.manage");
   const canDeactivate = usePermission("employees.deactivate");
   const { deactivate } = useTeamMutations();
-  const { data, isLoading, isError, refetch } = useEmployees(page, q);
+  const [category, setCategory] = useState("");
+  const { data, isLoading, isError, refetch } = useEmployees(page, q, category);
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,6 +50,31 @@ export function TeamPage() {
         }
       />
 
+      <div role="tablist" aria-label="Staff category" className="flex flex-wrap gap-1.5">
+        {[
+          ["", "All staff"],
+          ["admin", "Admins"],
+          ["accounts", "Accounts"],
+          ["blinkit", "Blinkit employees"],
+          ["zepto", "Zepto employees"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={category === id}
+            onClick={() => {
+              setCategory(id);
+              setPage(1);
+            }}
+            className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
+              category === id ? "bg-brand-500 text-white shadow-sm" : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <Input
         label="Search"
         value={q}
@@ -67,6 +93,7 @@ export function TeamPage() {
               <tr>
                 <Th>Employee ID</Th>
                 <Th>Name</Th>
+                <Th>Category</Th>
                 <Th>Platform</Th>
                 <Th>Scope</Th>
                 <Th>Permissions</Th>
@@ -75,11 +102,14 @@ export function TeamPage() {
               </tr>
             </thead>
             <tbody>
-              {data.items.length === 0 && <TableEmpty colSpan={7}>No employees yet.</TableEmpty>}
+              {data.items.length === 0 && <TableEmpty colSpan={8}>No one in this category yet.</TableEmpty>}
               {data.items.map((e) => (
                 <tr key={e.id}>
                   <Td className="font-medium text-gray-900">{e.employeeCode}</Td>
                   <Td>{e.fullName}</Td>
+                  <Td>
+                    <Badge tone={e.category === "admin" ? "danger" : e.category === "accounts" ? "warning" : "info"}>{e.categoryLabel || e.category}</Badge>
+                  </Td>
                   <Td>{e.platformSlug ?? "—"}</Td>
                   <Td>{e.regionName ?? (e.states.length ? e.states.join(", ") : "—")}</Td>
                   <Td>{e.directPermissions.length}</Td>
@@ -88,6 +118,9 @@ export function TeamPage() {
                   </Td>
                   {(canCreate || canDeactivate || canReset) && (
                     <Td className="text-right">
+                      {e.category === "admin" ? (
+                        <span className="text-xs text-gray-400">Managed separately</span>
+                      ) : (
                       <div className="flex justify-end gap-3 text-sm font-medium">
                         {canCreate && (
                           <button className="text-brand-600 hover:text-brand-700" onClick={() => setEditing(e)}>
@@ -108,6 +141,7 @@ export function TeamPage() {
                           </button>
                         )}
                       </div>
+                      )}
                     </Td>
                   )}
                 </tr>

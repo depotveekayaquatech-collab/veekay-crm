@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     activity,
     assignments,
+    attendance,
     auth,
     cards,
     compliance,
@@ -29,3 +30,4 @@ api_router.include_router(activity.router)
 api_router.include_router(compliance.router)
 api_router.include_router(cards.router)
 api_router.include_router(cards.public_router)
+api_router.include_router(attendance.router)

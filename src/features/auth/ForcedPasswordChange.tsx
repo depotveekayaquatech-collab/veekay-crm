@@ -1,3 +1,4 @@
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { PasswordForm } from "@/features/auth/PasswordForm";
 import { useAuth } from "@/features/auth/useAuth";
 
@@ -8,7 +9,7 @@ export function ForcedPasswordChange() {
     <div className="flex min-h-screen items-center justify-center bg-surface-subtle px-4 py-10">
       <div className="w-full max-w-md animate-slide-up">
         <div className="mb-6 flex items-center gap-2.5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 via-brand-600 to-aqua-500 text-sm font-extrabold text-white shadow-glow">V</span>
+          <BrandLogo height={40} />
           <span className="text-base font-bold text-ink-900">Veekay Aquatech</span>
         </div>
         <div className="rounded-xl border border-surface-border bg-white p-6 shadow-card">

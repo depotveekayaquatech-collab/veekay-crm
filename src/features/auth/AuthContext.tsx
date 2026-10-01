@@ -43,8 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (organizationSlug: string, employeeCode: string, password: string) => {
-      const currentUser = await loginRequest({ organizationSlug, employeeCode, password });
+    async (
+      organizationSlug: string,
+      employeeCode: string,
+      password: string,
+      afterSignIn?: () => Promise<void>,
+    ) => {
+      const currentUser = await loginRequest({ organizationSlug, employeeCode, password }, afterSignIn);
       setUser(currentUser);
     },
     [],

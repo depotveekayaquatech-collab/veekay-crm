@@ -25,12 +25,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core import storage
 from app.core.config import settings
-from app.models.compliance_document import BillStatus, ComplianceDocument, DocKind
+from app.models.compliance_document import VALID_KINDS, BillStatus, ComplianceDocument, DocKind
 from app.models.organization import Organization
 from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.schemas.compliance import (
-    ComplianceStorePage, ComplianceStoreRow, DocBrief, DueBill, DueBills, SearchPage, SearchRow,
+    DocBrief, DueBill, DueBills, SearchPage, SearchRow,
 )
 from app.services import activity_service, assignment_service
 
@@ -202,7 +202,7 @@ def _key_for(store: Store, month: date, kind: str, ext: str) -> str:
     if store.entity and not assignment_service.is_employee_model(platform_slug):
         segs.append(store.entity.upper())
     folder = "/".join(storage.safe_segment(x) for x in segs)
-    prefix = "Bills/" if kind == DocKind.BILL.value else ""
+    prefix = {DocKind.BILL.value: "Bills/", DocKind.PAYMENT.value: "Payments/"}.get(kind, "")
     return f"{prefix}{folder}/{storage.safe_segment(store.external_code)}-{kind}.{ext}"
 
 
@@ -224,8 +224,8 @@ def upload(
     db: Session, user: User, perms: set[str], store_id: uuid.UUID, month_str: str, kind: str,
     files: list[tuple[str, bytes]],
 ) -> DocBrief:
-    if kind not in (DocKind.CARD.value, DocKind.BILL.value):
-        raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind must be 'card' or 'bill'.")
+    if kind not in VALID_KINDS:
+        raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, f"kind must be one of: {', '.join(VALID_KINDS)}.")
     month = parse_month(month_str)
     store = _store_for_write(db, user, perms, store_id)
     data, ext = _prepare(files)
@@ -372,52 +372,6 @@ def _docs_by_store(db: Session, store_ids: list[uuid.UUID], month: date) -> dict
     return out
 
 
-def list_stores(
-    db: Session, user: User, perms: set[str], *, month_str: str | None, partner: str | None,
-    q: str | None, page: int, page_size: int,
-) -> ComplianceStorePage:
-    month = parse_month(month_str)
-    today = _today()
-    if _can_manage(perms):
-        stmt = _store_filters(
-            select(Store).where(Store.organization_id == user.organization_id, Store.status == StoreStatus.LIVE.value),
-            partner=partner, q=q,
-        ).options(joinedload(Store.partner_organization)).order_by(Store.name)
-        stores = db.execute(stmt).unique().scalars().all()
-    else:
-        ql = (q or "").strip().lower()
-        stores = sorted(
-            (s for s in assignment_service.visible_stores(db, user)
-             if (not partner or (s.partner_organization and s.partner_organization.slug == partner))
-             and (not ql or ql in s.name.lower() or ql in s.external_code.lower())),
-            key=lambda s: s.name.lower(),
-        )
-
-    docs = _docs_by_store(db, [s.id for s in stores], month)
-    cards = sum(1 for s in stores if DocKind.CARD.value in docs.get(s.id, {}))
-    bills = [docs.get(s.id, {}).get(DocKind.BILL.value) for s in stores]
-    start = (page - 1) * page_size
-    items = []
-    for s in stores[start:start + page_size]:
-        d = docs.get(s.id, {})
-        items.append(ComplianceStoreRow(
-            store_id=s.id, name=s.name, external_code=s.external_code,
-            platform=s.partner_organization.name if s.partner_organization else None,
-            platform_slug=s.partner_organization.slug if s.partner_organization else None,
-            entity=s.entity, state=s.state, city=s.city, vendor_name=s.vendor_name,
-            card=_brief(d[DocKind.CARD.value], today) if DocKind.CARD.value in d else None,
-            bill=_brief(d[DocKind.BILL.value], today) if DocKind.BILL.value in d else None,
-        ))
-    return ComplianceStorePage(
-        month=f"{month:%Y-%m}", month_label=month_label(month),
-        months=[f"{m:%Y-%m}" for m in allowed_months()],
-        items=items, total=len(stores), page=page, page_size=page_size,
-        cards_done=cards,
-        bills_done=sum(1 for b in bills if b is not None),
-        bills_pending=sum(1 for b in bills if b is not None and b.status == BillStatus.PENDING.value),
-    )
-
-
 def search(
     db: Session, user: User, *, month_str: str | None, partner: str | None, entity: str | None,
     state: str | None, city: str | None, vendor: str | None, q: str | None, kind: str,
@@ -433,14 +387,16 @@ def search(
     docs = _docs_by_store(db, [s.id for s in stores], month)
 
     def keep(d: dict[str, ComplianceDocument]) -> bool:
-        has_card, has_bill = DocKind.CARD.value in d, DocKind.BILL.value in d
+        has_card, has_bill, has_payment = DocKind.CARD.value in d, DocKind.BILL.value in d, DocKind.PAYMENT.value in d
         if kind == "card":
             return has_card
         if kind == "bill":
             return has_bill
-        if kind == "both":
-            return has_card and has_bill
-        return has_card or has_bill
+        if kind == "payment":
+            return has_payment
+        if kind == "all":
+            return has_card and has_bill and has_payment
+        return has_card or has_bill or has_payment
 
     rows = [s for s in stores if keep(docs.get(s.id, {}))]
     start = (page - 1) * page_size
@@ -453,6 +409,7 @@ def search(
             entity=s.entity, state=s.state, city=s.city, vendor_name=s.vendor_name,
             card=_brief(d[DocKind.CARD.value], today) if DocKind.CARD.value in d else None,
             bill=_brief(d[DocKind.BILL.value], today) if DocKind.BILL.value in d else None,
+            payment=_brief(d[DocKind.PAYMENT.value], today) if DocKind.PAYMENT.value in d else None,
         ))
     return SearchPage(items=items, total=len(rows), page=page, page_size=page_size)
 

@@ -14,10 +14,10 @@ import {
 import { pushToast } from "@/lib/toast";
 import type { EmployeeCreateInput, EmployeeUpdateInput } from "@/types/employee";
 
-export function useEmployees(page: number, q: string) {
+export function useEmployees(page: number, q: string, category = "") {
   return useQuery({
-    queryKey: ["employees", page, q],
-    queryFn: () => listEmployees({ page, pageSize: 20, q: q.trim() || undefined }),
+    queryKey: ["employees", page, q, category],
+    queryFn: () => listEmployees({ page, pageSize: 20, q: q.trim() || undefined, category: category || undefined }),
   });
 }
 

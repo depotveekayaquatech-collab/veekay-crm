@@ -2,7 +2,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconClose } from "@/components/ui/icons";
-import { useUploadDoc } from "@/features/compliance/api";
+import { DOC_LABEL, useUploadDoc, type DocKind } from "@/features/compliance/api";
 
 const MAX_MB = 12;
 const MAX_FILES = 20;
@@ -40,7 +40,7 @@ export function UploadDocsModal({
   storeName: string;
   month: string;
   monthLabel: string;
-  kind: "card" | "bill";
+  kind: DocKind;
   replacing: boolean;
   onClose: () => void;
 }) {
@@ -50,7 +50,7 @@ export function UploadDocsModal({
   const [dragging, setDragging] = useState(false);
 
   const error = validate(files);
-  const label = kind === "card" ? "compliance card" : "bill";
+  const label = DOC_LABEL[kind];
 
   function add(list: FileList | null | undefined) {
     if (!list?.length) return;
@@ -76,7 +76,7 @@ export function UploadDocsModal({
             isLoading={upload.isPending}
             onClick={() => upload.mutate({ storeId, month, kind, files }, { onSuccess: onClose })}
           >
-            {files.length > 1 ? `Merge ${files.length} photos & upload` : "Upload"}
+            {files.length > 1 ? `Merge ${files.length} pages & upload` : "Upload"}
           </Button>
         </>
       }
@@ -144,7 +144,7 @@ export function UploadDocsModal({
           <li>Two or more photos are merged into a single PDF.</li>
           <li>A PDF must be uploaded on its own.</li>
           <li>Up to {MAX_MB} MB per file.{replacing ? " This replaces the current file." : ""}</li>
-          {kind === "bill" && <li>The bill is due 45 days after the month ends.</li>}
+          {kind === "bill" && <li>The invoice is due 45 days after the month ends.</li>}
         </ul>
       </div>
     </Modal>

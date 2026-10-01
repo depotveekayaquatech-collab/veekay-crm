@@ -15,7 +15,18 @@ export interface DocBrief {
   overdue: boolean;
 }
 
-export interface ComplianceStoreRow {
+export type DocKind = "card" | "bill" | "payment";
+
+/** Display names. "bill" is shown as the invoice. */
+export const DOC_LABEL: Record<DocKind, string> = {
+  card: "compliance card",
+  bill: "invoice",
+  payment: "payment proof",
+};
+
+export type ComplianceStatus = "PENDING" | "PARTIAL" | "COMPLETE";
+
+export interface ComplianceRow {
   storeId: string;
   name: string;
   externalCode: string;
@@ -24,22 +35,69 @@ export interface ComplianceStoreRow {
   entity: string | null;
   state: string | null;
   city: string | null;
+  regionName: string | null;
   vendorName: string | null;
+  manager: string | null;
+  status: ComplianceStatus;
+  percent: number;
   card: DocBrief | null;
-  bill: DocBrief | null;
+  bill: DocBrief | null; // the invoice
+  payment: DocBrief | null; // proof of payment
+}
+
+export interface ComplianceKpis {
+  total: number;
+  cardLogged: number;
+  cardMissing: number;
+  invoiceLogged: number;
+  invoiceMissing: number;
+  paymentLogged: number;
+  paymentMissing: number;
+  compliancePercent: number;
+}
+
+export interface ComplianceOptions {
+  regions: { id: string; name: string }[];
+  cities: string[];
+  managers: string[];
+  hasUnassigned: boolean;
 }
 
 export interface ComplianceStorePage {
   month: string;
   monthLabel: string;
   months: string[];
-  items: ComplianceStoreRow[];
+  items: ComplianceRow[];
   total: number;
   page: number;
   pageSize: number;
-  cardsDone: number;
-  billsDone: number;
-  billsPending: number;
+  kpis: ComplianceKpis;
+  options: ComplianceOptions;
+}
+
+export interface RepoFilters {
+  month: string;
+  partner: string;
+  region: string;
+  city: string;
+  manager: string;
+  missing: string;
+  range: string;
+  status: string;
+  q: string;
+  sort: string;
+  dir: "asc" | "desc";
+  page: number;
+}
+
+export interface BulkResult {
+  kind: DocKind;
+  month: string;
+  filesReceived: number;
+  filesMatched: number;
+  storesUpdated: number;
+  unmatched: string[];
+  failed: { store: string; error: string }[];
 }
 
 export interface SearchRow {
@@ -54,6 +112,7 @@ export interface SearchRow {
   vendorName: string | null;
   card: DocBrief | null;
   bill: DocBrief | null;
+  payment: DocBrief | null;
 }
 
 export interface DueBill {
@@ -79,7 +138,7 @@ export interface SearchFilters {
   city: string;
   vendor: string;
   q: string;
-  kind: "any" | "card" | "bill" | "both";
+  kind: "any" | "card" | "bill" | "payment" | "all";
 }
 
 function qs(obj: Record<string, string | number | undefined>): string {
@@ -90,13 +149,17 @@ function qs(obj: Record<string, string | number | undefined>): string {
   return p.toString();
 }
 
-export function useComplianceStores(params: { month: string; partner: string; q: string; page: number }) {
+export function useComplianceRepo(f: RepoFilters) {
   return useQuery({
-    queryKey: ["compliance", "stores", params],
+    queryKey: ["compliance", "repo", f],
     queryFn: async () =>
       camelize<ComplianceStorePage>(
         await apiRequest(
-          `/compliance/stores?${qs({ month: params.month, partner: params.partner, q: params.q, page: params.page, page_size: 50 })}`,
+          `/compliance/stores?${qs({
+            month: f.month, partner: f.partner, region: f.region, city: f.city, manager: f.manager,
+            missing: f.missing, range: f.range, status: f.status, q: f.q, sort: f.sort, dir: f.dir,
+            page: f.page, page_size: 50,
+          })}`,
         ),
       ),
     placeholderData: (prev) => prev,
@@ -124,7 +187,7 @@ export function useDueBills() {
 export function useUploadDoc() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { storeId: string; month: string; kind: "card" | "bill"; files: File[] }) => {
+    mutationFn: async (v: { storeId: string; month: string; kind: DocKind; files: File[] }) => {
       const body = new FormData();
       body.append("store_id", v.storeId);
       body.append("month", v.month);
@@ -134,7 +197,7 @@ export function useUploadDoc() {
     },
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["compliance"] });
-      pushToast(v.kind === "card" ? "Card uploaded." : "Bill uploaded.", "success");
+      pushToast(`${DOC_LABEL[v.kind][0].toUpperCase()}${DOC_LABEL[v.kind].slice(1)} uploaded.`, "success");
     },
   });
 }
@@ -206,4 +269,35 @@ export async function printDocuments(ids: string[]): Promise<{ printed: number; 
   }
   pdfs.slice(0, 5).forEach((b) => window.open(URL.createObjectURL(b.blob), "_blank"));
   return { printed: images.length, opened: Math.min(pdfs.length, 5) };
+}
+
+export function useBulkUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { month: string; kind: DocKind; files: File[] }) => {
+      const body = new FormData();
+      body.append("month", v.month);
+      body.append("kind", v.kind);
+      v.files.forEach((f) => body.append("files", f));
+      return camelize<BulkResult>(await apiRequest("/compliance/bulk", { method: "POST", body }));
+    },
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ["compliance"] });
+      pushToast(`Bulk upload: ${r.storesUpdated} store${r.storesUpdated === 1 ? "" : "s"} updated.`, "success");
+    },
+  });
+}
+
+/** One-table PDF summary of the selected stores for a month, opened in a new tab. */
+export async function openSummaryPdf(storeIds: string[], month: string): Promise<void> {
+  const win = window.open("", "_blank"); // opened synchronously so popup blockers allow it
+  try {
+    const blob = await apiBlob("/compliance/summary-pdf", { method: "POST", body: { store_ids: storeIds, month } });
+    const url = URL.createObjectURL(blob);
+    if (win) win.location.href = url;
+    else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 10 * 60_000);
+  } catch {
+    win?.close();
+  }
 }
