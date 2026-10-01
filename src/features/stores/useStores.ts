@@ -18,8 +18,8 @@ export function useStores(page: number, filters: Filters) {
   });
 }
 
-export function usePartners() {
-  return useQuery({ queryKey: ["partners"], queryFn: listPartners, staleTime: 5 * 60_000 });
+export function usePartners(enabled = true) {
+  return useQuery({ queryKey: ["partners"], queryFn: listPartners, staleTime: 5 * 60_000, enabled });
 }
 
 export function useStoreMutations() {

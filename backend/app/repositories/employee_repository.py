@@ -31,14 +31,14 @@ class EmployeeRepository:
     def _role_ids_subquery(self, *codes: str):
         return select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code.in_(codes)).scalar_subquery()
 
-    def get(self, org_id: uuid.UUID, user_id: uuid.UUID) -> User | None:
+    def get(self, org_id: uuid.UUID, user_id: uuid.UUID, *, include_admins: bool = False) -> User | None:
         stmt = (
             select(User)
             .where(
                 User.organization_id == org_id,
                 User.id == user_id,
-                User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant")),
-                User.id.not_in(self._role_ids_subquery("admin")),
+                User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant", "partner", "manager", "admin")),
+                *([] if include_admins else [User.id.not_in(self._role_ids_subquery("admin"))]),
             )
             .options(joinedload(User.region), joinedload(User.platform_organization))
         )
@@ -73,21 +73,24 @@ class EmployeeRepository:
             select(User)
             .where(
                 User.organization_id == org_id,
-                User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant", "admin")),
+                User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant", "partner", "manager", "admin")),
             )
             .options(joinedload(User.region), joinedload(User.platform_organization))
         )
-        admin_ids = self._role_ids_subquery("admin")
+        admin_ids = self._role_ids_subquery("admin", "manager")  # full admins and custom admins
         accountant_ids = self._role_ids_subquery("accountant")
         if category == "admin":
             base = base.where(User.id.in_(admin_ids))
         elif category == "accounts":
             base = base.where(User.id.in_(accountant_ids), User.id.not_in(admin_ids))
+        elif category == "partner":
+            base = base.where(User.id.in_(self._role_ids_subquery("partner")), User.id.not_in(admin_ids))
         elif category in ("blinkit", "zepto"):
             from app.models.organization import Organization
 
             base = base.join(Organization, Organization.id == User.platform_organization_id).where(
-                func.lower(Organization.slug) == category, User.id.not_in(admin_ids), User.id.not_in(accountant_ids)
+                func.lower(Organization.slug) == category, User.id.not_in(admin_ids), User.id.not_in(accountant_ids),
+                User.id.not_in(self._role_ids_subquery("partner")),
             )
         if q:
             like = f"%{q.lower()}%"
@@ -113,6 +116,12 @@ class EmployeeRepository:
             .all()
         )
         return list(rows), total
+
+    def active_full_admin_count(self, org_id: uuid.UUID) -> int:
+        stmt = select(func.count()).select_from(User).where(
+            User.organization_id == org_id, User.is_active.is_(True), User.id.in_(self._role_ids_subquery("admin"))
+        )
+        return int(self.db.execute(stmt).scalar_one())
 
     def role_codes(self, user_id: uuid.UUID) -> list[str]:
         stmt = (

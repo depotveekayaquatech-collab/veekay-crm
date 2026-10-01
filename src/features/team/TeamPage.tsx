@@ -12,6 +12,9 @@ import { ImportEmployeesModal } from "@/features/team/ImportEmployeesModal";
 import { ResetPasswordModal } from "@/features/team/ResetPasswordModal";
 import { usePermission } from "@/hooks/usePermission";
 import { EmployeeAccessModal } from "@/features/team/EmployeeAccessModal";
+import { AdminAccountModal } from "@/features/team/AdminAccountModal";
+import { useAuth } from "@/features/auth/useAuth";
+import { PartnerAccountModal } from "@/features/team/PartnerAccountModal";
 import { StateBoardPanel } from "@/features/team/StateBoardPanel";
 import { useEmployees, useTeamMutations } from "@/features/team/useTeam";
 import type { Employee } from "@/types/employee";
@@ -20,7 +23,11 @@ export function TeamPage() {
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Employee | null | undefined>(undefined);
+  const [partnerEditing, setPartnerEditing] = useState<Employee | null | undefined>(undefined);
+  const [adminEditing, setAdminEditing] = useState<Employee | null | undefined>(undefined);
   const [importing, setImporting] = useState(false);
+  const { hasRole } = useAuth();
+  const isFullAdmin = hasRole("admin"); // only a full admin can create admins or change admin access
   const [resetting, setResetting] = useState<Employee | null>(null);
   const canReset = usePermission("employees.update");
 
@@ -34,13 +41,21 @@ export function TeamPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Team & access"
-        subtitle="Employee IDs, platform / region scope, and what each person can see."
+        title="Users & access"
+        subtitle="Admins, staff and Blinkit / Zepto partner logins — their scope, and what each person can see."
         action={
           canCreate && (
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setImporting(true)}>
                 <IconUpload className="h-4 w-4" /> Import employees
+              </Button>
+              {isFullAdmin && (
+                <Button variant="secondary" onClick={() => setAdminEditing(null)}>
+                  <IconPlus className="h-4 w-4" /> New admin
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => setPartnerEditing(null)}>
+                <IconPlus className="h-4 w-4" /> Partner account
               </Button>
               <Button onClick={() => setEditing(null)}>
                 <IconPlus className="h-4 w-4" /> New employee
@@ -55,6 +70,7 @@ export function TeamPage() {
           ["", "All staff"],
           ["admin", "Admins"],
           ["accounts", "Accounts"],
+          ["partner", "Partner accounts"],
           ["blinkit", "Blinkit employees"],
           ["zepto", "Zepto employees"],
         ].map(([id, label]) => (
@@ -91,7 +107,7 @@ export function TeamPage() {
           <Table>
             <thead>
               <tr>
-                <Th>Employee ID</Th>
+                <Th>Login ID</Th>
                 <Th>Name</Th>
                 <Th>Category</Th>
                 <Th>Platform</Th>
@@ -108,22 +124,24 @@ export function TeamPage() {
                   <Td className="font-medium text-gray-900">{e.employeeCode}</Td>
                   <Td>{e.fullName}</Td>
                   <Td>
-                    <Badge tone={e.category === "admin" ? "danger" : e.category === "accounts" ? "warning" : "info"}>{e.categoryLabel || e.category}</Badge>
+                    <Badge tone={e.category === "admin" ? "danger" : e.category === "accounts" ? "warning" : e.category === "partner" ? "success" : "info"}>
+                      {e.category === "admin" ? (e.adminLevel === "custom" ? "Custom admin" : "Admin") : e.categoryLabel || e.category}
+                    </Badge>
                   </Td>
                   <Td>{e.platformSlug ?? "—"}</Td>
-                  <Td>{e.regionName ?? (e.states.length ? e.states.join(", ") : "—")}</Td>
-                  <Td>{e.directPermissions.length}</Td>
+                  <Td>{e.category === "partner" ? "All stores on platform" : e.category === "admin" ? "Whole company" : (e.regionName ?? (e.states.length ? e.states.join(", ") : "—"))}</Td>
+                  <Td>{e.adminLevel === "full" ? "Full access" : e.directPermissions.length}</Td>
                   <Td>
                     <Badge tone={e.isActive ? "success" : "neutral"}>{e.isActive ? "Active" : "Deactivated"}</Badge>
                   </Td>
                   {(canCreate || canDeactivate || canReset) && (
                     <Td className="text-right">
-                      {e.category === "admin" ? (
-                        <span className="text-xs text-gray-400">Managed separately</span>
+                      {e.category === "admin" && !isFullAdmin ? (
+                        <span className="text-xs text-gray-400">Managed by admins</span>
                       ) : (
                       <div className="flex justify-end gap-3 text-sm font-medium">
                         {canCreate && (
-                          <button className="text-brand-600 hover:text-brand-700" onClick={() => setEditing(e)}>
+                          <button className="text-brand-600 hover:text-brand-700" onClick={() => (e.category === "partner" ? setPartnerEditing(e) : e.category === "admin" ? setAdminEditing(e) : setEditing(e))}>
                             Edit
                           </button>
                         )}
@@ -156,6 +174,12 @@ export function TeamPage() {
 
       {editing !== undefined && (
         <EmployeeAccessModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} employee={editing ?? null} />
+      )}
+      {partnerEditing !== undefined && (
+        <PartnerAccountModal key={partnerEditing?.id ?? "new"} onClose={() => setPartnerEditing(undefined)} account={partnerEditing ?? null} />
+      )}
+      {adminEditing !== undefined && (
+        <AdminAccountModal key={adminEditing?.id ?? "new"} onClose={() => setAdminEditing(undefined)} account={adminEditing ?? null} />
       )}
       {importing && <ImportEmployeesModal onClose={() => setImporting(false)} />}
       {resetting && <ResetPasswordModal employee={resetting} onClose={() => setResetting(null)} />}

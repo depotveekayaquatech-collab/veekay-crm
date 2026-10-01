@@ -15,7 +15,7 @@ from app.core.security import InvalidTokenError, TokenClaims, TokenType, decode_
 from app.db.session import get_db
 from app.models.user import User, UserStatus
 from app.repositories.user_repository import UserRepository
-from app.services import attendance_service, session_service
+from app.services import session_service
 from app.schemas.common import PageParams
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -52,7 +52,6 @@ def _authenticate(token: str | None, db: Session) -> tuple[User, TokenClaims]:
     # a password change or detected token theft all end it immediately.
     if not session_service.family_active(db, user.id, claims.family_id):
         raise unauthorized
-    attendance_service.touch(db, claims.family_id)  # still around (at most one UPDATE per few minutes)
     return user, claims
 
 

@@ -9,10 +9,6 @@ class LoginRequest(BaseModel):
     organization_slug: str = Field(default="veekay", description="Tenant slug")
     employee_code: str = Field(..., description="Employee ID, e.g. ADMIN001")
     password: str
-    # Optional: where the device is at sign-in, for attendance. Signing in never depends on it.
-    latitude: float | None = Field(default=None, ge=-90, le=90)
-    longitude: float | None = Field(default=None, ge=-180, le=180)
-    accuracy: float | None = Field(default=None, ge=0, le=100000, description="metres")
 
 
 class TokenPair(BaseModel):
@@ -22,8 +18,8 @@ class TokenPair(BaseModel):
 
 
 class LoginResponse(TokenPair):
-    # True when this sign-in counts as attendance (employees / accounts, never admins): the app then reads the
-    # device location once, right after login, and posts it to /attendance/location.
+    # Always False now: attendance is an explicit Check in (see /attendance/check-in), never a side effect of signing in.
+    # Kept so older clients that read the field keep working.
     attendance: bool = False
 
 

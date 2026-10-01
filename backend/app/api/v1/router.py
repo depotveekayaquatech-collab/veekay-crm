@@ -10,10 +10,12 @@ from app.api.v1.endpoints import (
     employees,
     health,
     orders,
+    partner,
     partners,
     permissions,
     regions,
     stores,
+    tickets,
 )
 
 api_router = APIRouter()
@@ -31,3 +33,5 @@ api_router.include_router(compliance.router)
 api_router.include_router(cards.router)
 api_router.include_router(cards.public_router)
 api_router.include_router(attendance.router)
+api_router.include_router(tickets.router)
+api_router.include_router(partner.router)

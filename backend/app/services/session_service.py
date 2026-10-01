@@ -24,7 +24,6 @@ from app.core.security import (
 )
 from app.models.refresh_session import RefreshSession
 from app.models.user import User, UserStatus
-from app.services import attendance_service
 from app.schemas.auth import TokenPair
 
 EXPIRED = "Your session has expired. Please sign in again."
@@ -63,7 +62,6 @@ def start_session(db: Session, user: User, *, user_agent: str | None, ip: str | 
 
 
 def revoke_family(db: Session, family_id: uuid.UUID, ended_by: str = "revoked") -> None:
-    attendance_service.close_family(db, family_id, ended_by)
     db.execute(
         update(RefreshSession)
         .where(RefreshSession.family_id == family_id, RefreshSession.revoked_at.is_(None))
@@ -72,7 +70,6 @@ def revoke_family(db: Session, family_id: uuid.UUID, ended_by: str = "revoked") 
 
 
 def revoke_user_sessions(db: Session, user_id: uuid.UUID, *, except_family: uuid.UUID | None = None) -> None:
-    attendance_service.close_user(db, user_id, "revoked", except_family=except_family)
     stmt = update(RefreshSession).where(RefreshSession.user_id == user_id, RefreshSession.revoked_at.is_(None))
     if except_family is not None:
         stmt = stmt.where(RefreshSession.family_id != except_family)
@@ -119,7 +116,6 @@ def rotate(db: Session, refresh_token: str, *, user_agent: str | None, ip: str |
         raise _unauthorized()
 
     pair = _issue(db, user, row.family_id, user_agent or row.user_agent, ip or row.ip)
-    attendance_service.touch(db, row.family_id)
     new_claims = decode_claims(pair.refresh_token, TokenType.REFRESH)
     row.revoked_at = now
     row.replaced_by = new_claims.jti

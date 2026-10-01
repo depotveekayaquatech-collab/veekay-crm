@@ -28,7 +28,10 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
   const [email, setEmail] = useState(employee?.email ?? "");
   const [platformId, setPlatformId] = useState(employee?.platformId ?? "");
   const [regionId, setRegionId] = useState(employee?.regionId ?? "");
-  const [perms, setPerms] = useState<Set<string>>(new Set(employee?.directPermissions ?? []));
+  const [perms, setPerms] = useState<Set<string>>(
+    // New employees start with ticket access for their own region; everything else stays opt-in.
+    new Set(employee?.directPermissions ?? ["tickets.view", "tickets.create"]),
+  );
   const [error, setError] = useState<string | null>(null);
 
   const platformSlug = partners.find((p) => p.id === platformId)?.slug ?? "";

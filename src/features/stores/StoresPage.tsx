@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +13,7 @@ import { downloadCsv } from "@/lib/csv";
 import { usePermission } from "@/hooks/usePermission";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { StoreFormModal } from "@/features/stores/StoreFormModal";
+import { useAllStores } from "@/features/stores/useAllStores";
 import { usePartners, useStores, useStoreMutations } from "@/features/stores/useStores";
 import type { Store } from "@/types/store";
 
@@ -32,7 +33,14 @@ export function StoresPage() {
   const [importing, setImporting] = useState(false);
 
   const canManage = usePermission("stores.manage");
-  const { data: regions = [] } = useAllRegions();
+  const { data: allRegions = [] } = useAllRegions();
+  const { data: everyStore = [] } = useAllStores();
+  // With a platform picked, only offer the regions that actually have stores of that platform.
+  const regions = useMemo(() => {
+    if (!partner) return allRegions;
+    const ids = new Set(everyStore.filter((s) => s.partnerSlug === partner && s.regionId).map((s) => s.regionId));
+    return allRegions.filter((r) => ids.has(r.id));
+  }, [allRegions, everyStore, partner]);
   const { data: partners = [] } = usePartners();
   const { sync } = useStoreMutations();
   const { data, isLoading, isError, refetch } = useStores(page, {
@@ -138,6 +146,7 @@ export function StoresPage() {
           value={partner}
           onChange={(e) => {
             setPartner(e.target.value);
+            setRegionId("");
             setPage(1);
           }}
           placeholder="All partners"

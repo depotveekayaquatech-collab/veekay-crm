@@ -41,7 +41,7 @@ export function useMarkOrder() {
       markOrder(storeId, date, count),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
-      qc.invalidateQueries({ queryKey: ["daily-overview"] });
+      for (const key of ["daily-overview", "my-stores", "pending"]) qc.invalidateQueries({ queryKey: [key] });
       pushToast("Order marked.", "success");
     },
   });
@@ -54,7 +54,7 @@ export function useCorrectEntry() {
       correctEntry(storeId, date, count),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
-      qc.invalidateQueries({ queryKey: ["daily-overview"] });
+      for (const key of ["daily-overview", "my-stores", "pending"]) qc.invalidateQueries({ queryKey: [key] });
       pushToast(vars.count === null ? "Entry cleared." : "Entry corrected.", "success");
     },
   });

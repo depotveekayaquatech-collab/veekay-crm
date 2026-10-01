@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
 from app.schemas.employee import (
+    AdminAccess,
     EmployeeCreate,
     EmployeeImportResult,
     EmployeeOut,
@@ -31,7 +32,7 @@ def list_employees(
     q: str | None = None,
     region_id: uuid.UUID | None = None,
     platform_id: uuid.UUID | None = None,
-    category: str | None = Query(None, pattern="^(admin|accounts|blinkit|zepto)$"),
+    category: str | None = Query(None, pattern="^(admin|accounts|partner|blinkit|zepto)$"),
     params: PageParams = Depends(get_page_params),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -127,6 +128,19 @@ def set_permissions(
     db: Session = Depends(get_db),
 ) -> EmployeeOut:
     return employee_service.set_permissions(db, user, employee_id, payload.codes)
+
+
+@router.put(
+    "/{employee_id}/admin-access", response_model=EmployeeOut,
+    dependencies=[Depends(require_permission("employees.create"))],
+)
+def set_admin_access(
+    employee_id: uuid.UUID,
+    payload: AdminAccess,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EmployeeOut:
+    return employee_service.set_admin_access(db, user, employee_id, payload.full)
 
 
 @router.post(

@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/Dropdown";
 import { useMemo, useState, type FormEvent } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
@@ -104,7 +105,7 @@ export function AccountsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Accounts" subtitle="Invoice due alerts, and every card, invoice and payment proof on file — search, view, print or download." />
+      <PageHeader title="Billing" subtitle="Invoice due alerts, and every card, invoice and payment proof on file — search, view, print or download." />
 
       {/* Due alerts */}
       <section className="rounded-xl border border-surface-border bg-white shadow-card">
@@ -155,30 +156,30 @@ export function AccountsPage() {
       <form onSubmit={submit} className="grid gap-3 rounded-xl border border-surface-border bg-white p-4 shadow-card sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Month
-          <select className={field} value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })}>
+          <SelectField className={field} value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })}>
             {complianceMonths().map((m) => (
               <option key={m} value={m}>{monthLabel(m)}</option>
             ))}
-          </select>
+          </SelectField>
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Platform
-          <select className={field} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value })}>
+          <SelectField className={field} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value })}>
             <option value="">All platforms</option>
             {partners.map((p) => (
               <option key={p.slug} value={p.slug}>{p.name}</option>
             ))}
-          </select>
+          </SelectField>
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Document
-          <select className={field} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as SearchFilters["kind"] })}>
+          <SelectField className={field} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as SearchFilters["kind"] })}>
             <option value="any">Any document</option>
             <option value="card">Card only</option>
             <option value="bill">Invoice only</option>
             <option value="payment">Payment proof only</option>
             <option value="all">All three on file</option>
-          </select>
+          </SelectField>
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Store

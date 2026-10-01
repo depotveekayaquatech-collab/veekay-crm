@@ -2,9 +2,11 @@ import { Badge } from "@/components/ui/Badge";
 import type { DayStatus, LocationInfo } from "@/features/attendance/api";
 
 const STATUS: Record<DayStatus, { label: string; tone: "success" | "info" | "warning" | "danger" | "neutral" }> = {
-  ACTIVE: { label: "Active now", tone: "success" },
-  SIGNED_OUT: { label: "Signed out", tone: "info" },
-  IDLE: { label: "Idle", tone: "warning" },
+  CHECKED_IN: { label: "Checked in", tone: "success" },
+  CHECKED_OUT: { label: "Checked out", tone: "info" },
+  NO_CHECKOUT: { label: "No check-out", tone: "warning" },
+  ON_LEAVE: { label: "On leave", tone: "info" },
+  OFF: { label: "Weekly off", tone: "neutral" },
   ABSENT: { label: "Absent", tone: "danger" },
 };
 
@@ -18,7 +20,7 @@ function km(m: number): string {
 }
 
 /**
- * Where someone signed in: inside an office's radius it is just the office name; anywhere else the
+ * Where someone checked in: inside an office's radius it is just the office name; anywhere else the
  * exact coordinates are shown (with a map link, how accurate the reading was, and how far from the office).
  */
 export function LocationBadge({ location }: { location: LocationInfo }) {

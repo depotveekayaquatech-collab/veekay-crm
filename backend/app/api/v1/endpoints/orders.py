@@ -33,7 +33,7 @@ def _is_admin(perms: set[str]) -> bool:
 
 @router.get(
     "/my-stores", response_model=list[MyStore],
-    dependencies=[Depends(require_permission("orders.mark"))],
+    dependencies=[Depends(require_permission("orders.view"))],
 )
 def my_stores(
     user: User = Depends(get_current_user),

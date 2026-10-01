@@ -32,10 +32,10 @@ export function MonthlyView() {
     if (!data) return;
     downloadCsv(
       `attendance-${data.month}.csv`,
-      ["Employee ID", "Name", "Platform", "Days present", "Hours", "Days outside office", ...data.dates.map((d) => d.slice(8))],
+      ["Employee ID", "Name", "Platform", "Days present", "Hours", "Late", "Leave", "Absent", "Days outside office", ...data.dates.map((d) => d.slice(8))],
       rows.map((r) => [
-        r.employeeCode, r.fullName, r.platform, r.daysPresent, (r.totalMinutes / 60).toFixed(1), r.outsideDays,
-        ...data.dates.map((d) => (r.days[d] ? (r.days[d].minutes / 60).toFixed(1) : "")),
+        r.employeeCode, r.fullName, r.platform, r.daysPresent, (r.totalMinutes / 60).toFixed(1), r.lateDays, r.leaveDays, r.absentDays, r.outsideDays,
+        ...data.dates.map((d) => (r.days[d] ? (r.days[d].status === "ON_LEAVE" ? "L" : (r.days[d].minutes / 60).toFixed(1)) : "")),
       ]),
     );
   }
@@ -60,10 +60,11 @@ export function MonthlyView() {
       {data && <CategoryChips rows={data.rows} value={cat} onChange={setCat} />}
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500">
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-success-soft ring-1 ring-status-success/30" /> signed in at the office</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-warning-soft ring-1 ring-status-warning/30" /> signed in from elsewhere</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-success-soft ring-1 ring-status-success/30" /> checked in at the office</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-warning-soft ring-1 ring-status-warning/30" /> checked in from elsewhere</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-surface-muted ring-1 ring-gray-300" /> location not shared</span>
-        <span>Numbers are hours signed in · hover a day for the times</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-info-soft ring-1 ring-status-info/30" /> L = on leave</span>
+        <span>Numbers are hours worked · underlined = late · hover a day for the times</span>
       </div>
 
       {isLoading && <Skeleton className="h-64" />}
@@ -87,16 +88,19 @@ export function MonthlyView() {
                 })}
                 <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white">Days</th>
                 <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white">Hours</th>
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Days signed in from outside the office">Away</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Days late">Late</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Leave days">Leave</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Working days with no check-in and no leave">Absent</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Days checked in from outside the office">Away</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={data.dates.length + 4} className="px-4 py-10 text-center text-gray-500">No one matches.</td></tr>
+                <tr><td colSpan={data.dates.length + 7} className="px-4 py-10 text-center text-gray-500">No one matches.</td></tr>
               )}
               {rows.map((r, i) => (
                 <Fragment key={r.userId}>
-                {(i === 0 || rows[i - 1].category !== r.category) && <GroupRow colSpan={data.dates.length + 4} label={r.categoryLabel} count={rows.filter((x) => x.category === r.category).length} />}
+                {(i === 0 || rows[i - 1].category !== r.category) && <GroupRow colSpan={data.dates.length + 7} label={r.categoryLabel} count={rows.filter((x) => x.category === r.category).length} />}
                 <tr className="group">
                   <td className="sticky left-0 z-10 border-b border-r border-surface-border/70 bg-white px-3 py-2 group-hover:bg-surface-subtle">
                     <div className="max-w-[12rem] truncate font-medium text-gray-900" title={r.fullName}>{r.fullName}</div>
@@ -106,16 +110,26 @@ export function MonthlyView() {
                     const e = r.days[d];
                     const sunday = new Date(`${d}T12:00:00`).getDay() === 0;
                     if (!e) return <td key={d} className={`border-b border-surface-border/60 px-1 py-2 text-center text-gray-200 ${sunday ? "bg-surface-subtle" : ""}`}>{d > data.today ? "" : "·"}</td>;
+                    if (e.status === "ON_LEAVE") {
+                      return (
+                        <td key={d} className="border-b border-surface-border/60 px-0.5 py-1.5 text-center" title={`On leave${e.halfDay ? " (half day)" : ""}`}>
+                          <span className="inline-block min-w-[1.9rem] rounded bg-status-info-soft px-1 py-0.5 text-[11px] font-bold text-status-info">L</span>
+                        </td>
+                      );
+                    }
                     const tone = e.location.status === "office" ? "bg-status-success-soft text-status-success" : e.location.status === "outside" ? "bg-status-warning-soft text-status-warning" : "bg-surface-muted text-gray-600";
-                    const tip = `${fmtTime(e.firstLogin)} → ${e.lastLogout ? fmtTime(e.lastLogout) : `last seen ${fmtTime(e.lastActive)}`} · ${fmtMinutes(e.minutes)} · ${e.location.status === "office" ? e.location.label : e.location.status === "outside" ? `outside office (${e.location.label})` : "location not shared"}`;
+                    const tip = `${fmtTime(e.checkInAt)}${e.late ? " (late)" : ""} → ${e.checkOutAt ? fmtTime(e.checkOutAt) : "no check-out"} · ${fmtMinutes(e.minutes)} · ${e.location.status === "office" ? e.location.label : e.location.status === "outside" ? `outside office (${e.location.label})` : "location not shared"}`;
                     return (
                       <td key={d} className="border-b border-surface-border/60 px-0.5 py-1.5 text-center" title={tip}>
-                        <span className={`inline-block min-w-[1.9rem] rounded px-1 py-0.5 text-[11px] font-bold tabular-nums ${tone}`}>{(e.minutes / 60).toFixed(1)}</span>
+                        <span className={`inline-block min-w-[1.9rem] rounded px-1 py-0.5 text-[11px] font-bold tabular-nums ${tone} ${e.late ? "underline decoration-status-warning decoration-2 underline-offset-2" : ""}`}>{(e.minutes / 60).toFixed(1)}</span>
                       </td>
                     );
                   })}
                   <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums text-ink-900">{r.daysPresent}</td>
                   <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums text-ink-900">{(r.totalMinutes / 60).toFixed(1)}</td>
+                  <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.lateDays ? "text-status-warning" : "text-gray-300"}`}>{r.lateDays}</td>
+                  <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.leaveDays ? "text-status-info" : "text-gray-300"}`}>{r.leaveDays}</td>
+                  <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.absentDays ? "text-status-danger" : "text-gray-300"}`}>{r.absentDays}</td>
                   <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.outsideDays ? "text-status-warning" : "text-gray-300"}`}>{r.outsideDays}</td>
                 </tr>
                 </Fragment>

@@ -5,41 +5,26 @@ import { Input } from "@/components/ui/Input";
 import { IconAlertTriangle } from "@/components/ui/icons";
 import { useAuth } from "@/features/auth/useAuth";
 import { BrandLogo } from "@/components/ui/BrandLogo";
-import { getDeviceLocation } from "@/lib/geo";
-import { recordLoginLocation } from "@/services/auth";
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [organizationSlug, setOrganizationSlug] = useState("veekay");
   const [employeeCode, setEmployeeCode] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [locating, setLocating] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      // The location is read once, right after a successful sign-in, and only for employees / accounts (the server
-      // says which). Admins are never asked. If the browser can't or won't share it, signing in still works.
-      await login(organizationSlug, employeeCode, password, async () => {
-        setLocating(true);
-        try {
-          const loc = await getDeviceLocation();
-          if (loc) await recordLoginLocation(loc);
-        } finally {
-          setLocating(false);
-        }
-      });
+      await login(employeeCode, password);
       navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
     } finally {
-      setLocating(false);
       setIsSubmitting(false);
     }
   }
@@ -86,16 +71,9 @@ export function LoginPage() {
           </div>
 
           <h1 className="text-2xl font-bold text-ink-900">Welcome back</h1>
-          <p className="mt-1.5 text-sm text-gray-500">Sign in to your workspace. Enter your credentials to continue.</p>
+          <p className="mt-1.5 text-sm text-gray-500">Sign in with your ID and password — employees, admins and partner accounts all use this page.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>
-            <Input
-              label="Organization"
-              value={organizationSlug}
-              onChange={(e) => setOrganizationSlug(e.target.value)}
-              autoComplete="organization"
-              required
-            />
             <Input
               label="Employee ID"
               value={employeeCode}
@@ -133,14 +111,9 @@ export function LoginPage() {
             )}
 
             <Button type="submit" size="lg" fullWidth isLoading={isSubmitting} className="mt-1">
-              {locating ? "Checking your location…" : "Sign in"}
+              Sign in
             </Button>
           </form>
-
-          <p className="mt-4 text-xs leading-relaxed text-gray-500">
-            Employees: your sign-in time and location are recorded for attendance, only at the moment you sign in. If your browser
-            asks to share your location, choose <b>Allow</b>.
-          </p>
 
           {import.meta.env.DEV && (
             <div className="mt-6 space-y-1 rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-500 ring-1 ring-surface-border">

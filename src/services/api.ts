@@ -108,6 +108,22 @@ interface RequestOptions {
   skipAuthRefresh?: boolean;
 }
 
+/** FastAPI sends `detail` as a string, or (for validation errors) a list of {loc, msg} — always turn it into text. */
+function errorMessage(detail: unknown): string {
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => {
+        const msg = typeof d === "object" && d && "msg" in d ? String((d as { msg: unknown }).msg) : "";
+        const loc = typeof d === "object" && d && "loc" in d && Array.isArray((d as { loc: unknown[] }).loc) ? String((d as { loc: unknown[] }).loc.at(-1) ?? "") : "";
+        return msg ? (loc && loc !== "body" ? `${loc}: ${msg}` : msg) : "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const isForm = options.body instanceof FormData;
   const headers: Record<string, string> = {};
@@ -150,7 +166,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       onPasswordChangeRequired?.();
       throw new ApiError(403, "Please choose a new password to continue.");
     }
-    const message: string = body.detail ?? "Something went wrong. Please try again.";
+    const message = errorMessage(body.detail);
     if (!options.silent) pushToast(message, "error");
     throw new ApiError(res.status, message);
   }

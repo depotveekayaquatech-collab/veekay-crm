@@ -60,6 +60,10 @@ PERMISSIONS = [
     ("accounts.clear", "Mark bills as cleared"),
     ("attendance.view", "View everyone's attendance (sign-in / sign-out times and location)"),
     ("attendance.manage", "Set the office locations used to recognise 'at the office'"),
+    ("leave.review", "Approve or reject leave requests"),
+    ("tickets.view", "View tickets for your stores"),
+    ("tickets.create", "Raise tickets"),
+    ("tickets.manage", "Manage every ticket: assign, change status, see all regions and insights"),
 ]
 
 ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]
@@ -67,7 +71,7 @@ ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]
 # access is the exact set of per-user permission checkboxes an admin ticks
 # (so an admin can also take capability away, not only add it).
 EMPLOYEE_PERMISSIONS: list[str] = []
-DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload"]
+DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload", "tickets.view", "tickets.create"]
 ACCOUNTANT_PERMISSIONS = ["accounts.view", "accounts.clear"]
 
 SEED_PASSWORD = "Pass@123"
@@ -129,6 +133,8 @@ def main() -> None:
         admin_role = ensure_role("admin", "Admin", ADMIN_PERMISSIONS)
         employee_role = ensure_role("employee", "Employee", EMPLOYEE_PERMISSIONS)
         ensure_role("accountant", "Accountant", ACCOUNTANT_PERMISSIONS)
+        ensure_role("partner", "Partner account", [])
+        ensure_role("manager", "Custom admin", [])
         db.flush()
 
         regions = {}

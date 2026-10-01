@@ -161,7 +161,7 @@ def public_count(db: Session, store_id: uuid.UUID, sig: str) -> dict:
 # store selection + vendors
 # --------------------------------------------------------------------------
 
-def _stores(db: Session, user: User, *, is_admin: bool, partner: str | None) -> list[Store]:
+def _stores(db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None) -> list[Store]:
     if is_admin:
         stmt = (
             select(Store)
@@ -171,10 +171,14 @@ def _stores(db: Session, user: User, *, is_admin: bool, partner: str | None) -> 
         )
         if partner:
             stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == partner)
+        if region:
+            stmt = stmt.where(Store.region_id == region)
         return list(db.execute(stmt).unique().scalars().all())
     rows = assignment_service.visible_stores(db, user)
     if partner:
         rows = [s for s in rows if s.partner_organization and s.partner_organization.slug == partner]
+    if region:
+        rows = [s for s in rows if s.region_id == region]
     return sorted(rows, key=lambda s: s.name.lower())
 
 
@@ -182,15 +186,54 @@ def _vendor_key(s: Store) -> str:
     return (s.vendor_name or "").strip() or NO_VENDOR
 
 
-def list_vendors(db: Session, user: User, *, is_admin: bool, partner: str | None) -> list[dict]:
+MAX_MATCHES = 5
+
+
+def _store_text(s: Store) -> str:
+    return " ".join(filter(None, [
+        s.name, s.external_code, s.city, s.state, s.address, s.entity,
+        s.poc_name, s.poc_number, s.vendor_name, s.vendor_number,
+    ])).lower()
+
+
+def _store_digits(s: Store) -> str:
+    return " ".join(re.sub(r"\D", "", x or "") for x in (s.poc_number, s.vendor_number, s.external_code))
+
+
+def list_regions(db: Session, user: User, *, is_admin: bool, partner: str | None) -> list[dict]:
+    """Regions that have live stores on the chosen platform — the Region dropdown follows the Platform dropdown."""
+    seen = {s.region.id: s.region.name for s in _stores(db, user, is_admin=is_admin, partner=partner) if s.region}
+    return sorted(({"id": i, "name": n} for i, n in seen.items()), key=lambda r: r["name"].lower())
+
+
+def list_vendors(
+    db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None, q: str | None = None,
+) -> list[dict]:
+    """Vendors with their live-store counts. With `q`, keep vendors whose name matches or that have a store whose
+    name / outlet code / city matches, and report up to MAX_MATCHES of those stores."""
+    needle = (q or "").strip().lower()
+    if len(needle) < 2:
+        needle = ""
+    # Digit-only matching is for phone-style searches only (no letters), so "es117" can't match on "117" alone.
+    digits = "" if re.search(r"[a-z]", needle) else re.sub(r"\D", "", needle)  # lets "98765 43210" or "+91-98765…" still find a phone number
     groups: dict[str, list[Store]] = {}
-    for s in _stores(db, user, is_admin=is_admin, partner=partner):
+    for s in _stores(db, user, is_admin=is_admin, partner=partner, region=region):
         groups.setdefault(_vendor_key(s), []).append(s)
-    return sorted(
-        ({"vendor": v, "stores": len(ss), "number": next((s.vendor_number for s in ss if s.vendor_number), None)}
-         for v, ss in groups.items()),
-        key=lambda x: x["vendor"].lower(),
-    )
+    out = []
+    for v, ss in groups.items():
+        matches: list[Store] = []
+        if needle:
+            matches = [s for s in ss if _store_text(s).find(needle) >= 0 or (len(digits) >= 3 and digits in _store_digits(s))]
+            vendor_hit = needle in v.lower() or (len(digits) >= 3 and digits in re.sub(r"\D", "", ss[0].vendor_number or ""))
+            if not vendor_hit and not matches:
+                continue
+        out.append({
+            "vendor": v, "stores": len(ss),
+            "number": next((s.vendor_number for s in ss if s.vendor_number), None),
+            "matches": [{"id": s.id, "name": s.name, "code": s.external_code} for s in matches[:MAX_MATCHES]],
+            "match_total": len(matches),
+        })
+    return sorted(out, key=lambda x: x["vendor"].lower())
 
 
 # --------------------------------------------------------------------------
@@ -516,10 +559,10 @@ def _safe_name(*parts: str) -> str:
 
 def build_pdf(
     db: Session, user: User, *, is_admin: bool, partner: str | None, vendor: str | None,
-    month: date | None, store_id: uuid.UUID | None = None,
+    month: date | None, store_id: uuid.UUID | None = None, region: uuid.UUID | None = None,
 ) -> tuple[bytes, int, str]:
     """One PDF: a card per live store of the vendor (or a single store). month=None -> blank cards."""
-    stores = _stores(db, user, is_admin=is_admin, partner=partner)
+    stores = _stores(db, user, is_admin=is_admin, partner=partner, region=region)
     if store_id is not None:
         stores = [s for s in stores if s.id == store_id]
         vendor = vendor or (_vendor_key(stores[0]) if stores else "")
@@ -539,13 +582,14 @@ def build_pdf(
 
 def build_zip(
     db: Session, user: User, *, is_admin: bool, partner: str | None, vendors: list[str], month: date | None,
+    region: uuid.UUID | None = None,
 ) -> tuple[bytes, int, int, str]:
     """A ZIP holding one PDF per selected vendor. Returns (bytes, vendors, cards, filename)."""
     wanted = {v.strip().lower() for v in vendors if v and v.strip()}
     if not wanted:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one vendor.")
     groups: dict[str, list[Store]] = {}
-    for s in _stores(db, user, is_admin=is_admin, partner=partner):
+    for s in _stores(db, user, is_admin=is_admin, partner=partner, region=region):
         if _vendor_key(s).lower() in wanted:
             groups.setdefault(_vendor_key(s), []).append(s)
     if not groups:

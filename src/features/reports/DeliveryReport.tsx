@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/Dropdown";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
@@ -103,11 +104,11 @@ function ManualUpload() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Channel
-          <select className={`${input} w-40`} value={activePartner} onChange={(e) => setPartner(e.target.value)}>
+          <SelectField className={`${input} w-40`} value={activePartner} onChange={(e) => setPartner(e.target.value)}>
             {partners.map((p) => (
               <option key={p.slug} value={p.slug}>{p.name}</option>
             ))}
-          </select>
+          </SelectField>
         </label>
         <label className="flex min-w-[16rem] flex-1 flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Order sheet
@@ -223,12 +224,12 @@ function DailyMatrix() {
           </label>
           <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
             Channel
-            <select className={input} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value })}>
+            <SelectField className={input} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value })}>
               <option value="">All channels</option>
               {partners.map((p) => (
                 <option key={p.slug} value={p.slug}>{p.name}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
             State
@@ -262,7 +263,7 @@ function DailyMatrix() {
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-xs text-gray-500">
               Rows per page
-              <select
+              <SelectField
                 value={pageSize}
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));
@@ -273,7 +274,7 @@ function DailyMatrix() {
                 {[25, 50, 100].map((n) => (
                   <option key={n} value={n}>{n}</option>
                 ))}
-              </select>
+              </SelectField>
             </label>
             <Button variant="secondary" size="sm" onClick={() => void exportExcel()} isLoading={exporting} disabled={!data?.total}>
               <IconDownload className="h-3.5 w-3.5" />

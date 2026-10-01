@@ -24,7 +24,7 @@ from app.models.organization import Organization
 from app.models.user import User, UserStatus
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LoginResponse, TokenPair
-from app.services import activity_service, attendance_service, session_service
+from app.services import activity_service, session_service
 
 GENERIC_LOGIN_ERROR = "Incorrect email or password."
 PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED"
@@ -44,7 +44,6 @@ class AuthService:
 
     def login(
         self, organization_slug: str, employee_code: str, password: str, *, user_agent: str | None = None, ip: str | None = None,
-        latitude: float | None = None, longitude: float | None = None, accuracy: float | None = None,
     ) -> LoginResponse:
         org = self._get_organization(organization_slug)
         user = self.users.get_by_org_and_code(org.id, employee_code) if org else None
@@ -70,18 +69,12 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
         pair = session_service.start_session(self.db, user, user_agent=user_agent, ip=ip)
-        tracked = attendance_service.attends(self.db, user)  # admins are never tracked
-        if tracked:
-            attendance_service.record_login(
-                self.db, user, decode_claims(pair.refresh_token, TokenType.REFRESH).family_id, ip=ip, user_agent=user_agent,
-                latitude=latitude, longitude=longitude, accuracy=accuracy,
-            )
         activity_service.record(
             self.db, actor=user, action="auth.login", entity_type="user", entity_id=user.id,
             metadata={"ip": ip},
         )
         self.db.commit()
-        return LoginResponse(**pair.model_dump(), attendance=tracked)
+        return LoginResponse(**pair.model_dump(), attendance=False)  # attendance is an explicit Check in now, not a side effect of signing in
 
     # -------------------------------------------------------------- refresh
 
@@ -109,12 +102,9 @@ class AuthService:
         user.must_change_password = False
         user.password_changed_at = datetime.now(timezone.utc)
         user.failed_login_attempts = 0
-        # Every other device is signed out; this one gets a fresh session straight away. That is not a new
-        # sign-in: the attendance row simply follows the new session (no new row, no new location check).
+        # Every other device is signed out; this one gets a fresh session straight away.
         pair = session_service.start_session(self.db, user, user_agent=user_agent, ip=ip)
         new_family = decode_claims(pair.refresh_token, TokenType.REFRESH).family_id
-        if current_family is not None:
-            attendance_service.rekey_family(self.db, current_family, new_family)
         session_service.revoke_user_sessions(self.db, user.id, except_family=new_family)
         activity_service.record(
             self.db, actor=user, action="auth.password_changed", entity_type="user", entity_id=user.id,

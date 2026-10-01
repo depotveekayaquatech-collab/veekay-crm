@@ -6,7 +6,7 @@ import jwt
 import pytest
 
 from app.core.config import settings
-from app.models.attendance import AttendanceSession
+from app.models.attendance import AttendanceRecord, AttendanceSession
 from app.models.user import User
 
 from .conftest import API, DEMO_PASSWORD, auth, login
@@ -40,15 +40,10 @@ def test_deactivated_account_cannot_sign_in(client, make_user):
     assert r.status_code == 403 and "deactivated" in r.json()["detail"]
 
 
-def test_login_flags_whether_the_sign_in_counts_as_attendance(client, make_user):
-    assert login(client, "ADMIN001").json()["attendance"] is False
-    assert login(client, "EMP001").json()["attendance"] is True
-    code, pw, _ = make_user(role="accountant")
-    assert login(client, code, pw).json()["attendance"] is True
-
-
-def test_invalid_coordinates_in_the_login_payload_are_rejected(client):
-    assert login(client, "ADMIN001", latitude=91, longitude=0).status_code == 422
+def test_signing_in_never_counts_as_attendance_or_reads_a_location(client, db, make_user):
+    for code, pw in (("ADMIN001", DEMO_PASSWORD), ("EMP001", DEMO_PASSWORD), make_user(role="accountant")[:2]):
+        assert login(client, code, pw).json()["attendance"] is False
+    assert db.query(AttendanceRecord).count() == 0 and db.query(AttendanceSession).count() == 0
 
 
 # ---------------------------------------------------------------- lockout
@@ -90,7 +85,7 @@ def test_reusing_a_rotated_refresh_token_inside_the_grace_window_is_refused_but_
 
 
 def test_reusing_a_rotated_token_after_the_grace_window_kills_the_whole_session(client, monkeypatch):
-    monkeypatch.setattr(settings, "REFRESH_REUSE_GRACE_SECONDS", 0)       # as if the stolen copy is used later
+    monkeypatch.setattr(settings, "REFRESH_REUSE_GRACE_SECONDS", -1)      # as if the stolen copy is used later (-1: immune to coarse clocks)
     first = login(client, "EMP001").json()
     second = client.post(f"{API}/auth/refresh", json={"refresh_token": first["refresh_token"]}).json()
     assert client.post(f"{API}/auth/refresh", json={"refresh_token": first["refresh_token"]}).status_code == 401
@@ -181,17 +176,6 @@ def test_changing_the_password_signs_out_other_devices_and_returns_a_fresh_sessi
     me = client.get(f"{API}/auth/me", headers=auth(fresh["access_token"])).json()
     assert me["must_change_password"] is False and me["permissions"]
     assert login(client, code, pw).status_code == 401 and login(client, code, "Brand#New1234").status_code == 200
-
-
-def test_changing_a_password_is_not_a_new_sign_in_for_attendance(client, make_user, db):
-    code, pw, uid = make_user()
-    t = login(client, code, pw, latitude=12.97, longitude=77.59).json()
-    before = db.query(AttendanceSession).filter_by(user_id=uid).count()
-    assert client.post(f"{API}/auth/change-password", headers=auth(t["access_token"]),
-                       json={"current_password": pw, "new_password": "Brand#New1234"}).status_code == 200
-    db.expire_all()
-    rows = db.query(AttendanceSession).filter_by(user_id=uid).all()
-    assert before == len(rows) == 1 and rows[0].logout_at is None       # same row, still open, no new location check
 
 
 def test_admin_created_and_reset_passwords_must_be_replaced(client, admin, make_user):

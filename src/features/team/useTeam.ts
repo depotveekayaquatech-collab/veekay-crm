@@ -6,6 +6,7 @@ import {
   getStateBoard,
   listEmployees,
   listPermissionGroups,
+  setAdminAccess,
   setEmployeePermissions,
   setEmployeeScope,
   unassignState,
@@ -53,6 +54,10 @@ export function useTeamMutations() {
     deactivate: useMutation({
       mutationFn: (id: string) => deactivateEmployee(id),
       onSuccess: () => done("Employee deactivated."),
+    }),
+    setAdminAccess: useMutation({
+      mutationFn: ({ id, full }: { id: string; full: boolean }) => setAdminAccess(id, full),
+      onSuccess: () => done("Admin access updated."),
     }),
     setPermissions: useMutation({
       mutationFn: ({ id, codes }: { id: string; codes: string[] }) => setEmployeePermissions(id, codes),

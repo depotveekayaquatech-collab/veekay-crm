@@ -9,7 +9,7 @@ interface ModalProps {
   children: ReactNode;
   /** Rendered in the footer, right-aligned (e.g. Cancel + Save buttons). */
   footer?: ReactNode;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
 }
 
 export function Modal({ open, onClose, title, description, children, footer, size = "md" }: ModalProps) {
@@ -36,7 +36,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         aria-modal="true"
         aria-label={title}
         className={`relative flex max-h-[92vh] w-full animate-slide-up flex-col rounded-t-xl bg-white shadow-lg sm:rounded-xl ${
-          size === "sm" ? "sm:max-w-sm" : "sm:max-w-lg"
+          size === "sm" ? "sm:max-w-sm" : size === "lg" ? "sm:max-w-3xl" : "sm:max-w-lg"
         }`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-surface-border px-5 py-4">

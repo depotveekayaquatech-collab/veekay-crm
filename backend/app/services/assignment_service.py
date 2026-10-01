@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.roles import PARTNER as PARTNER_ROLE
 from app.models.organization import Organization, OrganizationKind
 from app.models.region import Region
 from app.models.state_assignment import StateAssignment
@@ -29,6 +30,7 @@ from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.region_repository import RegionRepository
+from app.repositories.user_repository import UserRepository
 from app.services import activity_service
 
 
@@ -55,10 +57,24 @@ def is_region_independent(platform_slug: str | None) -> bool:
 # store visibility
 # --------------------------------------------------------------------------
 
+def is_partner_account(db: Session, user: User) -> bool:
+    return PARTNER_ROLE in UserRepository(db).get_role_codes(user.id)
+
+
 def visible_stores(db: Session, employee: User) -> list[Store]:
     partner_id = employee.platform_organization_id
     if partner_id is None:
         return []
+    if is_partner_account(db, employee):
+        # A Blinkit / Zepto login sees every live store of its own platform — no region or state scoping.
+        rows = db.execute(
+            select(Store).where(
+                Store.organization_id == employee.organization_id,
+                Store.partner_organization_id == partner_id,
+                Store.status == StoreStatus.LIVE.value,
+            )
+        ).scalars().all()
+        return _load(db, list(rows))
     platform = db.get(Organization, partner_id)
     slug = platform.slug if platform else None
 
@@ -127,7 +143,7 @@ def set_scope(
     if region_id is not None and RegionRepository(db).get(admin.organization_id, region_id) is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid region.")
     employee.platform_organization_id = platform_id
-    employee.region_id = region_id
+    employee.region_id = None if is_partner_account(db, employee) else region_id
     activity_service.record(
         db, actor=admin, action="employee.scope_set", entity_type="employee", entity_id=employee.id,
         metadata={"platform_id": str(platform_id) if platform_id else None,

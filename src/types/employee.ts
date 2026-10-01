@@ -12,8 +12,10 @@ export interface Employee {
   regionName: string | null;
   states: string[];
   roles: string[];
-  category: "admin" | "accounts" | "blinkit" | "zepto" | "other";
+  category: "admin" | "accounts" | "partner" | "blinkit" | "zepto" | "other";
   categoryLabel: string;
+  /** For admin accounts: "full" = every permission, "custom" = only what was ticked. */
+  adminLevel: "full" | "custom" | null;
   directPermissions: string[];
 }
 
@@ -31,8 +33,9 @@ export interface EmployeeWire {
   region_name: string | null;
   states: string[];
   roles: string[];
-  category?: "admin" | "accounts" | "blinkit" | "zepto" | "other";
+  category?: "admin" | "accounts" | "partner" | "blinkit" | "zepto" | "other";
   category_label?: string;
+  admin_level?: "full" | "custom" | null;
   direct_permissions: string[];
 }
 
@@ -53,6 +56,7 @@ export function toEmployee(w: EmployeeWire): Employee {
     roles: w.roles,
     category: w.category ?? "other",
     categoryLabel: w.category_label ?? "",
+    adminLevel: w.admin_level ?? null,
     directPermissions: w.direct_permissions,
   };
 }
@@ -66,6 +70,10 @@ export interface EmployeeCreateInput {
   platform_id?: string | null;
   region_id?: string | null;
   permission_codes?: string[];
+  /** "partner" creates a Blinkit / Zepto login (own platform only, limited permissions). */
+  account_type?: "employee" | "partner" | "admin";
+  /** With account_type "admin": "full" gets every permission, "custom" only permission_codes. */
+  admin_access?: "full" | "custom";
 }
 
 export interface EmployeeUpdateInput {

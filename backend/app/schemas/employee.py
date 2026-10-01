@@ -1,5 +1,6 @@
 """Employee (= User with the 'employee' role) request/response contracts."""
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -13,6 +14,10 @@ class EmployeeCreate(BaseModel):
     platform_id: uuid.UUID | None = None
     region_id: uuid.UUID | None = None
     permission_codes: list[str] = Field(default_factory=list)
+    # "partner" = a Blinkit / Zepto login: needs a platform, never a region, and only partner-safe permissions.
+    account_type: Literal["employee", "partner", "admin"] = "employee"
+    # For account_type "admin": "full" = every permission (the Admin role); "custom" = only permission_codes.
+    admin_access: Literal["full", "custom"] = "full"
 
 
 class EmployeeUpdate(BaseModel):
@@ -25,6 +30,10 @@ class EmployeeUpdate(BaseModel):
 class EmployeeScope(BaseModel):
     platform_id: uuid.UUID | None = None
     region_id: uuid.UUID | None = None
+
+
+class AdminAccess(BaseModel):
+    full: bool
 
 
 class PermissionSet(BaseModel):
@@ -47,6 +56,7 @@ class EmployeeOut(BaseModel):
     roles: list[str] = []
     category: str = "other"        # admin | accounts | blinkit | zepto | other
     category_label: str = ""
+    admin_level: Literal["full", "custom"] | None = None   # set for admin-category accounts
     direct_permissions: list[str] = []
 
     model_config = {"from_attributes": True}

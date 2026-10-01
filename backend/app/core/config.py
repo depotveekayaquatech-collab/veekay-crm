@@ -99,6 +99,8 @@ class Settings(BaseSettings):
     ATTENDANCE_TIMEZONE: str = Field(default="Asia/Kolkata")   # which local day a sign-in belongs to
     ATTENDANCE_ACTIVE_WINDOW_MINUTES: int = Field(default=30)  # still 'active' if seen this recently
     OFFICE_DEFAULT_RADIUS_M: int = Field(default=100)
+    ATTENDANCE_WORK_START: str = Field(default="10:00")        # HH:MM local time; checking in later than start + grace is "late"
+    ATTENDANCE_GRACE_MINUTES: int = Field(default=15)
 
     # ---- Vendor cards ----
     COMPANY_NAME: str = Field(default="VEE KAY AQUATECH PVT. LTD.")

@@ -9,8 +9,9 @@ from app.models.state_assignment import StateAssignment
 from app.models.order_entry import EntrySource, OrderEntry
 from app.models.audit_log import AuditLog
 from app.models.refresh_session import RefreshSession
-from app.models.attendance import AttendanceSession, Office
+from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office
 from app.models.compliance_document import BillStatus, ComplianceDocument, DocKind
+from app.models.ticket import Ticket, TicketComment
 
 __all__ = [
     "Organization",
@@ -30,8 +31,12 @@ __all__ = [
     "AuditLog",
     "RefreshSession",
     "AttendanceSession",
+    "AttendanceRecord",
+    "LeaveRequest",
     "Office",
     "ComplianceDocument",
     "DocKind",
     "BillStatus",
+    "Ticket",
+    "TicketComment",
 ]

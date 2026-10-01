@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/Dropdown";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -46,7 +47,7 @@ function useInventory(partner: string) {
 
 export function InventoryPage() {
   const isAdmin = usePermission("orders.correct");
-  const { data: partners = [] } = usePartners();
+  const { data: partners = [] } = usePartners(isAdmin);
   const [partner, setPartner] = useState("");
   const [chip, setChip] = useState<Chip>("all");
   const [query, setQuery] = useState("");
@@ -99,7 +100,7 @@ export function InventoryPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Inventory"
+        title="Vendors"
         subtitle={`Stores grouped by vendor with contact details and pending days${data ? ` · ${data.monthLabel}` : ""}.`}
         action={
           <Button
@@ -148,7 +149,7 @@ export function InventoryPage() {
           </button>
         ))}
         {isAdmin && (
-          <select
+          <SelectField
             value={partner}
             onChange={(e) => setPartner(e.target.value)}
             aria-label="Platform"
@@ -158,7 +159,7 @@ export function InventoryPage() {
             {partners.map((p) => (
               <option key={p.slug} value={p.slug}>{p.name}</option>
             ))}
-          </select>
+          </SelectField>
         )}
         <div className="relative ml-auto w-full sm:w-72">
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

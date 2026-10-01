@@ -48,7 +48,6 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     try:
         return AuthService(db).login(
             payload.organization_slug, payload.employee_code, payload.password, **meta,
-            latitude=payload.latitude, longitude=payload.longitude, accuracy=payload.accuracy,
         )
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED and exc.detail == GENERIC_LOGIN_ERROR:

@@ -65,14 +65,31 @@ def _store_meta(store: Store) -> dict:
 # --------------------------------------------------------------------------
 
 def my_stores(db: Session, employee: User) -> list[MyStore]:
+    stores = assignment_service.visible_stores(db, employee)
+    today = _today()
+    yesterday = today - timedelta(days=1)
+    counts: dict[tuple[uuid.UUID, date], int] = {}
+    if stores:
+        rows = db.execute(
+            select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count).where(
+                OrderEntry.store_id.in_([s.id for s in stores]),
+                OrderEntry.order_date.in_([today, yesterday]),
+            )
+        )
+        counts = {(r[0], r[1]): int(r[2]) for r in rows}
     return [
         MyStore(
             id=s.id, name=s.name, external_code=s.external_code, state=s.state, city=s.city,
             region_name=s.region.name if s.region else None,
             vendor_name=s.vendor_name, vendor_number=s.vendor_number,
             poc_name=s.poc_name, poc_number=s.poc_number,
+            status=s.status, today=today,
+            partner_slug=s.partner_organization.slug if s.partner_organization else None,
+            partner_name=s.partner_organization.name if s.partner_organization else None,
+            region_id=s.region_id,
+            today_count=counts.get((s.id, today)), yesterday_count=counts.get((s.id, yesterday)),
         )
-        for s in assignment_service.visible_stores(db, employee)
+        for s in stores
     ]
 
 

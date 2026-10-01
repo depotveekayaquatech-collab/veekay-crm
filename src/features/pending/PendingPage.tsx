@@ -1,11 +1,12 @@
+import { distinctOptions } from "@/lib/options";
 import { useMemo, useState } from "react";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Table, Td, Th, TableEmpty } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { IconCheckCircle, IconDownload, IconRefresh, IconSearch } from "@/components/ui/icons";
+import { IconCheckCircle, IconDownload, IconRefresh } from "@/components/ui/icons";
+import { ProgressBar, RegionFilter, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
 import { usePartners } from "@/features/stores/useStores";
 import { downloadCsv } from "@/lib/csv";
 import { usePending } from "@/services/reports";
@@ -21,83 +22,71 @@ function Phone({ value }: { value: string | null }) {
 
 export function PendingPage() {
   const { data: partners = [] } = usePartners();
-  const [partner, setPartner] = useState("");
+  const [pickedPartner, setPartner] = useState("");
+  const [region, setRegion] = useState("");
+  const partner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
   const [dayOffset, setDayOffset] = useState(0);
   const [query, setQuery] = useState("");
   const { data, isLoading, isError, refetch, isFetching } = usePending(dayOffset, partner);
+  const regions = useMemo(() => distinctOptions(data?.items ?? [], (s) => (s.regionName ? { value: s.regionName, label: s.regionName } : null)), [data]);
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (data?.items ?? []).filter(
       (s) =>
-        !q ||
+        (!region || s.regionName === region) &&
+        (!q ||
         [s.name, s.externalCode, s.city, s.state, s.regionName, s.pocName, s.vendorName].some((f) =>
           (f ?? "").toLowerCase().includes(q),
-        ),
+        )),
     );
-  }, [data, query]);
+  }, [data, query, region]);
 
   const pct = data && data.liveStores ? Math.round((data.marked / data.liveStores) * 100) : 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Pending entries"
-        subtitle="Live stores that have no bottle count marked yet — call the store or vendor to chase them."
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => void refetch()} isLoading={isFetching}>
-              <IconRefresh className="h-4 w-4" />
-              Refresh
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={!items.length}
-              onClick={() =>
-                data &&
-                downloadCsv(
-                  `pending-${data.date}.csv`,
-                  ["Store", "Code", "Platform", "Region", "State", "City", "Vendor", "Vendor number", "POC", "POC number"],
-                  items.map((s) => [s.name, s.externalCode, s.platform, s.regionName, s.state, s.city, s.vendorName, s.vendorNumber, s.pocName, s.pocNumber]),
-                )
-              }
-            >
-              <IconDownload className="h-4 w-4" />
-              Export CSV
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        {[{ slug: "", name: "All platforms" }, ...partners].map((p) => (
-          <button
-            key={p.slug}
-            onClick={() => setPartner(p.slug)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              partner === p.slug
-                ? "bg-brand-500 text-white shadow-sm"
-                : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
-            }`}
+      <div className="flex flex-wrap items-center gap-3">
+        <SegmentedControl
+          label="Platform"
+          value={partner}
+          onChange={(v) => {
+            setPartner(v);
+            setRegion("");
+          }}
+          options={partners.map((p) => ({ value: p.slug, label: p.name }))}
+        />
+        {regions.length > 1 && <RegionFilter value={region} onChange={setRegion} options={regions} className="sm:w-48 [&_label]:sr-only" />}
+        <SegmentedControl
+          label="Day"
+          value={String(dayOffset)}
+          onChange={(v) => setDayOffset(Number(v))}
+          options={[
+            { value: "0", label: "Today" },
+            { value: "1", label: "Yesterday" },
+          ]}
+        />
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button size="sm" variant="secondary" onClick={() => void refetch()} isLoading={isFetching}>
+            <IconRefresh className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!items.length}
+            onClick={() =>
+              data &&
+              downloadCsv(
+                `pending-${data.date}.csv`,
+                ["Store", "Code", "Platform", "Region", "State", "City", "Vendor", "Vendor number", "POC", "POC number"],
+                items.map((s) => [s.name, s.externalCode, s.platform, s.regionName, s.state, s.city, s.vendorName, s.vendorNumber, s.pocName, s.pocNumber]),
+              )
+            }
           >
-            {p.name}
-          </button>
-        ))}
-        <div className="ml-auto flex gap-1 rounded-lg bg-surface-muted p-1">
-          {[
-            { v: 0, l: "Today" },
-            { v: 1, l: "Yesterday" },
-          ].map((d) => (
-            <button
-              key={d.v}
-              onClick={() => setDayOffset(d.v)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-                dayOffset === d.v ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              {d.l}
-            </button>
-          ))}
+            <IconDownload className="h-3.5 w-3.5" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
@@ -107,28 +96,17 @@ export function PendingPage() {
       {data && (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="tile tile-warning rounded-xl border border-surface-border bg-white p-5 shadow-card">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Pending</p>
-              <p className={`mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums ${data.pending ? "text-status-warning" : "text-status-success"}`}>
-                {data.pending}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">{data.dateLabel} · {data.date}</p>
-            </div>
-            <div className="tile tile-brand rounded-xl border border-surface-border bg-white p-5 shadow-card">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Marked</p>
-              <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-ink-900">{data.marked}</p>
-              <p className="mt-1 text-xs text-gray-500">of {data.liveStores} live stores</p>
-            </div>
-            <div className="tile tile-aqua rounded-xl border border-surface-border bg-white p-5 shadow-card">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Coverage</p>
-              <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-ink-900">{pct}%</p>
-              <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-muted">
-                <div
-                  className={`h-full rounded-full ${pct >= 85 ? "bg-status-success" : pct >= 50 ? "bg-brand-500" : "bg-status-warning"}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </div>
+            <StatCard
+              label="Pending"
+              value={data.pending}
+              hint={`${data.dateLabel} · ${data.date}`}
+              tone="warning"
+              valueClassName={data.pending ? "text-status-warning" : "text-status-success"}
+            />
+            <StatCard label="Marked" value={data.marked} hint={`of ${data.liveStores} live stores`} tone="brand" />
+            <StatCard label="Coverage" value={`${pct}%`} tone="aqua">
+              <ProgressBar percent={pct} className="mt-3" />
+            </StatCard>
           </div>
 
           {data.pending === 0 ? (
@@ -141,16 +119,7 @@ export function PendingPage() {
             </div>
           ) : (
             <>
-              <div className="relative w-full sm:w-80">
-                <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search store, city, region or contact"
-                  aria-label="Search pending stores"
-                  className="h-10 w-full rounded-lg border border-surface-border bg-white pl-9 pr-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-                />
-              </div>
+              <SearchBox value={query} onChange={setQuery} placeholder="Search store, city, region or contact" className="w-full sm:w-80" />
               <div className="stacked-table">
                 <Table>
                   <thead>

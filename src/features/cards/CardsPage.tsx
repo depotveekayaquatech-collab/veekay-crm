@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { SelectField } from "@/components/ui/Dropdown";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -16,9 +17,12 @@ interface Vendor {
   vendor: string;
   stores: number;
   number: string | null;
+  matches?: { id: string; name: string; code: string }[];
+  matchTotal?: number;
 }
 interface VendorsResponse {
   vendors: Vendor[];
+  regions: { id: string; name: string }[];
   months: { value: string; label: string }[];
 }
 
@@ -43,23 +47,36 @@ function save(blob: Blob, filename: string) {
  */
 export function CardsPage() {
   const isAdmin = usePermission("orders.correct");
-  const { data: partners = [] } = usePartners();
+  const { data: partners = [] } = usePartners(isAdmin);
   const [partner, setPartner] = useState("");
+  const [region, setRegion] = useState("");
   const [month, setMonth] = useState(""); // "" = blank cards
   const [q, setQ] = useState("");
+  const [search, setSearch] = useState(""); // q, debounced — the server does the matching
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["card-vendors", partner],
-    queryFn: async () => camelize<VendorsResponse>(await apiRequest(`/cards/vendors${partner ? `?partner=${partner}` : ""}`)),
+    queryKey: ["card-vendors", partner, region, search],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (partner) qs.set("partner", partner);
+      if (region) qs.set("region", region);
+      if (search) qs.set("q", search);
+      return camelize<VendorsResponse>(await apiRequest(`/cards/vendors?${qs}`));
+    },
+    placeholderData: (prev) => prev,
     staleTime: 60_000,
   });
 
-  const vendors = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return (data?.vendors ?? []).filter((v) => !needle || v.vendor.toLowerCase().includes(needle));
-  }, [data, q]);
+  const regions = data?.regions ?? [];
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(q.trim().length >= 2 ? q.trim() : ""), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const vendors = data?.vendors ?? [];
 
   const chosen = (data?.vendors ?? []).filter((v) => picked.has(v.vendor));
   const cardCount = chosen.reduce((n, v) => n + v.stores, 0);
@@ -88,6 +105,7 @@ export function CardsPage() {
       if (names.length === 1) {
         const qs = new URLSearchParams({ vendor: names[0] });
         if (partner) qs.set("partner", partner);
+        if (region) qs.set("region", region);
         if (month) qs.set("month", month);
         // a single vendor opens as a PDF in a new tab (opened now so popup blockers allow it)
         const win = window.open("", "_blank");
@@ -102,7 +120,7 @@ export function CardsPage() {
           return;
         }
       } else {
-        const blob = await apiBlob("/cards/zip", { method: "POST", body: { vendors: names, partner: partner || null, month: month || null } });
+        const blob = await apiBlob("/cards/zip", { method: "POST", body: { vendors: names, partner: partner || null, region: region || null, month: month || null } });
         save(blob, `Monthwise_cards_${month ? `Entry_${month}` : "Blank"}.zip`);
       }
       pushToast(`${count} card${count === 1 ? "" : "s"} for ${names.length} vendor${names.length === 1 ? "" : "s"} ready.`, "success");
@@ -111,31 +129,51 @@ export function CardsPage() {
     }
   }
 
+  async function downloadStore(vendor: string, storeId: string) {
+    setBusy(true);
+    const win = window.open("", "_blank");
+    try {
+      const qs = new URLSearchParams({ vendor, store_id: storeId });
+      if (partner) qs.set("partner", partner);
+      if (month) qs.set("month", month);
+      const blob = await apiBlob(`/cards/pdf?${qs}`);
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else save(blob, "card.pdf");
+      setTimeout(() => URL.revokeObjectURL(url), 10 * 60_000);
+    } catch {
+      win?.close();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Monthwise virtual card"
+        title="Store cards"
         subtitle="A printable A4 card for every live store, one PDF per vendor. Choose one vendor for a PDF, or several for a ZIP."
       />
 
       <section className="flex flex-wrap items-end gap-4 rounded-xl border border-surface-border bg-white p-4 shadow-card">
         <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
           Cards
-          <select className={`${field} min-w-[16rem]`} value={month} onChange={(e) => setMonth(e.target.value)}>
+          <SelectField className={`${field} min-w-[16rem]`} value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">Blank — no month on the card</option>
             {data?.months.map((m) => (
               <option key={m.value} value={m.value}>With entry — {m.label}</option>
             ))}
-          </select>
+          </SelectField>
         </label>
         {isAdmin && (
           <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
             Platform
-            <select
+            <SelectField
               className={field}
               value={partner}
               onChange={(e) => {
                 setPartner(e.target.value);
+                setRegion("");
                 setPicked(new Set());
               }}
             >
@@ -143,12 +181,29 @@ export function CardsPage() {
               {partners.map((p) => (
                 <option key={p.slug} value={p.slug}>{p.name}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
         )}
+        <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          Region
+          <SelectField
+            className="min-w-[12rem]"
+            disabled={regions.length === 0}
+            value={regions.some((r) => r.id === region) ? region : ""}
+            onChange={(e) => {
+              setRegion(e.target.value);
+              setPicked(new Set());
+            }}
+          >
+            <option value="">{regions.length ? `All regions (${regions.length})` : "No regions"}</option>
+            {regions.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </SelectField>
+        </label>
         <div className="relative ml-auto w-full sm:w-72">
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input className={`${field} w-full pl-9`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search vendor" aria-label="Search vendors" />
+          <input className={`${field} w-full pl-9`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search vendor, store, code or number" aria-label="Search vendors or stores" />
         </div>
       </section>
 
@@ -160,7 +215,7 @@ export function CardsPage() {
 
       {isLoading && <Skeleton className="h-64" />}
       {isError && <ErrorState message="Couldn't load vendors." onRetry={() => refetch()} />}
-      {data && vendors.length === 0 && <EmptyState title="No vendors found" description="Try a different platform or search." />}
+      {data && vendors.length === 0 && <EmptyState title="Nothing found" description="Try a different platform, region or search." />}
 
       {data && vendors.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
@@ -200,6 +255,23 @@ export function CardsPage() {
                     {v.stores} live store{v.stores === 1 ? "" : "s"}
                     {v.number ? ` · ${v.number}` : ""}
                   </p>
+                  {v.matches && v.matches.length > 0 && (
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                      <span>Store{(v.matchTotal ?? 0) === 1 ? "" : "s"}:</span>
+                      {v.matches.map((m) => (
+                        <button
+                          key={m.id}
+                          disabled={busy}
+                          onClick={() => void downloadStore(v.vendor, m.id)}
+                          title="Open this store's card"
+                          className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-gray-700 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                      {(v.matchTotal ?? 0) > v.matches.length && <span>+{(v.matchTotal ?? 0) - v.matches.length} more</span>}
+                    </p>
+                  )}
                 </div>
                 <button
                   disabled={busy}

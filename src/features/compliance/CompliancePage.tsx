@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/Dropdown";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -206,87 +207,87 @@ export function CompliancePage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <label className={label}>
             Month
-            <select className={select} value={month.slice(5)} onChange={(e) => set({ month: `${year}-${e.target.value}` })}>
+            <SelectField className={select} value={month.slice(5)} onChange={(e) => set({ month: `${year}-${e.target.value}` })}>
               {monthsInYear.map((m) => (
                 <option key={m} value={m.slice(5)}>{MONTH_NAMES[Number(m.slice(5)) - 1]}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Year
-            <select className={select} value={year} onChange={(e) => pickYear(e.target.value)}>
+            <SelectField className={select} value={year} onChange={(e) => pickYear(e.target.value)}>
               {years.map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Region
-            <select className={select} value={f.region} onChange={(e) => set({ region: e.target.value })}>
+            <SelectField className={select} value={f.region} onChange={(e) => set({ region: e.target.value })}>
               <option value="">All regions</option>
               {data?.options.regions.map((r) => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             City
-            <select className={select} value={f.city} onChange={(e) => set({ city: e.target.value })}>
+            <SelectField className={select} value={f.city} onChange={(e) => set({ city: e.target.value })}>
               <option value="">All cities</option>
               {data?.options.cities.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Channel
-            <select className={select} value={f.partner} onChange={(e) => set({ partner: e.target.value })}>
+            <SelectField className={select} value={f.partner} onChange={(e) => set({ partner: e.target.value, region: "", city: "", manager: "" })}>
               <option value="">All channels</option>
               {partners.map((p) => (
                 <option key={p.slug} value={p.slug}>{p.name}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Missing documents
-            <select className={select} value={f.missing} onChange={(e) => set({ missing: e.target.value })}>
+            <SelectField className={select} value={f.missing} onChange={(e) => set({ missing: e.target.value })}>
               <option value="">All stores</option>
               <option value="any">Anything missing</option>
               <option value="card">Missing card</option>
               <option value="bill">Missing invoice</option>
               <option value="payment">Missing payment proof</option>
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Compliance filter
-            <select className={select} value={f.range} onChange={(e) => set({ range: e.target.value })}>
+            <SelectField className={select} value={f.range} onChange={(e) => set({ range: e.target.value })}>
               <option value="">All ranges</option>
               <option value="0-25">0% (nothing on file)</option>
               <option value="26-50">33% (1 of 3)</option>
               <option value="51-75">67% (2 of 3)</option>
               <option value="100">100% (complete)</option>
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Delivery manager
-            <select className={select} value={f.manager} onChange={(e) => set({ manager: e.target.value })}>
+            <SelectField className={select} value={f.manager} onChange={(e) => set({ manager: e.target.value })}>
               <option value="">All delivery managers</option>
               {data?.options.hasUnassigned && <option value="__none__">Unassigned</option>}
               {data?.options.managers.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-[12rem_1fr_auto]">
           <label className={label}>
             Status
-            <select className={select} value={f.status} onChange={(e) => set({ status: e.target.value })}>
+            <SelectField className={select} value={f.status} onChange={(e) => set({ status: e.target.value })}>
               <option value="">All status</option>
               <option value="pending">Pending (nothing logged)</option>
               <option value="partial">Partial</option>
               <option value="complete">Complete</option>
-            </select>
+            </SelectField>
           </label>
           <label className={label}>
             Search store

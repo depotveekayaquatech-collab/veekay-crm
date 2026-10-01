@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/Dropdown";
 import { useRef, useState, type DragEvent } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -97,19 +98,19 @@ export function BulkUploadModal({ month, months, onClose }: { month: string; mon
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
               Month
-              <select className={field} value={m} onChange={(e) => setM(e.target.value)}>
+              <SelectField className={field} value={m} onChange={(e) => setM(e.target.value)}>
                 {months.map((x) => (
                   <option key={x} value={x}>{monthLabel(x)}</option>
                 ))}
-              </select>
+              </SelectField>
             </label>
             <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
               Document type
-              <select className={field} value={kind} onChange={(e) => setKind(e.target.value as DocKind)}>
+              <SelectField className={field} value={kind} onChange={(e) => setKind(e.target.value as DocKind)}>
                 {KINDS.map((k) => (
                   <option key={k} value={k}>{OPTION_LABEL[k]}</option>
                 ))}
-              </select>
+              </SelectField>
             </label>
           </div>
 

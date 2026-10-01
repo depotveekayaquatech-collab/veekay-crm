@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/Dropdown";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -69,7 +70,7 @@ export function CountPage() {
             {hasLast ? (
               <div className="mt-4 text-left">
                 <label htmlFor="month" className="mb-1.5 block text-xs font-bold text-[#084B7C]">View supply for</label>
-                <select
+                <SelectField
                   id="month"
                   value={view}
                   onChange={(e) => setView(e.target.value as "cur" | "last")}
@@ -77,7 +78,7 @@ export function CountPage() {
                 >
                   <option value="cur">This month — {data.thisMonthLabel}</option>
                   <option value="last">Last month — {data.lastMonthLabel}</option>
-                </select>
+                </SelectField>
               </div>
             ) : (
               <span className="mt-4 inline-block rounded-full bg-[#e8f2fa] px-4 py-1.5 text-xs font-bold text-[#084B7C]">

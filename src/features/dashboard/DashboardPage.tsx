@@ -177,7 +177,6 @@ function AdminDashboard() {
     { to: "/orders/correct", label: "Correct entries", icon: IconGrid, perm: "orders.correct" },
     { to: "/team", label: "Team & access", icon: IconUsers, perm: "employees.view" },
     { to: "/stores", label: "Manage stores", icon: IconStore, perm: "stores.view" },
-    { to: "/regions", label: "Regions", icon: IconMapPin, perm: "regions.view" },
     { to: "/activity", label: "Activity log", icon: IconActivity, perm: "activity.view" },
   ];
 

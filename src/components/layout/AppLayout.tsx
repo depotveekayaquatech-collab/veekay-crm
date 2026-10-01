@@ -5,23 +5,20 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   IconActivity,
-  IconAlertTriangle,
   IconBox,
   IconCard,
-  IconChart,
   IconClipboard,
   IconClock,
   IconClose,
-  IconEdit,
   IconGrid,
   IconLogout,
-  IconMapPin,
   IconMenu,
   IconReceipt,
   IconReport,
   IconSearch,
   IconShield,
   IconStore,
+  IconTicket,
   IconUsers,
 } from "@/components/ui/icons";
 
@@ -30,6 +27,12 @@ interface NavItem {
   to: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   permission?: string;
+  /** Visible if the user holds any of these (used by hub pages with several tabs). */
+  anyPermission?: string[];
+  /** Highlight for nested routes too (e.g. /orders/pending under Orders). */
+  prefix?: boolean;
+  /** Hidden for accounts holding this role (partner logins don't use the dashboard or attendance). */
+  excludeRole?: string;
 }
 
 interface NavGroup {
@@ -47,44 +50,53 @@ const NAV_GROUPS: NavGroup[] = [
     items: [{ label: "Dashboard", to: "/", icon: IconGrid }],
   },
   {
-    title: "Orders",
+    title: "Operations",
     items: [
-      { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.mark" },
-      { label: "Correct entries", to: "/orders/correct", icon: IconEdit, permission: "orders.correct" },
-      { label: "Pending entries", to: "/pending", icon: IconAlertTriangle, permission: "orders.overview" },
-      { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview" },
+      {
+        label: "Orders",
+        to: "/orders",
+        icon: IconClipboard,
+        anyPermission: ["orders.view", "orders.mark", "orders.overview", "orders.correct"],
+        prefix: true,
+      },
+      { label: "Tickets", to: "/tickets", icon: IconTicket, anyPermission: ["tickets.view", "tickets.manage"] },
     ],
   },
   {
-    title: "Stores & network",
+    title: "Stores & vendors",
     items: [
-      { label: "Inventory", to: "/inventory", icon: IconBox, permission: "orders.view" },
       { label: "Stores", to: "/stores", icon: IconStore, permission: "stores.view" },
-      { label: "Regions", to: "/regions", icon: IconMapPin, permission: "regions.view" },
-      { label: "Monthwise virtual card", to: "/cards", icon: IconCard, permission: "orders.view" },
+      { label: "Vendors", to: "/inventory", icon: IconBox, permission: "orders.view" },
+      { label: "Store cards", to: "/cards", icon: IconCard, permission: "orders.view" },
     ],
   },
   {
-    title: "Compliance & accounts",
+    title: "Compliance & billing",
     items: [
       { label: "Compliance", to: "/compliance", icon: IconShield, permission: "compliance.upload" },
-      { label: "Accounts", to: "/accounts", icon: IconReceipt, permission: "accounts.view" },
+      { label: "Billing", to: "/accounts", icon: IconReceipt, permission: "accounts.view" },
     ],
   },
   {
-    title: "Reports",
-    items: [{ label: "Reports", to: "/reports", icon: IconReport, permission: "orders.overview" }],
+    title: "Insights",
+    items: [
+      { label: "Reports", to: "/reports", icon: IconReport, permission: "orders.overview" },
+      { label: "Audit log", to: "/activity", icon: IconActivity, permission: "activity.view" },
+    ],
   },
   {
-    title: "People",
+    title: "People & access",
     items: [
-      { label: "Team & access", to: "/team", icon: IconUsers, permission: "employees.view" },
-      // No permission: everyone can open it — admins see the whole team, everyone else sees their own record.
-      { label: "Attendance", to: "/attendance", icon: IconClock },
-      { label: "Activity", to: "/activity", icon: IconActivity, permission: "activity.view" },
+      // No permission: every staff member can open it — admins see the whole team, everyone else sees their own record.
+      { label: "Attendance", to: "/attendance", icon: IconClock, excludeRole: "partner" },
+      { label: "Users & access", to: "/team", icon: IconUsers, permission: "employees.view" },
     ],
   },
 ];
+
+const canSee = (item: NavItem, has: (p: string) => boolean, roles: string[]) =>
+  !(item.excludeRole && roles.includes(item.excludeRole)) &&
+  (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission));
 
 const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
@@ -116,7 +128,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, hasPermission, logout } = useAuth();
   const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((item) => !item.permission || hasPermission(item.permission)),
+    items: g.items.filter((item) => canSee(item, hasPermission, user?.roles ?? [])),
   })).filter((g) => g.items.length > 0);
   const primaryRole = user?.roles[0];
 
@@ -137,7 +149,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  end
+                  end={!item.prefix}
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -201,8 +213,8 @@ export function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const { hasPermission } = useAuth();
-  const pages = NAV_ITEMS.filter((i) => !i.permission || hasPermission(i.permission));
+  const { user, hasPermission } = useAuth();
+  const pages = NAV_ITEMS.filter((i) => canSee(i, hasPermission, user?.roles ?? []));
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

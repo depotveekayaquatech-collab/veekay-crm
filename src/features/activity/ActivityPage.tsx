@@ -45,7 +45,7 @@ export function ActivityPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Activity" subtitle="Every change in the workspace, newest first." />
+      <PageHeader title="Audit log" subtitle="Every change in the workspace, newest first." />
       <Select
         label="Filter"
         value={entityType}

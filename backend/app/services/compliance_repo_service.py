@@ -98,14 +98,16 @@ def repository(
     # The "delivery manager" of a store is its vendor — the person/firm that actually delivers to it.
     managers = {s.id: ((s.vendor_name or "").strip() or None) for s in everyone}
 
+    # Dropdown options follow the selected platform (Blinkit and Zepto have their own regions/cities/vendors).
+    scoped = [s for s in everyone if not partner or (s.partner_organization and s.partner_organization.slug == partner)]
     options = ComplianceOptions(
         regions=sorted(
-            {s.region.id: RegionOption(id=s.region.id, name=s.region.name) for s in everyone if s.region}.values(),
+            {s.region.id: RegionOption(id=s.region.id, name=s.region.name) for s in scoped if s.region}.values(),
             key=lambda r: r.name.lower(),
         ),
-        cities=sorted({s.city.strip() for s in everyone if s.city and s.city.strip()}, key=str.lower),
-        managers=sorted({m.lower(): m for m in managers.values() if m}.values(), key=str.lower),  # one entry per vendor, any spelling/case
-        has_unassigned=any(m is None for m in managers.values()),
+        cities=sorted({s.city.strip() for s in scoped if s.city and s.city.strip()}, key=str.lower),
+        managers=sorted({m.lower(): m for m in (managers[s.id] for s in scoped) if m}.values(), key=str.lower),  # one entry per vendor, any spelling/case
+        has_unassigned=any(managers[s.id] is None for s in scoped),
     )
 
     # ---- store-level filters (these also drive the KPI tiles) ----

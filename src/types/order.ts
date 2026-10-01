@@ -9,6 +9,14 @@ export interface MyStore {
   vendorNumber: string | null;
   pocName: string | null;
   pocNumber: string | null;
+  status: string;
+  partnerSlug: string | null;
+  partnerName: string | null;
+  regionId: string | null;
+  /** The server's "today" (YYYY-MM-DD) — quick entry marks against this, not the browser clock. */
+  today: string;
+  todayCount: number | null;
+  yesterdayCount: number | null;
 }
 
 export interface CalendarDay {
@@ -268,6 +276,13 @@ interface MyStoreWire {
   vendor_number: string | null;
   poc_name: string | null;
   poc_number: string | null;
+  status: string;
+  partner_slug: string | null;
+  partner_name: string | null;
+  region_id: string | null;
+  today: string;
+  today_count: number | null;
+  yesterday_count: number | null;
 }
 
 export function toMyStore(w: MyStoreWire): MyStore {
@@ -282,6 +297,13 @@ export function toMyStore(w: MyStoreWire): MyStore {
     vendorNumber: w.vendor_number,
     pocName: w.poc_name,
     pocNumber: w.poc_number,
+    status: w.status,
+    partnerSlug: w.partner_slug,
+    partnerName: w.partner_name,
+    regionId: w.region_id,
+    today: w.today,
+    todayCount: w.today_count,
+    yesterdayCount: w.yesterday_count,
   };
 }
 

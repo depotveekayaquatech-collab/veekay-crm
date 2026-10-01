@@ -2,7 +2,6 @@ import { apiRequest, getCurrentRefreshToken, setTokens } from "@/services/api";
 import type { CurrentUser } from "@/types/auth";
 
 interface LoginPayload {
-  organizationSlug: string;
   employeeCode: string;
   password: string;
 }
@@ -50,29 +49,18 @@ function toCurrentUser(res: MeResponse): CurrentUser {
   };
 }
 
-/**
- * Sign in. `afterSignIn` runs right after a successful login, but only when the server says this sign-in
- * counts as attendance — that is the one moment the device location is read. Admins never trigger it.
- */
-export async function login(payload: LoginPayload, afterSignIn?: () => Promise<void>): Promise<CurrentUser> {
+/** Sign in with an ID and password. Attendance is a separate, explicit Check in — signing in never reads a location. */
+export async function login(payload: LoginPayload): Promise<CurrentUser> {
   const tokens = await apiRequest<TokenResponse>("/auth/login", {
     method: "POST",
     silent: true,
     skipAuthRefresh: true,
     body: {
-      organization_slug: payload.organizationSlug,
       employee_code: payload.employeeCode,
       password: payload.password,
     },
   });
   setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
-  if (tokens.attendance && afterSignIn) {
-    try {
-      await afterSignIn();
-    } catch {
-      /* a missing location never blocks signing in */
-    }
-  }
   return toCurrentUser(await apiRequest<MeResponse>("/auth/me"));
 }
 
@@ -120,7 +108,3 @@ export async function fetchCurrentUser(silent = false): Promise<CurrentUser> {
   return toCurrentUser(await apiRequest<MeResponse>("/auth/me", { silent }));
 }
 
-/** Attach the device location to the sign-in that just happened (allowed once, right after login). */
-export async function recordLoginLocation(loc: { latitude: number; longitude: number; accuracy: number }): Promise<void> {
-  await apiRequest("/attendance/location", { method: "POST", body: loc, silent: true }).catch(() => undefined);
-}

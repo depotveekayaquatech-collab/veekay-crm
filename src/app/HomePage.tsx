@@ -15,10 +15,8 @@ export function HomePage() {
       ? "/orders"
       : has("stores.view")
         ? "/stores"
-        : has("regions.view")
-          ? "/regions"
-          : has("activity.view")
-            ? "/activity"
-            : "/orders";
+        : has("activity.view")
+          ? "/activity"
+          : "/orders";
   return <Navigate to={target} replace />;
 }

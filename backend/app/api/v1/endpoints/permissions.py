@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
+from app.core.roles import PARTNER_PERMISSIONS
 from app.db.session import get_db
 from app.models.permission import Permission
 
@@ -18,6 +19,9 @@ _GROUP_LABELS = {
     "assignments": "Assignments",
     "activity": "Activity",
     "reports": "Reports",
+    "tickets": "Tickets",
+    "leave": "Leave",
+    "attendance": "Attendance",
 }
 
 
@@ -36,8 +40,12 @@ class PermissionGroup(BaseModel):
     "", response_model=list[PermissionGroup],
     dependencies=[Depends(require_permission("employees.create"))],
 )
-def list_permissions(db: Session = Depends(get_db)) -> list[PermissionGroup]:
-    rows = db.execute(select(Permission).order_by(Permission.code)).scalars().all()
+def list_permissions(audience: str = "staff", db: Session = Depends(get_db)) -> list[PermissionGroup]:
+    """`audience=partner` lists only what a Blinkit / Zepto partner account may ever be given."""
+    stmt = select(Permission).order_by(Permission.code)
+    if audience == "partner":
+        stmt = stmt.where(Permission.code.in_(PARTNER_PERMISSIONS))
+    rows = db.execute(stmt).scalars().all()
     groups: dict[str, list[PermissionItem]] = {}
     for p in rows:
         key = p.code.split(".")[0]

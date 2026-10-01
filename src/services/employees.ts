@@ -80,3 +80,7 @@ export async function assignState(partnerId: string, state: string, employeeId: 
 export async function unassignState(assignmentId: string): Promise<void> {
   await apiRequest(`/assignments/states/${assignmentId}`, { method: "DELETE" });
 }
+
+export async function setAdminAccess(id: string, full: boolean): Promise<Employee> {
+  return toEmployee(await apiRequest<EmployeeWire>(`/employees/${id}/admin-access`, { method: "PUT", body: { full } }));
+}

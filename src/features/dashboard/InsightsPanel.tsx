@@ -75,7 +75,7 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
 
   const items: { key: string; tone: "warning" | "danger" | "info"; text: string; to?: string }[] = [];
   if (pending.data && pending.data.pending > 0)
-    items.push({ key: "pending", tone: "warning", text: `${pending.data.pending} live store${pending.data.pending > 1 ? "s" : ""} not marked today`, to: "/pending" });
+    items.push({ key: "pending", tone: "warning", text: `${pending.data.pending} live store${pending.data.pending > 1 ? "s" : ""} not marked today`, to: "/orders/pending" });
   lagging.forEach((p) =>
     items.push({ key: p.slug, tone: "danger", text: `${p.label} is at ${Math.round(p.percent)}% completion today`, to: "/orders/overview" }),
   );

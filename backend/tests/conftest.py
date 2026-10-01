@@ -91,12 +91,13 @@ from app.core.ratelimit import login_failures  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models.attendance import AttendanceSession, Office  # noqa: E402
+from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office  # noqa: E402
 from app.models.compliance_document import ComplianceDocument  # noqa: E402
 from app.models.organization import Organization  # noqa: E402
 from app.models.refresh_session import RefreshSession  # noqa: E402
 from app.models.role import Role  # noqa: E402
 from app.models.store import Store  # noqa: E402
+from app.models.ticket import Ticket  # noqa: E402
 from app.models.user import User, UserRole  # noqa: E402
 from app.models.user_permission import UserPermission  # noqa: E402
 from app.models.permission import Permission  # noqa: E402
@@ -128,7 +129,7 @@ def _clean_state():
     yield
     s = SessionLocal()
     try:
-        for model in (AttendanceSession, ComplianceDocument, RefreshSession, Office):
+        for model in (Ticket, AttendanceRecord, LeaveRequest, AttendanceSession, ComplianceDocument, RefreshSession, Office):
             s.query(model).delete()
         s.commit()
     finally:
@@ -200,7 +201,7 @@ def make_user(db):
 
     yield _make
     for uid in created:
-        for model in (AttendanceSession, RefreshSession, UserPermission, UserRole):
+        for model in (AttendanceSession, AttendanceRecord, LeaveRequest, RefreshSession, UserPermission, UserRole):
             db.query(model).filter(model.user_id == uid).delete()
         db.query(User).filter(User.id == uid).delete()
     db.commit()

@@ -1,36 +1,35 @@
 """
-Attendance from sign-in / sign-out, with where the person signed in from.
+Attendance: an explicit Check in / Check out once a day, with where the person was each time.
 See models/attendance.py for the data model and its caveats.
 
-Hooks (called from the auth layer):
-  record_login   — a successful sign-in starts a session. This is the ONLY place a location is read and
-                   classified; nothing re-checks it while the person is signed in.
-  touch          — a signed-in person is still around (throttled; one cheap UPDATE per few minutes)
-  close_family   — sign-out / revoked session ends it
+  check_in / check_out — the only places a location is read. The browser asks for it when the person taps the
+                         button; it is classified here, on the server, against the active offices.
+  day_overview / month_summary / my_month — what admins and each person see. Approved leave and the weekly
+                         off (Sunday) are shown as such rather than as "absent".
+
+Leave requests live in leave_service.
 """
 from __future__ import annotations
 
 import calendar
 import math
-import time
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.roles import ADMIN, CATEGORY_LABELS, staff_category
-from app.models.attendance import AttendanceSession, Office
+from app.models.attendance import AttendanceRecord, Office
 from app.models.role import Role
 from app.models.user import User, UserRole
 
-# Attendance is for employees and accounts staff. Admins are never tracked: no attendance row, no location check.
+# Attendance is for employees and accounts staff. Admins and partner logins are never tracked.
 ATTENDING_ROLES = {"employee", "accountant"}
-_TOUCH_EVERY_SECONDS = 300
-_last_touch: dict[uuid.UUID, float] = {}
+WEEKLY_OFF = 6  # Sunday (date.weekday())
 
 
 # --------------------------------------------------------------------------
@@ -84,185 +83,150 @@ def classify(db: Session, org_id: uuid.UUID, lat: float, lng: float) -> tuple[st
     return ("office", nearest, dist) if dist <= nearest.radius_m else ("outside", None, dist)
 
 
-# --------------------------------------------------------------------------
-# recording (called from the auth layer — callers commit)
-# --------------------------------------------------------------------------
-
 def attends(db: Session, user: User) -> bool:
-    """Does this person's sign-in count as attendance? Employees and accounts staff do; admins never do."""
+    """Is this person expected to check in? Employees and accounts staff are; admins and partner logins never are."""
     codes = {
         c for (c,) in db.execute(select(Role.code).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user.id))
     }
     return ADMIN not in codes and bool(ATTENDING_ROLES & codes)
 
 
-LOCATION_WINDOW_MINUTES = 10
+def _work_start() -> time:
+    try:
+        h, m = (int(x) for x in settings.ATTENDANCE_WORK_START.split(":"))
+        return time(h, m)
+    except (ValueError, AttributeError):
+        return time(10, 0)
 
 
-def set_login_location(
-    db: Session, user: User, family_id: uuid.UUID, latitude: float | None, longitude: float | None, accuracy: float | None,
-) -> dict:
-    """
-    Attach the sign-in location to the attendance row the person just created by signing in. This is how the
-    location gets recorded after a successful login (so admins are never asked). It is allowed ONCE per sign-in,
-    and only in the minutes right after it — so location is checked at login and at no other time.
-    """
-    if not valid_coords(latitude, longitude):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That location isn't valid.")
-    row = db.execute(
-        select(AttendanceSession)
-        .where(AttendanceSession.family_id == family_id, AttendanceSession.user_id == user.id)
-        .order_by(AttendanceSession.login_at.desc()).limit(1)
+def _is_late(checked_in: datetime) -> bool:
+    local = checked_in.astimezone(_tz())
+    limit = datetime.combine(local.date(), _work_start(), tzinfo=_tz()) + timedelta(minutes=settings.ATTENDANCE_GRACE_MINUTES)
+    return local > limit
+
+
+# --------------------------------------------------------------------------
+# location (shared by check in / check out)
+# --------------------------------------------------------------------------
+
+def _read_location(db: Session, user: User, lat: float | None, lng: float | None, accuracy: float | None) -> dict:
+    """Classify a reading. No (or invalid) coordinates is allowed — it is recorded as 'location not shared'."""
+    if not valid_coords(lat, lng):
+        return {"status": "unknown", "lat": None, "lng": None, "accuracy": None, "distance": None, "label": None}
+    st, office, dist = classify(db, user.organization_id, lat, lng)
+    return {
+        "status": st, "lat": lat, "lng": lng,
+        "accuracy": accuracy if accuracy is not None and math.isfinite(accuracy) and accuracy >= 0 else None,
+        "distance": dist, "label": office.name if office is not None else None,
+    }
+
+
+def _loc_dict(st: str | None, lat, lng, acc, dist, label) -> dict:
+    if not st or st == "unknown" or lat is None or lng is None:
+        return {"status": "unknown", "label": "Location not shared"}
+    base = {
+        "latitude": round(lat, 6), "longitude": round(lng, 6),
+        "accuracy_m": round(acc) if acc is not None else None,
+        "distance_m": round(dist) if dist is not None else None,
+        "map_url": map_url(lat, lng),
+    }
+    if st == "office":
+        return {"status": "office", "label": label or "Office", **base}
+    return {"status": "outside", "label": f"{lat:.6f}, {lng:.6f}", **base}
+
+
+def _in_loc(r: AttendanceRecord) -> dict:
+    return _loc_dict(r.check_in_status, r.check_in_lat, r.check_in_lng, r.check_in_accuracy_m, r.check_in_distance_m, r.check_in_label)
+
+
+def _out_loc(r: AttendanceRecord) -> dict | None:
+    if r.check_out_at is None:
+        return None
+    return _loc_dict(r.check_out_status, r.check_out_lat, r.check_out_lng, r.check_out_accuracy_m, r.check_out_distance_m, r.check_out_label)
+
+
+# --------------------------------------------------------------------------
+# check in / check out (callers: the person themself)
+# --------------------------------------------------------------------------
+
+def _require_attendee(db: Session, user: User) -> None:
+    if not attends(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Check in is for employees and accounts staff.")
+
+
+def _today_record(db: Session, user: User) -> AttendanceRecord | None:
+    return db.execute(
+        select(AttendanceRecord).where(AttendanceRecord.user_id == user.id, AttendanceRecord.work_date == today_local())
     ).scalar_one_or_none()
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No attendance sign-in to attach a location to.")
-    if row.latitude is not None or row.location_status != "unknown":
-        raise HTTPException(status.HTTP_409_CONFLICT, "The location for this sign-in is already recorded.")
-    if (_now() - row.login_at) > timedelta(minutes=LOCATION_WINDOW_MINUTES):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Location can only be recorded when you sign in.")
-    st, office, dist = classify(db, user.organization_id, latitude, longitude)
-    row.location_status, row.latitude, row.longitude = st, latitude, longitude
-    row.accuracy_m = accuracy if accuracy is not None and math.isfinite(accuracy) and accuracy >= 0 else None
-    row.distance_m = dist
-    if office is not None:
-        row.office_id, row.location_label = office.id, office.name
-    db.commit()
-    return _location(row)
 
 
-def record_login(
-    db: Session, user: User, family_id: uuid.UUID, *, ip: str | None, user_agent: str | None,
-    latitude: float | None = None, longitude: float | None = None, accuracy: float | None = None,
-) -> AttendanceSession:
+def _fmt_time(dt: datetime) -> str:
+    return dt.astimezone(_tz()).strftime("%I:%M %p").lstrip("0")
+
+
+def check_in(db: Session, user: User, lat: float | None, lng: float | None, accuracy: float | None) -> dict:
+    _require_attendee(db, user)
+    existing = _today_record(db, user)
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"You already checked in today at {_fmt_time(existing.check_in_at)}.")
     now = _now()
-    row = AttendanceSession(
-        organization_id=user.organization_id, user_id=user.id, work_date=local_date(now), family_id=family_id,
-        login_at=now, last_seen_at=now, ip=ip, user_agent=(user_agent or "")[:255] or None,
-    )
-    if valid_coords(latitude, longitude):
-        st, office, dist = classify(db, user.organization_id, latitude, longitude)
-        row.location_status, row.latitude, row.longitude = st, latitude, longitude
-        row.accuracy_m = accuracy if accuracy is not None and math.isfinite(accuracy) and accuracy >= 0 else None
-        row.distance_m = dist
-        if office is not None:
-            row.office_id, row.location_label = office.id, office.name
-    db.add(row)
-    db.flush()
-    return row
-
-
-def rekey_family(db: Session, old_family: uuid.UUID, new_family: uuid.UUID) -> None:
-    """The auth session was re-issued (password change). Keep the SAME attendance row — it is not a new
-    sign-in, so it is not a new location check; it just follows the new session."""
-    db.execute(
-        update(AttendanceSession)
-        .where(AttendanceSession.family_id == old_family, AttendanceSession.logout_at.is_(None))
-        .values(family_id=new_family)
-    )
-
-
-def touch(db: Session, family_id: uuid.UUID) -> None:
-    """Mark the session as seen now — at most once every few minutes per process."""
-    mono = time.monotonic()
-    if mono - _last_touch.get(family_id, -1e9) < _TOUCH_EVERY_SECONDS:
-        return
-    if len(_last_touch) > 5000:
-        _last_touch.clear()
-    _last_touch[family_id] = mono
-    db.execute(
-        update(AttendanceSession)
-        .where(AttendanceSession.family_id == family_id, AttendanceSession.logout_at.is_(None))
-        .values(last_seen_at=_now())
-    )
+    loc = _read_location(db, user, lat, lng, accuracy)
+    db.add(AttendanceRecord(
+        organization_id=user.organization_id, user_id=user.id, work_date=local_date(now), check_in_at=now,
+        check_in_status=loc["status"], check_in_lat=loc["lat"], check_in_lng=loc["lng"], check_in_accuracy_m=loc["accuracy"],
+        check_in_distance_m=loc["distance"], check_in_label=loc["label"], late=_is_late(now), source="checkin",
+    ))
     db.commit()
+    return today_status(db, user)
 
 
-def close_family(db: Session, family_id: uuid.UUID, ended_by: str) -> None:
-    db.execute(
-        update(AttendanceSession)
-        .where(AttendanceSession.family_id == family_id, AttendanceSession.logout_at.is_(None))
-        .values(logout_at=_now(), ended_by=ended_by)
-    )
+def check_out(db: Session, user: User, lat: float | None, lng: float | None, accuracy: float | None) -> dict:
+    _require_attendee(db, user)
+    rec = _today_record(db, user)
+    if rec is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Check in first — you haven't checked in today.")
+    if rec.check_out_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"You already checked out today at {_fmt_time(rec.check_out_at)}.")
+    loc = _read_location(db, user, lat, lng, accuracy)
+    rec.check_out_at = _now()
+    rec.check_out_status, rec.check_out_lat, rec.check_out_lng = loc["status"], loc["lat"], loc["lng"]
+    rec.check_out_accuracy_m, rec.check_out_distance_m, rec.check_out_label = loc["accuracy"], loc["distance"], loc["label"]
+    db.commit()
+    return today_status(db, user)
 
 
-def close_user(db: Session, user_id: uuid.UUID, ended_by: str, *, except_family: uuid.UUID | None = None) -> None:
-    stmt = update(AttendanceSession).where(AttendanceSession.user_id == user_id, AttendanceSession.logout_at.is_(None))
-    if except_family is not None:
-        stmt = stmt.where(AttendanceSession.family_id != except_family)
-    db.execute(stmt.values(logout_at=_now(), ended_by=ended_by))
+def today_status(db: Session, user: User) -> dict:
+    from app.services import leave_service
+
+    now = _now()
+    today = today_local()
+    eligible = attends(db, user)
+    rec = _today_record(db, user) if eligible else None
+    leave = leave_service.approved_leave_on(db, user, today) if eligible else None
+    minutes = None
+    if rec is not None:
+        minutes = max(0, round((((rec.check_out_at) or now) - rec.check_in_at).total_seconds() / 60))
+    return {
+        "eligible": eligible,
+        "date": today,
+        "work_start": settings.ATTENDANCE_WORK_START,
+        "grace_minutes": settings.ATTENDANCE_GRACE_MINUTES,
+        "is_weekly_off": today.weekday() == WEEKLY_OFF,
+        "checked_in": rec is not None,
+        "checked_out": bool(rec and rec.check_out_at),
+        "check_in_at": rec.check_in_at if rec else None,
+        "check_out_at": rec.check_out_at if rec else None,
+        "late": bool(rec and rec.late),
+        "minutes": minutes,
+        "check_in_location": _in_loc(rec) if rec else None,
+        "check_out_location": _out_loc(rec) if rec else None,
+        "on_leave": leave,
+    }
 
 
 # --------------------------------------------------------------------------
 # summaries
 # --------------------------------------------------------------------------
-
-def _location(s: AttendanceSession) -> dict:
-    if s.location_status == "unknown" or s.latitude is None or s.longitude is None:
-        return {"status": "unknown", "label": "Location not shared"}
-    base = {
-        "latitude": round(s.latitude, 6), "longitude": round(s.longitude, 6),
-        "accuracy_m": round(s.accuracy_m) if s.accuracy_m is not None else None,
-        "distance_m": round(s.distance_m) if s.distance_m is not None else None,
-        "map_url": map_url(s.latitude, s.longitude),
-    }
-    if s.location_status == "office":
-        return {"status": "office", "label": s.location_label or "Office", **base}
-    return {"status": "outside", "label": f"{s.latitude:.6f}, {s.longitude:.6f}", **base}
-
-
-def _end_at(s: AttendanceSession) -> datetime:
-    return s.logout_at or s.last_seen_at
-
-
-def _state(s: AttendanceSession, now: datetime) -> str:
-    if s.logout_at is not None:
-        return "signed_out"
-    if (now - s.last_seen_at) <= timedelta(minutes=settings.ATTENDANCE_ACTIVE_WINDOW_MINUTES):
-        return "active"
-    return "idle"  # closed the tab without signing out; counted until last seen
-
-
-def _session_dict(s: AttendanceSession, now: datetime) -> dict:
-    return {
-        "id": s.id, "login_at": s.login_at, "logout_at": s.logout_at, "last_seen_at": s.last_seen_at,
-        "ended_by": s.ended_by, "state": _state(s, now), "ip": s.ip, "location": _location(s),
-        "minutes": max(0, round((_end_at(s) - s.login_at).total_seconds() / 60)),
-    }
-
-
-def _active_minutes(sessions: list[AttendanceSession]) -> int:
-    """Total time signed in, merging overlaps (the same person on two devices counts once)."""
-    spans = sorted((s.login_at, max(s.login_at, _end_at(s))) for s in sessions)
-    total, cur_s, cur_e = timedelta(), None, None
-    for a, b in spans:
-        if cur_e is None or a > cur_e:
-            if cur_e is not None:
-                total += cur_e - cur_s
-            cur_s, cur_e = a, b
-        else:
-            cur_e = max(cur_e, b)
-    if cur_e is not None:
-        total += cur_e - cur_s
-    return round(total.total_seconds() / 60)
-
-
-def _day(sessions: list[AttendanceSession], now: datetime) -> dict:
-    ordered = sorted(sessions, key=lambda s: s.login_at)
-    explicit = [s.logout_at for s in ordered if s.logout_at and s.ended_by == "logout"]
-    states = [_state(s, now) for s in ordered]
-    # ACTIVE: seen recently. IDLE: a tab was left open and went quiet. SIGNED_OUT: every session was ended.
-    status_ = "ACTIVE" if "active" in states else ("IDLE" if "idle" in states else "SIGNED_OUT")
-    return {
-        "status": status_,
-        "first_login": ordered[0].login_at,
-        "last_logout": max(explicit) if explicit else None,
-        "last_active": max(_end_at(s) for s in ordered),
-        "minutes": _active_minutes(ordered),
-        "sign_ins": len(ordered),
-        # where they first signed in that day — skipping sign-ins that shared no location
-        "location": _location(next((x for x in ordered if x.location_status != "unknown"), ordered[0])),
-    }
-
 
 def _roles_by_user(db: Session, org_id: uuid.UUID) -> dict[uuid.UUID, list[str]]:
     out: dict[uuid.UUID, list[str]] = {}
@@ -284,52 +248,85 @@ def _person(u: User, roles: list[str]) -> dict:
     }
 
 
+_CAT_ORDER = {c: i for i, c in enumerate(["accounts", "blinkit", "zepto", "other", "admin"])}
+
+
 def _attendees(db: Session, org_id: uuid.UUID, roles: dict[uuid.UUID, list[str]]) -> list[User]:
-    """Active people who are expected to sign in daily."""
+    """Active people who are expected to check in daily."""
     users = db.execute(select(User).where(User.organization_id == org_id, User.is_active.is_(True))).scalars().all()
     return [u for u in users if ATTENDING_ROLES & set(roles.get(u.id, [])) and ADMIN not in roles.get(u.id, [])]
 
 
+def _minutes(r: AttendanceRecord, now: datetime) -> int:
+    if r.check_out_at is not None:
+        return max(0, round((r.check_out_at - r.check_in_at).total_seconds() / 60))
+    if r.work_date == local_date(now):
+        return max(0, round((now - r.check_in_at).total_seconds() / 60))
+    return 0  # a past day nobody checked out of: no honest figure
+
+
+def _record_status(r: AttendanceRecord, now: datetime) -> str:
+    if r.check_out_at is not None:
+        return "CHECKED_OUT"
+    return "CHECKED_IN" if r.work_date == local_date(now) else "NO_CHECKOUT"
+
+
+def _entry(r: AttendanceRecord, now: datetime) -> dict:
+    return {
+        "status": _record_status(r, now), "check_in_at": r.check_in_at, "check_out_at": r.check_out_at,
+        "minutes": _minutes(r, now), "late": r.late, "location": _in_loc(r), "check_out_location": _out_loc(r),
+        "source": r.source,
+    }
+
+
 def day_overview(db: Session, admin: User, day: date) -> dict:
+    from app.services import leave_service
+
     now = _now()
     org = admin.organization_id
     roles = _roles_by_user(db, org)
-    sessions = db.execute(
-        select(AttendanceSession).where(AttendanceSession.organization_id == org, AttendanceSession.work_date == day)
-    ).scalars().all()
-    by_user: dict[uuid.UUID, list[AttendanceSession]] = {}
-    for s in sessions:
-        by_user.setdefault(s.user_id, []).append(s)
+    records = {r.user_id: r for r in db.execute(
+        select(AttendanceRecord).where(AttendanceRecord.organization_id == org, AttendanceRecord.work_date == day)
+    ).scalars()}
+    leaves = leave_service.approved_between(db, org, day, day)
 
     people = {u.id: u for u in _attendees(db, org, roles)}
-    for uid in by_user:  # someone who signed in but is no longer 'active' still shows for that day — but never an admin
-        if uid not in people and ADMIN not in roles.get(uid, []):
+    for uid in records:  # someone who checked in but is no longer 'active' still shows for that day — never an admin
+        if uid not in people and ADMIN not in roles.get(uid, []) and ATTENDING_ROLES & set(roles.get(uid, [])):
             u = db.get(User, uid)
-            if u is not None and ATTENDING_ROLES & set(roles.get(uid, [])):
+            if u is not None:
                 people[uid] = u
 
+    off = day.weekday() == WEEKLY_OFF
     rows = []
     for uid, u in people.items():
         base = _person(u, roles.get(uid, []))
-        if uid in by_user:
-            d = _day(by_user[uid], now)
-            rows.append({**base, **d, "sessions": [_session_dict(s, now) for s in sorted(by_user[uid], key=lambda s: s.login_at)]})
+        rec = records.get(uid)
+        if rec is not None:
+            rows.append({**base, **_entry(rec, now), "leave_type": None})
         else:
-            rows.append({**base, "status": "ABSENT", "first_login": None, "last_logout": None, "last_active": None,
-                         "minutes": 0, "sign_ins": 0, "location": {"status": "unknown", "label": "—"}, "sessions": []})
-    order = {"ACTIVE": 0, "SIGNED_OUT": 1, "IDLE": 1, "ABSENT": 2}
-    cat_order = {c: i for i, c in enumerate(["accounts", "blinkit", "zepto", "other", "admin"])}
-    rows.sort(key=lambda r: (cat_order[r["category"]], order[r["status"]], r["first_login"] or now, r["full_name"].lower()))
+            lv = leaves.get(uid, [None])[0]
+            st = "ON_LEAVE" if lv else ("OFF" if off else "ABSENT")
+            rows.append({
+                **base, "status": st, "check_in_at": None, "check_out_at": None, "minutes": 0, "late": False,
+                "location": {"status": "unknown", "label": "—"}, "check_out_location": None, "source": None,
+                "leave_type": lv["leave_type"] if lv else None,
+            })
+    order = {"CHECKED_IN": 0, "CHECKED_OUT": 1, "NO_CHECKOUT": 1, "ON_LEAVE": 2, "OFF": 3, "ABSENT": 4}
+    rows.sort(key=lambda r: (_CAT_ORDER.get(r["category"], 9), order[r["status"]], r["check_in_at"] or now, r["full_name"].lower()))
 
-    present = [r for r in rows if r["status"] != "ABSENT"]
-    expected = [r for r in rows if ATTENDING_ROLES & set(r["roles"])]
+    present = [r for r in rows if r["status"] in ("CHECKED_IN", "CHECKED_OUT", "NO_CHECKOUT")]
+    expected = [r for r in rows if r["status"] not in ("OFF",)]
     return {
         "date": day,
+        "is_weekly_off": off,
         "summary": {
             "expected": len(expected),
-            "present": sum(1 for r in expected if r["status"] != "ABSENT"),
-            "active_now": sum(1 for r in rows if r["status"] == "ACTIVE"),
-            "absent": sum(1 for r in expected if r["status"] == "ABSENT"),
+            "present": len(present),
+            "checked_in_now": sum(1 for r in rows if r["status"] == "CHECKED_IN"),
+            "late": sum(1 for r in present if r["late"]),
+            "on_leave": sum(1 for r in rows if r["status"] == "ON_LEAVE"),
+            "absent": sum(1 for r in rows if r["status"] == "ABSENT"),
             "outside_office": sum(1 for r in present if r["location"]["status"] == "outside"),
             "location_unknown": sum(1 for r in present if r["location"]["status"] == "unknown"),
         },
@@ -343,8 +340,7 @@ def _month_bounds(month: date) -> tuple[date, date]:
 
 def parse_month(value: str | None) -> date:
     if not value:
-        t = today_local()
-        return t.replace(day=1)
+        return today_local().replace(day=1)
     try:
         y, m = (int(x) for x in value.split("-"))
         return date(y, m, 1)
@@ -353,16 +349,20 @@ def parse_month(value: str | None) -> date:
 
 
 def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.UUID | None, detail: bool) -> dict:
+    from app.services import leave_service
+
     now = _now()
+    today = today_local()
     start, end = _month_bounds(month)
-    stmt = select(AttendanceSession).where(
-        AttendanceSession.organization_id == org_id, AttendanceSession.work_date >= start, AttendanceSession.work_date <= end
+    stmt = select(AttendanceRecord).where(
+        AttendanceRecord.organization_id == org_id, AttendanceRecord.work_date >= start, AttendanceRecord.work_date <= end
     )
     if only_user:
-        stmt = stmt.where(AttendanceSession.user_id == only_user)
-    grouped: dict[uuid.UUID, dict[date, list[AttendanceSession]]] = {}
-    for s in db.execute(stmt).scalars():
-        grouped.setdefault(s.user_id, {}).setdefault(s.work_date, []).append(s)
+        stmt = stmt.where(AttendanceRecord.user_id == only_user)
+    grouped: dict[uuid.UUID, dict[date, AttendanceRecord]] = {}
+    for r in db.execute(stmt).scalars():
+        grouped.setdefault(r.user_id, {})[r.work_date] = r
+    leaves = leave_service.approved_between(db, org_id, start, end)
 
     roles = _roles_by_user(db, org_id)
     if only_user:
@@ -375,30 +375,44 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
                 if u is not None:
                     people[uid] = u
 
+    n_days = calendar.monthrange(month.year, month.month)[1]
+    all_dates = [date(month.year, month.month, i) for i in range(1, n_days + 1)]
     rows = []
     for uid, u in people.items():
-        days = {}
-        for d, sess in sorted(grouped.get(uid, {}).items()):
-            info = _day(sess, now)
-            entry = {
-                "first_login": info["first_login"], "last_logout": info["last_logout"], "last_active": info["last_active"],
-                "minutes": info["minutes"], "sign_ins": info["sign_ins"], "status": info["status"], "location": info["location"],
-            }
-            if detail:
-                entry["sessions"] = [_session_dict(s, now) for s in sorted(sess, key=lambda s: s.login_at)]
-            days[d.isoformat()] = entry
-        rows.append({
-            **_person(u, roles.get(uid, [])), "days": days, "days_present": len(days),
-            "total_minutes": sum(x["minutes"] for x in days.values()),
-            "outside_days": sum(1 for x in days.values() if x["location"]["status"] == "outside"),
-        })
-    cat_order = {c: i for i, c in enumerate(["accounts", "blinkit", "zepto", "other", "admin"])}
-    rows.sort(key=lambda r: (cat_order[r["category"]], r["full_name"].lower()))
-    n_days = calendar.monthrange(month.year, month.month)[1]
+        recs = grouped.get(uid, {})
+        joined = local_date(u.created_at) if u.created_at else start
+        days: dict[str, dict] = {}
+        leave_days = 0.0
+        absent = 0
+        for d in all_dates:
+            rec = recs.get(d)
+            if rec is not None:
+                days[d.isoformat()] = _entry(rec, now)
+                continue
+            if d.weekday() == WEEKLY_OFF:
+                continue
+            lv = next((x for x in leaves.get(uid, []) if x["start_date"] <= d <= x["end_date"]), None)
+            if lv:
+                half = lv["half_day"]
+                leave_days += 0.5 if half else 1
+                days[d.isoformat()] = {"status": "ON_LEAVE", "leave_type": lv["leave_type"], "half_day": half, "minutes": 0, "late": False,
+                                       "check_in_at": None, "check_out_at": None, "location": {"status": "unknown", "label": "—"}}
+            elif d < today and d >= joined:
+                absent += 1
+        present = [e for e in days.values() if e["status"] != "ON_LEAVE"]
+        row = {
+            **_person(u, roles.get(uid, [])), "days": days, "days_present": len(present),
+            "total_minutes": sum(e["minutes"] for e in present),
+            "outside_days": sum(1 for e in present if e["location"]["status"] == "outside"),
+            "late_days": sum(1 for e in present if e["late"]),
+            "leave_days": leave_days, "absent_days": absent,
+        }
+        rows.append(row)
+    rows.sort(key=lambda r: (_CAT_ORDER.get(r["category"], 9), r["full_name"].lower()))
     return {
         "month": f"{month:%Y-%m}",
-        "dates": [date(month.year, month.month, i).isoformat() for i in range(1, n_days + 1)],
-        "today": today_local(),
+        "dates": [d.isoformat() for d in all_dates],
+        "today": today,
         "rows": rows,
     }
 
@@ -461,6 +475,5 @@ def delete_office(db: Session, admin: User, office_id: uuid.UUID) -> None:
     o = db.get(Office, office_id)
     if o is None or o.organization_id != admin.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Office not found.")
-    db.delete(o)  # past sign-ins keep their stored label
+    db.delete(o)  # past check-ins keep their stored label
     db.commit()
-

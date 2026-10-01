@@ -49,6 +49,13 @@ class MyStore(BaseModel):
     vendor_number: str | None
     poc_name: str | None
     poc_number: str | None
+    status: str
+    partner_slug: str | None = None
+    partner_name: str | None = None
+    region_id: uuid.UUID | None = None
+    today: date  # the server's "today" — the date the quick-entry list marks against
+    today_count: int | None = None
+    yesterday_count: int | None = None
 
 
 class EmployeeOverviewRow(BaseModel):
