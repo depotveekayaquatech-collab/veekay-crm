@@ -36,7 +36,7 @@ def _stores(db: Session, admin: User, start: date, end: date, partner: str | Non
     stmt = (
         select(Store)
         .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry))
-        .options(joinedload(Store.partner_organization))
+        .options(joinedload(Store.partner_organization), joinedload(Store.region))
         .order_by(Store.state, Store.city, Store.name)
     )
     if partner:
@@ -95,8 +95,7 @@ def matrix_xlsx(
     totals: bool = True,
 ) -> bytes:
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Alignment, Border, Font, Side
 
     dates = _validate(start, end)
     stores = _stores(db, admin, start, end, partner, state, city)
@@ -104,37 +103,43 @@ def matrix_xlsx(
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Daily distribution"
-    head = ["#", "Store", "Store code", "Channel", "State", "City", *[d.strftime("%d-%b") for d in dates], *(["Total"] if totals else [])]
+    ws.title = "Sheet1"
+    head = [
+        "Region", "Channel", "Entity", "STATE", "City", "Outlet ID", "Outlet Name", "POC Name", "Contact No",
+        "PRIMARY VENDOR NAME", "PRIMARY LICENSE NUMBER", "SECONDARY VENDOR NAME", "SECONDARY LICENSE NUMBER",
+        *(["Total Count"] if totals else []),
+        *[f"{d.day}-{d.strftime('%b')}" for d in dates],  # plain text, no leading zero
+    ]
     ws.append(head)
+    side = Side(style="thin")
     for c in ws[1]:
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor="1E46A0")
-        c.alignment = Alignment(horizontal="center", vertical="center")
-    for i, s in enumerate(stores, start=1):
+        c.font = Font(name="Calibri", size=11, bold=True)
+        c.alignment = Alignment(horizontal="center", vertical="top")
+        c.border = Border(left=side, right=side, top=side, bottom=side)
+
+    def text(v: str | None) -> str:
+        return v.strip() if v and v.strip() else "N/A"
+
+    for s in stores:
         v = entries.get(s.id, {})
+        days = [v.get(d, 0) for d in dates]
         ws.append([
-            i, s.name, s.external_code, s.partner_organization.name if s.partner_organization else "", s.state or "", s.city or "",
-            *[v.get(d) for d in dates],        # blank cell = not marked; 0 stays 0
-            *([sum(v.values())] if totals else []),
+            text(s.region.name.upper() if s.region else None),
+            s.partner_organization.name.upper() if s.partner_organization else "N/A",
+            text(s.entity),
+            s.state or "N/A",
+            s.city or "N/A",
+            str(s.external_code),
+            s.name,
+            text(s.poc_name),
+            text(s.poc_number),
+            "VeeKay Aquatech PVT Ltd",
+            "10013064000321",
+            None,
+            None,
+            *([sum(days)] if totals else []),
+            *days,
         ])
-    n_fixed = 6
-    ws.freeze_panes = ws.cell(row=2, column=n_fixed + 1)
-    ws.column_dimensions["B"].width = 38
-    for col, w in ((1, 5), (3, 18), (4, 10), (5, 16), (6, 16)):
-        ws.column_dimensions[get_column_letter(col)].width = w
-    for j in range(n_fixed + 1, len(head) + 1):
-        ws.column_dimensions[get_column_letter(j)].width = 8
-        for r in range(2, ws.max_row + 1):
-            ws.cell(row=r, column=j).alignment = Alignment(horizontal="center")
-    if totals:
-        ws.cell(row=ws.max_row + 1, column=2, value="TOTAL").font = Font(bold=True)
-        total_row = ws.max_row
-        for j in range(n_fixed + 1, len(head) + 1):
-            col = get_column_letter(j)
-            cell = ws.cell(row=total_row, column=j, value=f"=SUM({col}2:{col}{total_row - 1})")
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal="center")
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

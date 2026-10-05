@@ -209,12 +209,10 @@ def test_partner_delivery_report_is_an_excel_without_totals_for_its_own_platform
     assert "blinkit-delivery-report" in r.headers["content-disposition"]
     ws = load_workbook(io.BytesIO(r.content)).active
     header = [c.value for c in ws[1]]
-    assert header[:6] == ["#", "Store", "Store code", "Channel", "State", "City"] and len(header) == 6 + 3
-    assert "Total" not in header                                              # no row-total column
-    labels = {str(ws.cell(row=i, column=2).value).upper() for i in range(2, ws.max_row + 1)}
-    assert "TOTAL" not in labels                                              # no total row
-    channels = {ws.cell(row=i, column=4).value for i in range(2, ws.max_row + 1)}
-    assert channels == {"Blinkit"}                                            # never another platform
+    assert header[:2] == ["Region", "Channel"] and len(header) == 13 + 3
+    assert "Total Count" not in header                                        # no row-total column
+    channels = {ws.cell(row=i, column=2).value for i in range(2, ws.max_row + 1)}
+    assert channels == {"BLINKIT"}                                            # never another platform
 
 
 def test_delivery_report_needs_its_permission_and_a_sane_range(client, admin, partner, made):
@@ -234,8 +232,8 @@ def test_admin_report_still_has_totals(client, admin):
     end = date.today()
     r = client.get(f"{API}/orders/matrix/export?start={end - timedelta(days=1)}&end={end}&partner=blinkit", headers=admin)
     ws = load_workbook(io.BytesIO(r.content)).active
-    assert [c.value for c in ws[1]][-1] == "Total"
-    assert any(str(ws.cell(row=i, column=2).value) == "TOTAL" for i in range(2, ws.max_row + 1))
+    header = [c.value for c in ws[1]]
+    assert ws.title == "Sheet1" and header[13] == "Total Count" and len(header) == 14 + 2
 
 
 # ---------------------------------------------------------------- tickets pushed in from a Google Apps Script
