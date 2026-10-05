@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core import storage
+from app.core.config import settings
 from app.models.compliance_document import VALID_KINDS, BillStatus, ComplianceDocument, DocKind
 from app.models.store import Store, StoreStatus
 from app.models.user import User
@@ -34,7 +35,7 @@ from app.schemas.compliance import (
 )
 from app.services import activity_service, assignment_service
 from app.services.compliance_service import (
-    MAX_FILES_PER_UPLOAD, _brief, _can_manage, _CONTENT_TYPES, _err, _key_for, _prepare, _today,
+    MAX_FILES_PER_UPLOAD, _brief, _can_manage, _CONTENT_TYPES, _err, _key_for, _prepare, _today, save_document,
     allowed_months, bill_due_date, month_label, parse_month,
 )
 
@@ -68,7 +69,8 @@ def _docs(db: Session, store_ids: list[uuid.UUID], month: date) -> dict[uuid.UUI
     if not store_ids:
         return out
     for d in db.execute(
-        select(ComplianceDocument).where(ComplianceDocument.store_id.in_(store_ids), ComplianceDocument.month == month)
+        select(ComplianceDocument).where(
+            ComplianceDocument.store_id.in_(store_ids), ComplianceDocument.month == month, ComplianceDocument.deleted_at.is_(None))
     ).scalars():
         out.setdefault(d.store_id, {})[d.kind] = d
     return out
@@ -263,46 +265,25 @@ def bulk_upload(
 
 
 def _save_document(db: Session, user: User, store: Store, month: date, kind: str, data: bytes, ext: str, n_files: int) -> None:
-    """Create or replace the (store, month, kind) document. Mirrors compliance_service.upload without its commit."""
+    """Add the next version of the (store, month, kind) document (no commit). Earlier files are kept."""
     if store.partner_organization is None:
         db.refresh(store)
-    key = _key_for(store, month, kind, ext)
-    storage.save(key, data)
-    display = f"{store.external_code}_{kind}_{month:%Y-%m}.{ext}"
-    doc = db.execute(
-        select(ComplianceDocument).where(
-            ComplianceDocument.store_id == store.id, ComplianceDocument.month == month, ComplianceDocument.kind == kind
-        )
-    ).scalar_one_or_none()
-    old_key = None
-    if doc is None:
-        db.add(ComplianceDocument(
-            organization_id=user.organization_id, store_id=store.id, month=month, kind=kind,
-            file_key=key, file_name=display, content_type=_CONTENT_TYPES[ext], size_bytes=len(data),
-            uploaded_by_user_id=user.id,
-            due_date=bill_due_date(month) if kind == DocKind.BILL.value else None,
-            status=BillStatus.PENDING.value if kind == DocKind.BILL.value else None,
-        ))
-    else:
-        old_key = doc.file_key
-        doc.file_key, doc.file_name, doc.content_type, doc.size_bytes = key, display, _CONTENT_TYPES[ext], len(data)
-        doc.uploaded_by_user_id = user.id
-        if kind == DocKind.BILL.value and doc.due_date is None:
-            doc.due_date = bill_due_date(month)
-    db.flush()
-    if old_key and old_key != key:
-        storage.delete(old_key)
+    save_document(db, user, store, month, kind, data, ext, n_files)
 
 
 # --------------------------------------------------------------------------
 # summary PDF for the selected stores
 # --------------------------------------------------------------------------
 
-def summary_pdf(db: Session, user: User, perms: set[str], store_ids: list[uuid.UUID], month_str: str | None) -> bytes:
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.pdfgen import canvas
+_KIND_TITLE = {DocKind.CARD.value: "Compliance card", DocKind.BILL.value: "Invoice", DocKind.PAYMENT.value: "Payment proof"}
+_HEADER_BAND = 34.0  # points added above every page for the outlet id / store name
 
-    from app.core.config import settings
+
+def summary_pdf(db: Session, user: User, perms: set[str], store_ids: list[uuid.UUID], month_str: str | None) -> bytes:
+    """One collective PDF: for every selected store (by name), its card, invoice and payment proof for the month -
+    photos and PDFs alike - each page topped with a band showing the outlet id and the store name. The original
+    page is placed unchanged below the band, so nothing on it is covered."""
+    import pymupdf
 
     month = parse_month(month_str)
     wanted = set(store_ids)
@@ -311,93 +292,41 @@ def summary_pdf(db: Session, user: User, perms: set[str], store_ids: list[uuid.U
         raise _err(status.HTTP_404_NOT_FOUND, "None of those stores were found.")
     docs = _docs(db, [s.id for s in stores], month)
 
-    W, H = landscape(A4)
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=(W, H))
-    c.setTitle(f"Store compliance summary - {month_label(month)}")
-    c.setAuthor(settings.COMPANY_NAME)
-
-    BRAND, INK, MUTED, LINE, SOFT, GREEN = (0.145, 0.349, 0.788), (0.059, 0.086, 0.161), (0.408, 0.443, 0.537), (0.85, 0.87, 0.9), (0.945, 0.953, 0.973), (0.06, 0.48, 0.34)
-    cols = [("#", 22), ("Store", 190), ("Code", 70), ("City", 78), ("Channel", 50), ("Vendor", 90), ("Status", 56),
-            ("Card", 42), ("Invoice", 46), ("Payment", 50), ("%", 34)]
-    left, row_h = 28.0, 18.0
-    total_w = sum(w for _, w in cols)
-
-    def header(page_no: int) -> float:
-        c.setFillColorRGB(*BRAND)
-        c.rect(0, H - 56, W, 56, stroke=0, fill=1)
-        # logo on a white tile (it is maroon / gold, so it needs a light background on the blue band)
-        from app.services.card_service import draw_logo
-
-        c.setFillColorRGB(1, 1, 1)
-        c.roundRect(left, H - 50, 62, 44, 6, stroke=0, fill=1)
-        draw_logo(c, left + 4, H - 47, 54, 38)
-        tx = left + 76
-        c.setFillColorRGB(1, 1, 1)
-        c.setFont("Helvetica-Bold", 15)
-        c.drawString(tx, H - 30, "STORE COMPLIANCE SUMMARY")
-        c.setFont("Helvetica", 9.5)
-        c.drawString(tx, H - 44, f"{month_label(month)}  ·  {len(stores)} store{'s' if len(stores) != 1 else ''}  ·  {settings.COMPANY_NAME}")
-        c.drawRightString(W - left, H - 44, f"Page {page_no}")
-        y = H - 56 - 22
-        c.setFillColorRGB(*SOFT)
-        c.rect(left, y - 4, total_w, row_h + 2, stroke=0, fill=1)
-        c.setFillColorRGB(*MUTED)
-        c.setFont("Helvetica-Bold", 7.5)
-        x = left
-        for name, w in cols:
-            c.drawString(x + 4, y + 2, name.upper())
-            x += w
-        return y - row_h
-
-    def tick(x: float, y: float, ok: bool) -> None:
-        # drawn as vector strokes (not a font glyph) so it looks identical in every PDF viewer
-        if ok:
-            c.setStrokeColorRGB(*GREEN)
-            c.setLineWidth(1.5)
-            path = c.beginPath()
-            path.moveTo(x, y + 3.5)
-            path.lineTo(x + 3, y + 0.5)
-            path.lineTo(x + 8.5, y + 7)
-            c.drawPath(path, stroke=1, fill=0)
-        else:
-            c.setStrokeColorRGB(*LINE)
-            c.setLineWidth(1)
-            c.line(x + 1.5, y + 3.5, x + 7, y + 3.5)
-
-    page_no, y = 1, header(1)
-    for i, s in enumerate(sorted(stores, key=lambda s: s.name.lower()), start=1):
-        if y < 40:
-            c.showPage()
-            page_no += 1
-            y = header(page_no)
-        d = docs.get(s.id, {})
-        n = _logged(d)
-        st = _status(n)
-        c.setStrokeColorRGB(*LINE)
-        c.line(left, y - 4, left + total_w, y - 4)
-        vals = [str(i), s.name, s.external_code, s.city or "", s.partner_organization.name if s.partner_organization else "",
-                (s.vendor_name or "").strip() or "Unassigned", st]
-        x = left
-        c.setFont("Helvetica", 8)
-        for (name, w), v in zip(cols[:7], vals):
-            if name == "Status":
-                c.setFillColorRGB(*(GREEN if st == "COMPLETE" else (0.78, 0.2, 0.25) if st == "PENDING" else (0.66, 0.39, 0.07)))
-                c.setFont("Helvetica-Bold", 7.5)
-            else:
-                c.setFillColorRGB(*INK)
-                c.setFont("Helvetica", 8)
-            txt = v
-            while c.stringWidth(txt, c._fontname, c._fontsize) > w - 8 and len(txt) > 1:
-                txt = txt[:-2] + "…" if not txt.endswith("…") else txt[:-2] + "…"
-            c.drawString(x + 4, y, txt)
-            x += w
-        for kind, (_, w) in zip(REQUIRED, cols[7:10]):
-            tick(x + w / 2 - 4, y, kind in d)
-            x += w
-        c.setFillColorRGB(*INK)
-        c.setFont("Helvetica-Bold", 8)
-        c.drawString(x + 4, y, f"{round(n / len(REQUIRED) * 100)}%")
-        y -= row_h
-    c.save()
-    return buf.getvalue()
+    out = pymupdf.open()
+    stores_with_files = 0
+    for s in sorted(stores, key=lambda s: s.name.lower()):
+        pages_before = out.page_count
+        for kind in REQUIRED:
+            d = docs.get(s.id, {}).get(kind)
+            if d is None or not storage.exists(d.file_key):
+                continue
+            raw = storage.read(d.file_key)
+            try:
+                src = pymupdf.open(stream=raw, filetype="pdf" if d.content_type == "application/pdf" else d.file_key.rsplit(".", 1)[-1])
+                if not src.is_pdf:  # a photo: turn it into a one-page PDF first
+                    src = pymupdf.open("pdf", src.convert_to_pdf())
+            except Exception:  # a damaged file must not sink the whole export
+                continue
+            for pno in range(src.page_count):
+                box = src[pno].rect
+                page = out.new_page(width=box.width, height=box.height + _HEADER_BAND)
+                page.show_pdf_page(pymupdf.Rect(0, _HEADER_BAND, box.width, box.height + _HEADER_BAND), src, pno)
+                page.draw_rect(pymupdf.Rect(0, 0, box.width, _HEADER_BAND), color=None, fill=(0.145, 0.349, 0.788))
+                head = f"Outlet ID: {s.external_code}   |   {s.name}"
+                tag = f"{_KIND_TITLE[kind]} - {month_label(month)}"
+                room = box.width - 24
+                tag_w = pymupdf.get_text_length(tag, fontname="helv", fontsize=9)
+                show_tag = box.width >= 480  # small pages (thumbnails): the id and name get the whole band
+                head_room = room - (tag_w + 16 if show_tag else 0)
+                size = max(5.0, min(12.0, 12.0 * head_room / max(pymupdf.get_text_length(head, fontname="hebo", fontsize=12), 1)))
+                page.insert_text((12, 22), head, fontsize=size, fontname="hebo", color=(1, 1, 1))
+                if show_tag:
+                    page.insert_text((box.width - 12 - tag_w, 22), tag, fontsize=9, fontname="helv", color=(1, 1, 1))
+            src.close()
+        stores_with_files += out.page_count > pages_before
+    if out.page_count == 0:
+        raise _err(status.HTTP_404_NOT_FOUND, "None of the selected stores has a file uploaded for this month.")
+    out.set_metadata({"title": f"Store compliance - {month_label(month)}", "author": settings.COMPANY_NAME})
+    data = out.tobytes(garbage=3, deflate=True)
+    out.close()
+    return data

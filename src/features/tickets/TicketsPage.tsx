@@ -2,17 +2,14 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { IconPlus } from "@/components/ui/icons";
 import { RegionFilter, SearchBox, SegmentedControl } from "@/features/orders/ui";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "@/features/tickets/parts";
 import { dueLabel, timeAgo } from "@/lib/ticketTime";
-import { NewTicketModal } from "@/features/tickets/NewTicketModal";
 import { TicketDetailModal } from "@/features/tickets/TicketDetailModal";
 import { TicketInsights } from "@/features/tickets/TicketInsights";
 import { useTickets } from "@/features/tickets/useTickets";
@@ -31,8 +28,6 @@ function List({ isAdmin }: { isAdmin: boolean }) {
   const [filters, setFilters] = useState<TicketFilters>(EMPTY);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const canCreate = usePermission("tickets.create") || isAdmin;
   const { data, isLoading, isError, refetch, isFetching } = useTickets(filters, page);
 
   // Platform + region filters are for admins, who see every region; the region list follows the platform.
@@ -100,11 +95,6 @@ function List({ isAdmin }: { isAdmin: boolean }) {
           </button>
         )}
         <span className="ml-auto text-xs text-gray-400">{isFetching ? "Updating…" : data ? `${data.total} ticket${data.total === 1 ? "" : "s"}` : ""}</span>
-        {canCreate && (
-          <Button onClick={() => setCreating(true)}>
-            <IconPlus className="h-4 w-4" /> Raise ticket
-          </Button>
-        )}
       </div>
 
       {isLoading && <Skeleton className="h-72" />}
@@ -176,15 +166,6 @@ function List({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {openId && <TicketDetailModal id={openId} onClose={() => setOpenId(null)} />}
-      {creating && (
-        <NewTicketModal
-          onClose={() => setCreating(false)}
-          onCreated={(id) => {
-            setCreating(false);
-            setOpenId(id);
-          }}
-        />
-      )}
     </div>
   );
 }

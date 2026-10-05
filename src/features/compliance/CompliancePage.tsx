@@ -113,7 +113,7 @@ function DocCell({
       )}
       <div className="flex gap-2 text-[11px] font-semibold">
         <button onClick={() => void openDocument(doc.id)} className="text-brand-600 hover:text-brand-700">View</button>
-        <button onClick={onAdd} className="text-brand-600 hover:text-brand-700">Replace</button>
+        <button onClick={onAdd} className="text-brand-600 hover:text-brand-700">Upload new</button>
         <button onClick={onRemove} className="text-status-danger hover:opacity-80">Remove</button>
       </div>
     </div>
@@ -419,14 +419,14 @@ export function CompliancePage() {
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setRemoving(null)}>Keep it</Button>
+            <Button variant="secondary" onClick={() => setRemoving(null)}>Cancel</Button>
             <Button variant="danger" isLoading={remove.isPending} onClick={() => removing && remove.mutate(removing.doc.id, { onSuccess: () => setRemoving(null) })}>
               Remove
             </Button>
           </>
         }
       >
-        <p className="text-sm text-gray-600">The file is deleted and this can&apos;t be undone. You can upload a new one afterwards.</p>
+        <p className="text-sm text-gray-600">It will be taken off this list. The file itself is kept safely and never deleted, and uploading again for this store and month brings it back.</p>
       </Modal>
 
     </div>

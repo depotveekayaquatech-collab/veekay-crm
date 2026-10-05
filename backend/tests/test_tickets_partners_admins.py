@@ -95,11 +95,22 @@ def test_partner_home_overview(client, partner, admin):
 
 
 # ---------------------------------------------------------------- tickets
-def test_ticket_visibility_follows_region_and_platform(client, admin, emp, partner):
-    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]          # a North / Blinkit store EMP001 handles
-    t = client.post(f"{API}/tickets", headers=partner, json={"store_id": store["id"], "category": "LATE_DELIVERY", "priority": "HIGH", "title": "Delivery came 3 hours late"})
-    assert t.status_code == 201, t.text
-    tid = t.json()["id"]
+def _raise(client, webhook, emp, n=[0], **body) -> str:
+    """Tickets only arrive from the Google script; this plays the script for a store EMP001 handles."""
+    n[0] += 1
+    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
+    r = _intake(client, webhook, external_id=f"t-{n[0]}-{store['external_code']}", store_code=store["external_code"], platform="blinkit", **body)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_portal_cannot_raise_tickets(client, admin, emp, partner):
+    for h in (admin, emp, partner):
+        assert client.post(f"{API}/tickets", headers=h, json={"title": "x"}).status_code in (404, 405)
+
+
+def test_ticket_visibility_follows_region_and_platform(client, admin, emp, partner, webhook):
+    tid = _raise(client, webhook, emp, category="Water arrived late", priority="High", title="Delivery came 3 hours late")
     assert tid in {x["id"] for x in client.get(f"{API}/tickets", headers=emp).json()["items"]}            # the region's employee receives it
     assert tid in {x["id"] for x in client.get(f"{API}/tickets", headers=admin).json()["items"]}          # admin sees every region
     # a Zepto employee (a different platform and state scope) never sees it
@@ -109,15 +120,8 @@ def test_ticket_visibility_follows_region_and_platform(client, admin, emp, partn
     assert client.get(f"{API}/tickets/{tid}", headers=z).status_code == 404
 
 
-def test_partner_cannot_raise_a_ticket_for_another_platform(client, admin, partner):
-    zep = next(s for s in client.get(f"{API}/tickets/stores?q=ZEP", headers=admin).json() if s["platform_slug"] == "zepto")
-    r = client.post(f"{API}/tickets", headers=partner, json={"store_id": zep["id"], "category": "OTHER", "title": "Not my store"})
-    assert r.status_code == 403
-
-
-def test_ticket_workflow_roles(client, admin, emp, partner):
-    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
-    tid = client.post(f"{API}/tickets", headers=partner, json={"store_id": store["id"], "category": "NO_DELIVERY", "priority": "URGENT", "title": "Nothing arrived today"}).json()["id"]
+def test_ticket_workflow_roles(client, admin, emp, partner, webhook):
+    tid = _raise(client, webhook, emp, category="No delivery", priority="Urgent", title="Nothing arrived today")
     patch = lambda h, **b: client.patch(f"{API}/tickets/{tid}", headers=h, json=b)
     assert patch(emp, priority="LOW").status_code == 403                       # only admins set priority / assign
     assert patch(emp, status="CLOSED").status_code == 403                      # employees can't close
@@ -134,9 +138,9 @@ def test_ticket_workflow_roles(client, admin, emp, partner):
     assert reopened.json()["status"] == "OPEN" and reopened.json()["priority"] == "HIGH" and reopened.json()["resolved_at"] is None
 
 
-def test_insights_are_admin_only_and_flag_delivery_problems(client, admin, emp, partner):
+def test_insights_are_admin_only_and_flag_delivery_problems(client, admin, emp, partner, webhook):
     store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
-    client.post(f"{API}/tickets", headers=partner, json={"store_id": store["id"], "category": "LATE_DELIVERY", "title": "Late again"})
+    _raise(client, webhook, emp, category="Water arrived late", title="Late again")
     assert client.get(f"{API}/tickets/analytics", headers=emp).status_code == 403
     a = client.get(f"{API}/tickets/analytics", headers=admin).json()
     assert a["summary"]["delivery_active"] >= 1 and a["by_region"] and a["by_vendor"] is not None
@@ -297,3 +301,17 @@ def test_webhook_unknown_store_and_category_mapping(client, emp, webhook):
     assert normalise_category("LATE_DELIVERY") == "LATE_DELIVERY"
     assert normalise_category("something else") == "OTHER" and normalise_category(None) == "OTHER"
     assert normalise_priority("High") == "HIGH" and normalise_priority("") == "MEDIUM" and normalise_priority("minor") == "LOW"
+
+
+def test_webhook_finds_the_store_by_name_when_there_is_no_code(client, emp, webhook):
+    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
+    r = _intake(client, webhook, external_id="by-name", store_code=None, store_name=f"  {store['name'].upper()} ", platform="blinkit")
+    assert r.status_code == 201, r.text
+    assert _intake(client, webhook, external_id="none", store_code=None).status_code == 422
+    assert _intake(client, webhook, external_id="nope", store_code=None, store_name="zzz no such store").status_code == 422
+
+
+def test_webhook_defaults_to_blinkit_and_refuses_other_platforms(client, emp, webhook):
+    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
+    assert _intake(client, webhook, external_id="no-platform", store_code=store["external_code"]).status_code == 201
+    assert _intake(client, webhook, external_id="zep", store_code=store["external_code"], platform="zepto").status_code == 422

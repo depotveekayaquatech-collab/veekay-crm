@@ -131,6 +131,30 @@ def test_removing_a_document(client, admin, make_store):
     assert client.get(f"{API}/compliance/{doc['id']}/file", headers=admin).status_code == 404
 
 
+def test_files_are_never_deleted_a_re_upload_adds_a_version(client, admin, make_store):
+    from app.core import storage
+
+    s = make_store()
+    first = up(client, admin, s).json()
+    second = up(client, admin, s).json()
+    assert first["id"] == second["id"]
+    v = client.get(f"{API}/compliance/{first['id']}/versions", headers=admin).json()
+    assert [x["version"] for x in v] == [2, 1] and v[0]["current"] and not v[1]["current"]
+    assert client.get(f"{API}/compliance/{first['id']}/file?version=1", headers=admin).status_code == 200   # the old file is still there
+
+
+def test_remove_only_archives_and_a_new_upload_restores(client, admin, make_store):
+    s = make_store()
+    doc = up(client, admin, s).json()
+    assert client.delete(f"{API}/compliance/{doc['id']}", headers=admin).status_code == 204
+    found = client.get(f"{API}/compliance/search", headers=admin, params={"month": MONTH, "q": s.external_code}).json()["items"]
+    assert found == []                                                                              # hidden everywhere
+    again = up(client, admin, s)
+    assert again.status_code == 200 and again.json()["id"] == doc["id"]                              # restored, same document
+    v = client.get(f"{API}/compliance/{doc['id']}/versions", headers=admin).json()
+    assert [x["version"] for x in v] == [2, 1]
+
+
 # ---------------------------------------------------------------- repository view
 def test_status_goes_pending_partial_complete(client, admin, make_store):
     s = make_store()
@@ -177,6 +201,24 @@ def test_summary_pdf(client, admin, make_store):
     up(client, admin, s, kind="card")
     r = client.post(f"{API}/compliance/summary-pdf", headers=admin, json={"store_ids": [str(s.id)], "month": MONTH})
     assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+
+
+def test_summary_pdf_merges_photos_and_pdfs_headed_with_outlet_id_and_name(client, admin, make_store):
+    import pymupdf
+
+    a, b = make_store(code="MRG-1"), make_store(code="MRG-2")
+    up(client, admin, a, kind="card")                       # a photo
+    up(client, admin, a, kind="bill")
+    up(client, admin, b, kind="card")
+    r = client.post(f"{API}/compliance/summary-pdf", headers=admin, json={"store_ids": [str(a.id), str(b.id)], "month": MONTH})
+    assert r.status_code == 200
+    doc = pymupdf.open(stream=r.content, filetype="pdf")
+    assert doc.page_count == 3
+    tops = [p.get_text("text", clip=pymupdf.Rect(0, 0, p.rect.width, 34)) for p in doc]
+    assert all("Outlet ID:" in t for t in tops)
+    assert sum("MRG-1" in t for t in tops) == 2 and sum("MRG-2" in t for t in tops) == 1
+    empty = make_store()
+    assert client.post(f"{API}/compliance/summary-pdf", headers=admin, json={"store_ids": [str(empty.id)], "month": MONTH}).status_code == 404
 
 
 def test_download_zip(client, admin, make_store):

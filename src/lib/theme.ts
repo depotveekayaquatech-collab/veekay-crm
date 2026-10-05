@@ -13,7 +13,20 @@ function read(): Theme {
   }
 }
 
+/** Freeze every transition for the frame the theme flips, so borders, placeholders, text and fills all change together. */
+function withoutTransitions(change: () => void) {
+  const root = document.documentElement;
+  root.classList.add("theme-switching");
+  change();
+  void root.offsetHeight; // commit the new colours with transitions off
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+}
+
 function apply(theme: Theme) {
+  withoutTransitions(() => applyNow(theme));
+}
+
+function applyNow(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0d1424" : "#2f6fed");
 }

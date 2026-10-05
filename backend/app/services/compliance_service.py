@@ -5,8 +5,10 @@ Rules (from the original system):
   - Months selectable from COMPLIANCE_EARLIEST_MONTH, at most 12 back, never future.
   - One file is stored as-is; two or more photos are merged into one PDF;
     a PDF must be uploaded alone. Max COMPLIANCE_MAX_FILE_MB per file.
-  - One document per (store, month, kind). A new upload REPLACES the old file;
-    for bills the cleared status survives a re-upload.
+  - One current document per (store, month, kind). A new upload becomes the current file as a
+    new VERSION; earlier files stay in storage and in the version table. Nothing is ever deleted:
+    "remove" only archives (hides) a document, and uploading again restores it.
+    For bills the cleared status survives a re-upload.
   - A bill is due at month-end + BILL_DUE_DAYS_AFTER_MONTH_END (45) days.
   - Employees only touch stores assigned to them; admins (compliance.manage)
     any store; accountants (accounts.view) may view any document.
@@ -14,6 +16,7 @@ Rules (from the original system):
 from __future__ import annotations
 
 import calendar
+import hashlib
 import io
 import uuid
 import zipfile
@@ -25,7 +28,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core import storage
 from app.core.config import settings
-from app.models.compliance_document import VALID_KINDS, BillStatus, ComplianceDocument, DocKind
+from app.models.compliance_document import (
+    VALID_KINDS, BillStatus, ComplianceDocument, ComplianceDocumentVersion, DocKind,
+)
 from app.models.organization import Organization
 from app.models.store import Store, StoreStatus
 from app.models.user import User
@@ -124,7 +129,7 @@ def _store_for_write(db: Session, user: User, perms: set[str], store_id: uuid.UU
 
 def _doc_for_access(db: Session, user: User, perms: set[str], doc_id: uuid.UUID, *, write: bool) -> ComplianceDocument:
     doc = db.get(ComplianceDocument, doc_id)
-    if doc is None or doc.organization_id != user.organization_id:
+    if doc is None or doc.organization_id != user.organization_id or doc.deleted_at is not None:
         raise _err(status.HTTP_404_NOT_FOUND, "Document not found.")
     if _can_manage(perms) or (not write and _can_view_any(perms)):
         return doc
@@ -195,15 +200,16 @@ def _prepare(files: list[tuple[str, bytes]]) -> tuple[bytes, str]:
     return _merge_images_to_pdf([d for _, d in files]), "pdf"
 
 
-def _key_for(store: Store, month: date, kind: str, ext: str) -> str:
-    """<Month Year>/<STATE>/<ENTITY>/<code>-<kind>.<ext>; bills under Bills/; Zepto has no entity level."""
+def _key_for(store: Store, month: date, kind: str, ext: str, version: int = 1) -> str:
+    """<Month Year>/<STATE>/<ENTITY>/<code>-<kind>-v<N>.<ext>; bills under Bills/; Zepto has no entity level.
+    The version is in the name, so a new upload can never overwrite an earlier file."""
     segs = [month_label(month), (store.state or "Unknown").upper()]
     platform_slug = store.partner_organization.slug if store.partner_organization else None
     if store.entity and not assignment_service.is_employee_model(platform_slug):
         segs.append(store.entity.upper())
     folder = "/".join(storage.safe_segment(x) for x in segs)
     prefix = {DocKind.BILL.value: "Bills/", DocKind.PAYMENT.value: "Payments/"}.get(kind, "")
-    return f"{prefix}{folder}/{storage.safe_segment(store.external_code)}-{kind}.{ext}"
+    return f"{prefix}{folder}/{storage.safe_segment(store.external_code)}-{kind}-v{version}.{ext}"
 
 
 # --------------------------------------------------------------------------
@@ -220,6 +226,45 @@ def _brief(doc: ComplianceDocument, today: date, uploader: str | None = None) ->
     )
 
 
+def save_document(
+    db: Session, user: User, store: Store, month: date, kind: str, data: bytes, ext: str, n_files: int = 1,
+) -> tuple[ComplianceDocument, bool]:
+    """Store `data` as the next version of the (store, month, kind) document. Flushes, never commits, and never
+    deletes: the previous file stays in storage. Returns (document, replaced_an_earlier_file)."""
+    doc = db.execute(
+        select(ComplianceDocument).where(
+            ComplianceDocument.store_id == store.id, ComplianceDocument.month == month, ComplianceDocument.kind == kind
+        )
+    ).scalar_one_or_none()
+    version = (max((v.version for v in doc.versions), default=0) if doc else 0) + 1
+    key = _key_for(store, month, kind, ext, version)
+    storage.save(key, data)
+    fields = dict(
+        file_key=key, file_name=f"{store.external_code}_{kind}_{month:%Y-%m}.{ext}", content_type=_CONTENT_TYPES[ext],
+        size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), storage_backend=settings.STORAGE_BACKEND,
+        uploaded_by_user_id=user.id,
+    )
+    if doc is None:
+        doc = ComplianceDocument(
+            organization_id=user.organization_id, store_id=store.id, month=month, kind=kind, **fields,
+            due_date=bill_due_date(month) if kind == DocKind.BILL.value else None,
+            status=BillStatus.PENDING.value if kind == DocKind.BILL.value else None,
+        )
+        db.add(doc)
+    else:  # new current file; bills keep their cleared status; an archived document comes back
+        for k, v in fields.items():
+            setattr(doc, k, v)
+        doc.deleted_at = None
+        doc.deleted_by_user_id = None
+        if kind == DocKind.BILL.value and doc.due_date is None:
+            doc.due_date = bill_due_date(month)
+    db.flush()
+    db.add(ComplianceDocumentVersion(document_id=doc.id, version=version, source_files=n_files, **fields))
+    db.flush()
+    db.refresh(doc, ["versions"])
+    return doc, version > 1
+
+
 def upload(
     db: Session, user: User, perms: set[str], store_id: uuid.UUID, month_str: str, kind: str,
     files: list[tuple[str, bytes]],
@@ -228,62 +273,45 @@ def upload(
         raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, f"kind must be one of: {', '.join(VALID_KINDS)}.")
     month = parse_month(month_str)
     store = _store_for_write(db, user, perms, store_id)
-    data, ext = _prepare(files)
+    data, ext = _prepare(files)   # several photos -> one PDF; a single file as-is
 
-    key = _key_for(store, month, kind, ext)
-    storage.save(key, data)
-
-    doc = db.execute(
-        select(ComplianceDocument).where(
-            ComplianceDocument.store_id == store.id, ComplianceDocument.month == month,
-            ComplianceDocument.kind == kind,
-        )
-    ).scalar_one_or_none()
-    old_key = None
-    display = f"{store.external_code}_{kind}_{month:%Y-%m}.{ext}"
-    if doc is None:
-        doc = ComplianceDocument(
-            organization_id=user.organization_id, store_id=store.id, month=month, kind=kind,
-            file_key=key, file_name=display, content_type=_CONTENT_TYPES[ext], size_bytes=len(data),
-            uploaded_by_user_id=user.id,
-            due_date=bill_due_date(month) if kind == DocKind.BILL.value else None,
-            status=BillStatus.PENDING.value if kind == DocKind.BILL.value else None,
-        )
-        db.add(doc)
-    else:  # replace in place; bills keep their cleared status
-        old_key = doc.file_key
-        doc.file_key, doc.file_name = key, display
-        doc.content_type, doc.size_bytes = _CONTENT_TYPES[ext], len(data)
-        doc.uploaded_by_user_id = user.id
-        if kind == DocKind.BILL.value and doc.due_date is None:
-            doc.due_date = bill_due_date(month)
+    doc, replaced = save_document(db, user, store, month, kind, data, ext, len(files))
     activity_service.record(
         db, actor=user, action="compliance.uploaded", entity_type="compliance_document", entity_id=store.id,
         metadata={"store": store.name, "code": store.external_code, "month": f"{month:%Y-%m}", "kind": kind,
-                  "files": len(files), "replaced": old_key is not None},
+                  "files": len(files), "replaced": replaced},
     )
     db.commit()
-    if old_key and old_key != key:
-        storage.delete(old_key)
     db.refresh(doc)
     return _brief(doc, _today(), user.full_name)
 
 
 def remove(db: Session, user: User, perms: set[str], doc_id: uuid.UUID) -> None:
+    """Archive, never delete: the document disappears from every list, the files stay in storage, and a new
+    upload for the same store/month/kind brings it back."""
     doc = _doc_for_access(db, user, perms, doc_id, write=True)
-    key, store_id, kind, month = doc.file_key, doc.store_id, doc.kind, doc.month
-    db.delete(doc)
+    doc.deleted_at = datetime.now(timezone.utc)
+    doc.deleted_by_user_id = user.id
     activity_service.record(
-        db, actor=user, action="compliance.removed", entity_type="compliance_document", entity_id=store_id,
-        metadata={"month": f"{month:%Y-%m}", "kind": kind},
+        db, actor=user, action="compliance.removed", entity_type="compliance_document", entity_id=doc.store_id,
+        metadata={"month": f"{doc.month:%Y-%m}", "kind": doc.kind, "archived": True},
     )
     db.commit()
-    storage.delete(key)
+
+
+def versions(db: Session, user: User, perms: set[str], doc_id: uuid.UUID) -> list[dict]:
+    doc = _doc_for_access(db, user, perms, doc_id, write=False)
+    return [
+        {"version": v.version, "file_name": v.file_name, "size_bytes": v.size_bytes,
+         "content_type": v.content_type, "uploaded_at": v.created_at, "source_files": v.source_files,
+         "current": v.file_key == doc.file_key}
+        for v in sorted(doc.versions, key=lambda v: -v.version)
+    ]
 
 
 def clear_bill(db: Session, user: User, doc_id: uuid.UUID) -> DocBrief:
     doc = db.get(ComplianceDocument, doc_id)
-    if doc is None or doc.organization_id != user.organization_id:
+    if doc is None or doc.organization_id != user.organization_id or doc.deleted_at is not None:
         raise _err(status.HTTP_404_NOT_FOUND, "Document not found.")
     if doc.kind != DocKind.BILL.value:
         raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, "Only bills can be marked cleared.")
@@ -304,11 +332,19 @@ def clear_bill(db: Session, user: User, doc_id: uuid.UUID) -> DocBrief:
 # reading
 # --------------------------------------------------------------------------
 
-def read_file(db: Session, user: User, perms: set[str], doc_id: uuid.UUID) -> tuple[bytes, str, str]:
+def read_file(
+    db: Session, user: User, perms: set[str], doc_id: uuid.UUID, version: int | None = None,
+) -> tuple[bytes, str, str]:
     doc = _doc_for_access(db, user, perms, doc_id, write=False)
-    if not storage.exists(doc.file_key):
+    key, content_type, name = doc.file_key, doc.content_type, doc.file_name
+    if version is not None:
+        v = next((x for x in doc.versions if x.version == version), None)
+        if v is None:
+            raise _err(status.HTTP_404_NOT_FOUND, "That version does not exist.")
+        key, content_type, name = v.file_key, v.content_type, f"v{v.version}-{v.file_name}"
+    if not storage.exists(key):
         raise _err(status.HTTP_404_NOT_FOUND, "The file is missing from storage. Please upload it again.")
-    return storage.read(doc.file_key), doc.content_type, doc.file_name
+    return storage.read(key), content_type, name
 
 
 def zip_docs(db: Session, user: User, perms: set[str], ids: list[uuid.UUID]) -> bytes:
@@ -316,7 +352,7 @@ def zip_docs(db: Session, user: User, perms: set[str], ids: list[uuid.UUID]) -> 
         raise _err(status.HTTP_403_FORBIDDEN, "You don't have permission to download documents.")
     docs = db.execute(
         select(ComplianceDocument)
-        .where(ComplianceDocument.id.in_(ids), ComplianceDocument.organization_id == user.organization_id)
+        .where(ComplianceDocument.id.in_(ids), ComplianceDocument.organization_id == user.organization_id, ComplianceDocument.deleted_at.is_(None))
         .options(joinedload(ComplianceDocument.store).joinedload(Store.partner_organization))
     ).unique().scalars().all()
     if not docs:
@@ -366,7 +402,8 @@ def _docs_by_store(db: Session, store_ids: list[uuid.UUID], month: date) -> dict
         return {}
     out: dict[uuid.UUID, dict[str, ComplianceDocument]] = {}
     for d in db.execute(
-        select(ComplianceDocument).where(ComplianceDocument.store_id.in_(store_ids), ComplianceDocument.month == month)
+        select(ComplianceDocument).where(
+            ComplianceDocument.store_id.in_(store_ids), ComplianceDocument.month == month, ComplianceDocument.deleted_at.is_(None))
     ).scalars():
         out.setdefault(d.store_id, {})[d.kind] = d
     return out
@@ -421,6 +458,7 @@ def due_bills(db: Session, user: User, limit: int = 200) -> DueBills:
         .where(
             ComplianceDocument.organization_id == user.organization_id,
             ComplianceDocument.kind == DocKind.BILL.value,
+            ComplianceDocument.deleted_at.is_(None),
             ComplianceDocument.status == BillStatus.PENDING.value,
             ComplianceDocument.due_date <= today,
         )

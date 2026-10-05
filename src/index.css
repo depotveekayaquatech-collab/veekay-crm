@@ -246,3 +246,38 @@ html.dark .hover\:to-brand-700:hover {
 html.dark * {
   scrollbar-color: #33415f transparent;
 }
+
+/* Theme flip: no element animates its colours, so nothing lags behind the rest of the page. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after,
+html.theme-switching *::placeholder {
+  transition: none !important;
+  animation-duration: 0s !important;
+}
+
+/* Placeholders follow the same tokens as text and never animate on their own. */
+::placeholder {
+  transition: none;
+}
+
+/* Smooth, consistent interaction feedback. */
+@layer base {
+  button, a, [role="button"], input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:not(:disabled):active {
+    transform: translateY(0.5px);
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

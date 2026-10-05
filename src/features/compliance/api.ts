@@ -288,7 +288,7 @@ export function useBulkUpload() {
   });
 }
 
-/** One-table PDF summary of the selected stores for a month, opened in a new tab. */
+/** One collective PDF of the selected stores' cards, invoices and payment proofs (headed with outlet id + store name), opened in a new tab. */
 export async function openSummaryPdf(storeIds: string[], month: string): Promise<void> {
   const win = window.open("", "_blank"); // opened synchronously so popup blockers allow it
   try {

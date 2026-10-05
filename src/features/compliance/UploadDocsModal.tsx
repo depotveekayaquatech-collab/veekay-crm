@@ -66,7 +66,7 @@ export function UploadDocsModal({
     <Modal
       open
       onClose={onClose}
-      title={`${replacing ? "Replace" : "Upload"} ${label}`}
+      title={`${replacing ? "Upload new" : "Upload"} ${label}`}
       description={`${storeName} · ${monthLabel}`}
       footer={
         <>
@@ -143,7 +143,7 @@ export function UploadDocsModal({
           <li>One file is saved as it is.</li>
           <li>Two or more photos are merged into a single PDF.</li>
           <li>A PDF must be uploaded on its own.</li>
-          <li>Up to {MAX_MB} MB per file.{replacing ? " This replaces the current file." : ""}</li>
+          <li>Up to {MAX_MB} MB per file.{replacing ? " This becomes the current file; the earlier one is kept in history." : ""}</li>
           {kind === "bill" && <li>The invoice is due 45 days after the month ends.</li>}
         </ul>
       </div>

@@ -505,6 +505,9 @@ def normalise_priority(text: str | None) -> str:
     return "MEDIUM"
 
 
+EXTERNAL_TICKET_PLATFORM = "blinkit"  # the Google script only raises Blinkit tickets for now
+
+
 def create_external(
     db: Session, org_id: uuid.UUID, *, external_id: str, store_code: str, platform: str | None, store_name: str | None,
     category: str | None, priority: str | None, title: str, description: str | None, reporter: str | None,
@@ -517,22 +520,38 @@ def create_external(
     if existing is not None:
         return existing, False
 
-    stmt = select(Store).where(Store.organization_id == org_id, func.lower(Store.external_code) == store_code.strip().lower())
-    if platform:
-        from app.models.organization import Organization
+    platform = (platform or "").strip().lower() or EXTERNAL_TICKET_PLATFORM
+    if platform != EXTERNAL_TICKET_PLATFORM:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Tickets are only accepted for {EXTERNAL_TICKET_PLATFORM} stores for now.")
 
-        stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == platform.strip().lower())
-    matches = db.execute(stmt.options(joinedload(Store.partner_organization))).unique().scalars().all()
-    if not matches and store_name:
-        matches = db.execute(
-            select(Store).where(Store.organization_id == org_id, func.lower(Store.name) == store_name.strip().lower())
-        ).unique().scalars().all()
+    def by_platform(stmt):
+        if platform:
+            from app.models.organization import Organization
+
+            stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == platform.strip().lower())
+        return stmt.options(joinedload(Store.partner_organization))
+
+    def find(*conds) -> list[Store]:
+        return list(db.execute(by_platform(select(Store).where(Store.organization_id == org_id, *conds))).unique().scalars().all())
+
+    code = (store_code or "").strip()
+    name = " ".join((store_name or "").split())
+    matches = find(func.lower(Store.external_code) == code.lower()) if code else []
+    if not matches and name:
+        matches = find(func.lower(Store.name) == name.lower())          # exact name, any case
+        if not matches:
+            matches = find(Store.name.ilike(f"%{name}%"))                # then "contains"
+        if len(matches) > 1 and not platform:
+            live = [m for m in matches if m.status == "LIVE"]
+            matches = live if len(live) == 1 else matches
     if not matches:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No store with code '{store_code}'" + (f" on {platform}" if platform else "") + ".")
+        what = f"code '{code}'" if code else f"name '{name}'"
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No store with {what}" + (f" on {platform}" if platform else "") + ".")
     if len(matches) > 1:
+        what = f"Store code '{code}'" if code and not name else f"Store name '{name}'"
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Store code '{store_code}' exists on more than one platform — send \"platform\" (blinkit / zepto).",
+            f"{what} matches more than one store — send the exact store_code (and \"platform\" if it exists on both).",
         )
     store = matches[0]
 

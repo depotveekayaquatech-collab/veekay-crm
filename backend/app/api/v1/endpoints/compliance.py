@@ -78,7 +78,8 @@ def summary_pdf(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """A printable one-table summary of the selected stores' card, invoice and payment proof for a month."""
+    """One collective PDF of the selected stores' card, invoice and payment proof for a month (photos and PDFs merged),
+    each page headed with the outlet id and store name."""
     _require_any(perms, "compliance.upload", "compliance.manage")
     data = compliance_repo_service.summary_pdf(db, user, perms, payload.store_ids, payload.month)
     return Response(
@@ -111,9 +112,21 @@ def remove(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Removes the document from the lists. Nothing is deleted from storage; uploading again restores it."""
     _require_any(perms, "compliance.upload", "compliance.manage")
     compliance_service.remove(db, user, perms, doc_id)
     return Response(status_code=204)
+
+
+@router.get("/{doc_id}/versions")
+def versions(
+    doc_id: uuid.UUID,
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Every file ever uploaded for this document, newest first."""
+    return compliance_service.versions(db, user, perms, doc_id)
 
 
 @router.get("/search", response_model=SearchPage, dependencies=[Depends(require_permission("accounts.view"))])
@@ -165,12 +178,13 @@ def clear(doc_id: uuid.UUID, user: User = Depends(get_current_user), db: Session
 @router.get("/{doc_id}/file")
 def file(
     doc_id: uuid.UUID,
+    version: int | None = Query(None, ge=1, description="An earlier version; the current file by default."),
     perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     """Authenticated file view (inline). Employees: own stores only; accountants/admins: any."""
-    data, content_type, name = compliance_service.read_file(db, user, perms, doc_id)
+    data, content_type, name = compliance_service.read_file(db, user, perms, doc_id, version)
     return Response(
         content=data, media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "private, no-store"},

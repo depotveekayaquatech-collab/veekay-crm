@@ -6,15 +6,18 @@ kind 'payment' — proof of payment for the month's invoice.
 kind 'bill' — the month's bill; carries a due date (month-end + 45 days) and a
               PENDING / CLEARED status that an accountant flips.
 
-Exactly one row per (store, month, kind): re-uploading replaces the file in
-place (the old file is deleted) and, for bills, keeps the cleared status.
-`month` is always the first day of the month.
+Exactly one row per (store, month, kind) = the CURRENT file. Files are never deleted:
+every upload is also recorded in ComplianceDocumentVersion (its storage key, checksum and
+backend), a re-upload adds a new version and leaves the old file in storage, and "removing"
+a document only archives it (deleted_at). The database holds a link (storage key) to each
+file, so storage can be moved later by copying keys. For bills a re-upload keeps the cleared
+status. `month` is always the first day of the month.
 """
 import uuid
 from datetime import date, datetime
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,7 +56,16 @@ class ComplianceDocument(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     content_type: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
 
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(16), default="local")
+
     uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # archived ("removed") documents are hidden everywhere but their files stay in storage
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
@@ -67,3 +79,29 @@ class ComplianceDocument(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     store: Mapped["Store"] = relationship()
     uploaded_by: Mapped["User | None"] = relationship(foreign_keys=[uploaded_by_user_id])
+    versions: Mapped[list["ComplianceDocumentVersion"]] = relationship(
+        back_populates="document", order_by="ComplianceDocumentVersion.version", cascade="save-update, merge"
+    )
+
+
+class ComplianceDocumentVersion(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """One stored file for a document. Append-only: nothing in the app updates or deletes these rows."""
+    __tablename__ = "compliance_document_versions"
+    __table_args__ = (UniqueConstraint("document_id", "version", name="uq_compliance_version"),)
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("compliance_documents.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    file_key: Mapped[str] = mapped_column(String(512))
+    file_name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(16), default="local")
+    source_files: Mapped[int] = mapped_column(Integer, default=1)   # >1 = several photos merged into this PDF
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    document: Mapped["ComplianceDocument"] = relationship(back_populates="versions")

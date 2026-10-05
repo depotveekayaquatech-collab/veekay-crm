@@ -79,17 +79,6 @@ def store_choices(
     return ticket_service.store_choices(db, user, kind, q)
 
 
-@router.post("", response_model=TicketDetail, status_code=status.HTTP_201_CREATED)
-def create_ticket(
-    payload: TicketCreate,
-    perms: set[str] = Depends(get_current_permissions),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TicketDetail:
-    kind = _kind(perms, user, db, need=("tickets.create", "tickets.manage"))
-    return ticket_service.create_ticket(db, user, kind, payload)
-
-
 @router.get("/{ticket_id}", response_model=TicketDetail)
 def get_ticket(
     ticket_id: uuid.UUID,

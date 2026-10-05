@@ -24,9 +24,9 @@ A `POST` with header `X-Integration-Key: <your key>` and JSON:
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `external_id` | yes | A unique id for this ticket (the form response id or the sheet row). **Sending it twice never makes a duplicate**, so retries are safe. |
-| `store_code` | yes | The store's outlet code exactly as shown in the CRM (e.g. `3817`, `ES117`). |
-| `platform` | no | `blinkit` or `zepto` — only needed if the same code exists on both. |
-| `store_name` | no | Used only if the code isn't found. |
+| `store_code` | one of these two | The store's outlet code as shown in the CRM (e.g. `3817`, `ES117`). |
+| `platform` | no | Tickets are Blinkit-only for now: leave it out (it defaults to `blinkit`); `zepto` is refused. |
+| `store_name` | one of these two | The store's name as shown in the CRM. Used when there is no code, or the code isn't found. Matching ignores case and extra spaces, and accepts part of the name if only one store fits. |
 | `title` | yes | Short summary (3–160 characters). |
 | `category` | no | Free text is fine: "Water arrived late", "Bottles damaged", "Short supply", "Invoice problem"… It is matched to Late delivery / No delivery / Short supply / Water quality / Damaged / Billing, otherwise *Other*. |
 | `priority` | no | "Urgent", "High", "Medium", "Low" (default Medium). |
