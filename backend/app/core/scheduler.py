@@ -2,9 +2,8 @@
 Background scheduler. Currently runs one job: the daily store sync from the
 partner Google Sheets (default 10:00 Asia/Kolkata).
 
-Runs in-process inside the API worker. That is fine for a single-instance
-deploy; if the API is ever scaled to multiple instances this should move to
-a dedicated worker / external cron to avoid duplicate runs.
+Runs in-process inside the API worker. With several instances every one fires
+the job, but a Postgres advisory lock makes only one of them actually run it.
 """
 from __future__ import annotations
 
@@ -13,16 +12,17 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.config import settings
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 from app.models.role import Role
 from app.models.user import User, UserRole
 
 log = logging.getLogger("veekay.scheduler")
 
 _scheduler: BackgroundScheduler | None = None
+_SYNC_LOCK_KEY = 7_340_001   # arbitrary app-wide constant for pg advisory locks
 
 
 def _system_actor(db) -> User | None:
@@ -41,7 +41,16 @@ def run_daily_store_sync() -> None:
     from app.services import store_sync_service
 
     db = SessionLocal()
+    # Session-level locks belong to one connection, so hold a dedicated one (the ORM session commits and
+    # may hand its connection back to the pool mid-job).
+    lock_conn = engine.connect()
+    locked = False
     try:
+        # Several API machines may all fire this job; a Postgres advisory lock lets exactly one of them run it.
+        locked = bool(lock_conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": _SYNC_LOCK_KEY}).scalar())
+        if not locked:
+            log.info("store sync skipped: another instance is already running it")
+            return
         actor = _system_actor(db)
         if actor is None:
             log.warning("store sync skipped: no admin user to attribute it to")
@@ -56,6 +65,9 @@ def run_daily_store_sync() -> None:
     except Exception:  # noqa: BLE001 — a scheduled job must never crash the worker
         log.exception("daily store sync failed")
     finally:
+        if locked:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _SYNC_LOCK_KEY})
+        lock_conn.close()
         db.close()
 
 

@@ -17,5 +17,4 @@ export interface CurrentUser {
 
 export interface TokenPair {
   accessToken: string;
-  refreshToken: string;
 }

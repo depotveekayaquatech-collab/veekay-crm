@@ -1,4 +1,4 @@
-import { apiRequest, getCurrentRefreshToken, setTokens } from "@/services/api";
+import { apiRequest, setAccessToken } from "@/services/api";
 import type { CurrentUser } from "@/types/auth";
 
 interface LoginPayload {
@@ -8,7 +8,6 @@ interface LoginPayload {
 
 interface TokenResponse {
   access_token: string;
-  refresh_token: string;
   /** true when this sign-in counts as attendance (employees / accounts — never admins) */
   attendance?: boolean;
 }
@@ -60,15 +59,14 @@ export async function login(payload: LoginPayload): Promise<CurrentUser> {
       password: payload.password,
     },
   });
-  setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
+  setAccessToken(tokens.access_token);
   return toCurrentUser(await apiRequest<MeResponse>("/auth/me"));
 }
 
 export async function logout(): Promise<void> {
   // Revoke the session server-side (best effort), then forget the tokens locally.
-  const rt = getCurrentRefreshToken();
-  await apiRequest("/auth/logout", { method: "POST", body: { refresh_token: rt }, silent: true, skipAuthRefresh: true }).catch(() => undefined);
-  setTokens(null);
+  await apiRequest("/auth/logout", { method: "POST", silent: true, skipAuthRefresh: true }).catch(() => undefined);
+  setAccessToken(null);
 }
 
 /** Change your own password. Every device is signed out; this one gets a fresh session. */
@@ -78,7 +76,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
     body: { current_password: currentPassword, new_password: newPassword },
     silent: true,
   });
-  setTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
+  setAccessToken(tokens.access_token);
   return toCurrentUser(await apiRequest<MeResponse>("/auth/me"));
 }
 

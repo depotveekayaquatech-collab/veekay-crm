@@ -5,7 +5,7 @@ All configuration is read from environment variables (via .env in dev).
 Nothing here is hard-coded per the "no hard-coded secrets/URLs" rule.
 """
 from functools import lru_cache
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
+
+    # Refresh-token cookie (HttpOnly; used by the web app, which sends `X-Auth-Mode: cookie`)
+    REFRESH_COOKIE_NAME: str = "vk_refresh"
+    REFRESH_COOKIE_SAMESITE: str = "lax"     # lax | strict | none ("none" only if the API and web app are on different sites)
+    REFRESH_COOKIE_SECURE: bool | None = Field(default=None)   # None = secure in production, off for local http
 
     # Login protection
     PASSWORD_MIN_LENGTH: int = 10
@@ -135,6 +140,30 @@ class Settings(BaseSettings):
     STORE_SYNC_HOUR: int = Field(default=10)            # local hour, 24h
     STORE_SYNC_MINUTE: int = Field(default=0)
     STORE_SYNC_TIMEZONE: str = Field(default="Asia/Kolkata")
+
+    @model_validator(mode="after")
+    def _refuse_unsafe_production(self) -> "Settings":
+        """Fail fast at boot rather than run a production server with dev-grade settings."""
+        if self.ENVIRONMENT.strip().lower() != "production":
+            return self
+        problems: list[str] = []
+        if len(self.JWT_SECRET_KEY) < 32 or "change-me" in self.JWT_SECRET_KEY.lower():
+            problems.append("JWT_SECRET_KEY must be a random value of at least 32 characters")
+        if any("localhost" in o or "127.0.0.1" in o for o in self.CORS_ORIGINS) or "*" in self.CORS_ORIGINS:
+            problems.append("CORS_ORIGINS must list only your real https frontend origin(s)")
+        if any(o.startswith("http://") for o in self.CORS_ORIGINS):
+            problems.append("CORS_ORIGINS must use https://")
+        if "localhost" in self.PUBLIC_APP_URL or "127.0.0.1" in self.PUBLIC_APP_URL:
+            problems.append("PUBLIC_APP_URL must be the public frontend URL (it is printed in every card QR code)")
+        if self.DEBUG:
+            problems.append("DEBUG must be false")
+        if self.BCRYPT_ROUNDS < 12:
+            problems.append("BCRYPT_ROUNDS must be at least 12")
+        if self.STORAGE_BACKEND == "s3" and not (self.S3_BUCKET and self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY):
+            problems.append("STORAGE_BACKEND=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY")
+        if problems:
+            raise ValueError("Unsafe production configuration: " + "; ".join(problems))
+        return self
 
     def sheet_sources(self) -> dict[str, tuple[str, str]]:
         """{partner_slug: (spreadsheet_id, gid)} parsed from STORE_SYNC_SHEETS."""

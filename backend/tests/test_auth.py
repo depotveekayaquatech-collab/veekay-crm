@@ -243,3 +243,31 @@ def test_permissions_are_rechecked_on_every_request(client, admin, make_user):
     s.commit()
     s.close()
     assert client.get(f"{API}/orders/inventory", headers=tok).status_code == 403
+
+
+# ---------------------------------------------------------------- HttpOnly refresh cookie (web app)
+def _cookie_login(client):
+    return client.post(
+        f"{API}/auth/login", json={"employee_code": "ADMIN001", "password": DEMO_PASSWORD},
+        headers={"X-Auth-Mode": "cookie"},
+    )
+
+
+def test_cookie_mode_keeps_the_refresh_token_out_of_the_body(client):
+    r = _cookie_login(client)
+    assert r.status_code == 200 and r.json()["refresh_token"] is None and r.json()["access_token"]
+    set_cookie = r.headers["set-cookie"].lower()
+    assert settings.REFRESH_COOKIE_NAME in set_cookie and "httponly" in set_cookie and "samesite=lax" in set_cookie
+
+
+def test_cookie_refresh_rotates_and_logout_clears_it(client):
+    _cookie_login(client)
+    r = client.post(f"{API}/auth/refresh", headers={"X-Auth-Mode": "cookie"})
+    assert r.status_code == 200 and r.json()["refresh_token"] is None and r.json()["access_token"]
+    assert client.post(f"{API}/auth/logout").status_code == 204
+    client.cookies.clear()
+    assert client.post(f"{API}/auth/refresh", headers={"X-Auth-Mode": "cookie"}).status_code == 401
+
+
+def test_refresh_without_any_token_is_401(client):
+    assert client.post(f"{API}/auth/refresh").status_code == 401

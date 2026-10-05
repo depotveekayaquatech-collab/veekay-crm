@@ -32,7 +32,11 @@ _API = settings.API_V1_PREFIX
 def scope_ip(scope: Scope) -> str:
     """Caller IP; X-Forwarded-For only when we sit behind a trusted proxy (TRUST_PROXY_HEADERS)."""
     if settings.TRUST_PROXY_HEADERS:
-        fwd = Headers(scope=scope).get("x-forwarded-for", "")
+        headers = Headers(scope=scope)
+        fly = headers.get("fly-client-ip", "")  # set by Fly's edge proxy; a client cannot forge it
+        if fly:
+            return fly.strip()[:64]
+        fwd = headers.get("x-forwarded-for", "")
         if fwd:
             return fwd.split(",")[0].strip()[:64]
     client = scope.get("client")

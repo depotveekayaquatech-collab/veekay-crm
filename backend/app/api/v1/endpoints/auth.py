@@ -9,6 +9,7 @@ from app.api.deps import (
     get_current_permissions,
     get_current_user_allow_pending,
 )
+from app.core.config import settings
 from app.core.ratelimit import client_ip, login_failures
 from app.db.session import get_db
 from app.models.user import User
@@ -31,12 +32,42 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 ADMIN_ROLE_CODE = "admin"
 
 
+def _cookie_mode(request: Request) -> bool:
+    return request.headers.get("x-auth-mode", "").lower() == "cookie"
+
+
+def _cookie_secure() -> bool:
+    if settings.REFRESH_COOKIE_SECURE is not None:
+        return settings.REFRESH_COOKIE_SECURE
+    return settings.ENVIRONMENT.strip().lower() == "production"
+
+
+def _deliver(request: Request, response: Response, pair):
+    """Web app (X-Auth-Mode: cookie): the refresh token goes into an HttpOnly cookie and out of the JSON body,
+    so page scripts (and any XSS) never see it. Other clients keep getting it in the body."""
+    if _cookie_mode(request) and pair.refresh_token:
+        response.set_cookie(
+            settings.REFRESH_COOKIE_NAME, pair.refresh_token,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, httponly=True, secure=_cookie_secure(),
+            samesite=settings.REFRESH_COOKIE_SAMESITE, path=f"{settings.API_V1_PREFIX}/auth",
+        )
+        return pair.model_copy(update={"refresh_token": None})
+    return pair
+
+
+def _clear_cookie(response: Response) -> None:
+    response.delete_cookie(
+        settings.REFRESH_COOKIE_NAME, path=f"{settings.API_V1_PREFIX}/auth",
+        httponly=True, secure=_cookie_secure(), samesite=settings.REFRESH_COOKIE_SAMESITE,
+    )
+
+
 def _meta(request: Request) -> dict:
     return {"user_agent": request.headers.get("user-agent"), "ip": client_ip(request)}
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> LoginResponse:
     meta = _meta(request)
     wait = login_failures.blocked_for(meta["ip"])
     if wait:
@@ -46,9 +77,10 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             headers={"Retry-After": str(wait)},
         )
     try:
-        return AuthService(db).login(
+        result = AuthService(db).login(
             payload.organization_slug, payload.employee_code, payload.password, **meta,
         )
+        return _deliver(request, response, result)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED and exc.detail == GENERIC_LOGIN_ERROR:
             login_failures.record_failure(meta["ip"])
@@ -56,15 +88,20 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
 
 @router.post("/refresh", response_model=TokenPair)
-def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
-    return AuthService(db).refresh(payload.refresh_token, **_meta(request))
+def refresh(request: Request, response: Response, payload: RefreshRequest | None = None, db: Session = Depends(get_db)) -> TokenPair:
+    token = (payload.refresh_token if payload else None) or request.cookies.get(settings.REFRESH_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in.")
+    return _deliver(request, response, AuthService(db).refresh(token, **_meta(request)))
 
 
 @router.post("/logout", status_code=204)
-def logout(payload: LogoutRequest | None = None, db: Session = Depends(get_db)) -> Response:
+def logout(request: Request, payload: LogoutRequest | None = None, db: Session = Depends(get_db)) -> Response:
     """Ends this device's session (server-side). Always succeeds, even with an expired access token."""
-    AuthService(db).logout(payload.refresh_token if payload else None)
-    return Response(status_code=204)
+    AuthService(db).logout((payload.refresh_token if payload else None) or request.cookies.get(settings.REFRESH_COOKIE_NAME))
+    resp = Response(status_code=204)
+    _clear_cookie(resp)
+    return resp
 
 
 @router.post("/logout-all", status_code=204)
@@ -105,14 +142,16 @@ def get_me(
 def change_password(
     payload: ChangePasswordRequest,
     request: Request,
+    response: Response,
     user: User = Depends(get_current_user_allow_pending),
     family: uuid.UUID = Depends(get_current_family),
     db: Session = Depends(get_db),
 ) -> TokenPair:
     """Verify the current password, apply the policy, sign every device out, return a fresh session."""
-    return AuthService(db).change_password(
+    pair = AuthService(db).change_password(
         user, payload.current_password, payload.new_password, current_family=family, **_meta(request)
     )
+    return _deliver(request, response, pair)
 
 
 @router.get("/sessions", response_model=list[SessionOut])

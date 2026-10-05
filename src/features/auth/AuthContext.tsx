@@ -5,7 +5,7 @@ import {
   login as loginRequest,
   logout as logoutRequest,
 } from "@/services/auth";
-import { getPersistedRefreshToken, setOnPasswordChangeRequired, setOnSessionExpired, setTokens } from "@/services/api";
+import { hasSessionHint, refreshAccessToken, setAccessToken, setOnPasswordChangeRequired, setOnSessionExpired } from "@/services/api";
 import { AuthContext } from "@/features/auth/auth-context";
 import type { CurrentUser } from "@/types/auth";
 
@@ -24,17 +24,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // they hit F5. `silent: true` on fetchCurrentUser suppresses the error
     // toast for the common, expected case of "no session yet".
     async function restore() {
-      const persisted = getPersistedRefreshToken();
-      if (!persisted) {
+      if (!hasSessionHint()) {
         setIsLoading(false);
         return;
       }
       try {
-        setTokens({ accessToken: "", refreshToken: persisted }); // seed refresh; apiRequest will 401-refresh once
-        const currentUser = await fetchCurrentUser(true);
-        setUser(currentUser);
+        // The refresh token lives in an HttpOnly cookie; exchange it for an access token, then load the profile.
+        if (!(await refreshAccessToken())) throw new Error("no session");
+        setUser(await fetchCurrentUser(true));
       } catch {
-        setTokens(null);
+        setAccessToken(null);
       } finally {
         setIsLoading(false);
       }

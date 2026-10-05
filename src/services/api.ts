@@ -8,29 +8,30 @@
 import { pushToast } from "@/lib/toast";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
-const REFRESH_TOKEN_STORAGE_KEY = "veekay.refreshToken";
+// The refresh token never reaches JavaScript: the API keeps it in an HttpOnly cookie (we ask for that with
+// the X-Auth-Mode header). Only a non-secret "signed in" hint is stored so a page reload knows to try restoring.
+const SESSION_HINT_KEY = "veekay.session";
+const AUTH_MODE = { "X-Auth-Mode": "cookie" } as const;
 
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
 let onSessionExpired: (() => void) | null = null;
 
-export function setTokens(tokens: { accessToken: string; refreshToken: string } | null) {
-  accessToken = tokens?.accessToken ?? null;
-  refreshToken = tokens?.refreshToken ?? null;
-  // Only the refresh token is persisted, and only in localStorage for this
-  // scaffold. That's a deliberate trade-off, not an oversight — an httpOnly
-  // cookie is the safer place for it against XSS, but that requires the
-  // backend to set cookies instead of returning tokens in the JSON body.
-  // Revisit this before production (spec section 46's security review).
-  if (tokens?.refreshToken) {
-    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, tokens.refreshToken);
-  } else {
-    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+  try {
+    if (token !== null) localStorage.setItem(SESSION_HINT_KEY, "1");
+    else localStorage.removeItem(SESSION_HINT_KEY);
+  } catch {
+    /* storage unavailable (private mode): session just won't survive a reload */
   }
 }
 
-export function getPersistedRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+export function hasSessionHint(): boolean {
+  try {
+    return localStorage.getItem(SESSION_HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function setOnSessionExpired(handler: () => void) {
@@ -55,16 +56,17 @@ export class ApiError extends Error {
   }
 }
 
-async function doRefresh(tokenToUse: string): Promise<boolean> {
+async function doRefresh(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE_URL}/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: tokenToUse }),
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...AUTH_MODE },
+      body: "{}",
     });
     if (!res.ok) return false;
     const data = await res.json();
-    setTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
+    setAccessToken(data.access_token);
     return true;
   } catch {
     return false;
@@ -73,26 +75,18 @@ async function doRefresh(tokenToUse: string): Promise<boolean> {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
-/** One refresh at a time: parallel 401s share it, so a rotated refresh token is never presented twice. */
-function refreshAccessToken(): Promise<boolean> {
+/** One refresh at a time: parallel 401s share it. If another tab rotated the cookie a moment ago, retry once. */
+export function refreshAccessToken(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
-      const used = refreshToken ?? getPersistedRefreshToken();
-      if (!used) return false;
-      if (await doRefresh(used)) return true;
-      // Another tab may have rotated the token a moment ago — try whatever is stored now.
-      const latest = getPersistedRefreshToken();
-      return latest && latest !== used ? doRefresh(latest) : false;
+      if (await doRefresh()) return true;
+      await new Promise((r) => setTimeout(r, 400));
+      return doRefresh();
     })().finally(() => {
       refreshInFlight = null;
     });
   }
   return refreshInFlight;
-}
-
-/** The refresh token to revoke server-side on sign-out. */
-export function getCurrentRefreshToken(): string | null {
-  return refreshToken ?? getPersistedRefreshToken();
 }
 
 interface RequestOptions {
@@ -126,7 +120,7 @@ function errorMessage(detail: unknown): string {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const isForm = options.body instanceof FormData;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...AUTH_MODE };
   // Let the browser set the multipart boundary itself for FormData.
   if (!isForm) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -135,6 +129,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method: options.method ?? "GET",
+      credentials: "include",
       headers,
       body: isForm
         ? (options.body as FormData)
@@ -153,7 +148,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (refreshed) {
       return apiRequest<T>(path, { ...options, isRetry: true });
     }
-    setTokens(null);
+    setAccessToken(null);
     onSessionExpired?.();
     const message = "Your session has expired. Please sign in again.";
     if (!options.silent) pushToast(message, "error");
@@ -180,7 +175,7 @@ export async function apiBlob(
   path: string,
   options: { method?: "GET" | "POST"; body?: unknown; isRetry?: boolean } = {},
 ): Promise<Blob> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...AUTH_MODE };
   if (options.body) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
@@ -188,6 +183,7 @@ export async function apiBlob(
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method: options.method ?? "GET",
+      credentials: "include",
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
@@ -199,7 +195,7 @@ export async function apiBlob(
 
   if (res.status === 401 && !options.isRetry) {
     if (await refreshAccessToken()) return apiBlob(path, { ...options, isRetry: true });
-    setTokens(null);
+    setAccessToken(null);
     onSessionExpired?.();
     throw new ApiError(401, "Your session has expired. Please sign in again.");
   }

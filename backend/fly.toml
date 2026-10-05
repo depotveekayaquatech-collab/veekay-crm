@@ -1,0 +1,36 @@
+# Fly.io config for the API. First time: `fly launch --no-deploy --copy-config` from this folder
+# (change `app` to a unique name), then follow DEPLOY_FLY_VERCEL.md.
+app = "veekay-crm-api"
+primary_region = "bom"          # Mumbai; pick the region closest to your users and database
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  DEBUG = "false"
+  DOCS_ENABLED = "false"
+  LOG_JSON = "true"
+  TRUST_PROXY_HEADERS = "true"
+  STORAGE_BACKEND = "s3"
+
+[deploy]
+  release_command = "alembic upgrade head && python scripts/seed.py"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"     # the daily store-sync scheduler lives in the process
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/v1/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

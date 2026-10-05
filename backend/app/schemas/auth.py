@@ -13,7 +13,7 @@ class LoginRequest(BaseModel):
 
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = None   # omitted for the web app: it travels in an HttpOnly cookie instead
     token_type: str = "bearer"
 
 
@@ -24,7 +24,7 @@ class LoginResponse(TokenPair):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None   # falls back to the HttpOnly cookie
 
 
 class LogoutRequest(BaseModel):
