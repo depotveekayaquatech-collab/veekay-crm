@@ -236,3 +236,66 @@ def test_admin_report_still_has_totals(client, admin):
     ws = load_workbook(io.BytesIO(r.content)).active
     assert [c.value for c in ws[1]][-1] == "Total"
     assert any(str(ws.cell(row=i, column=2).value) == "TOTAL" for i in range(2, ws.max_row + 1))
+
+
+# ---------------------------------------------------------------- tickets pushed in from a Google Apps Script
+KEY = "test-webhook-key-123"
+
+
+@pytest.fixture()
+def webhook(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "TICKET_WEBHOOK_KEY", KEY)
+    return {"X-Integration-Key": KEY}
+
+
+def _intake(client, headers, **body):
+    payload = {"external_id": "form-row-1", "store_code": "X", "title": "Water arrived late", **body}
+    return client.post(f"{API}/integrations/tickets", headers=headers, json=payload)
+
+
+def test_webhook_is_off_until_a_key_is_configured_and_rejects_wrong_keys(client, monkeypatch, webhook):
+    assert _intake(client, {"X-Integration-Key": "nope"}).status_code == 401
+    assert _intake(client, {}).status_code == 401
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "TICKET_WEBHOOK_KEY", "")
+    assert _intake(client, webhook).status_code == 503
+
+
+def test_webhook_creates_a_ticket_routed_like_any_other(client, admin, emp, webhook):
+    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
+    r = _intake(client, webhook, external_id="row-77", store_code=store["external_code"], platform="blinkit",
+                category="Water arrived late", priority="Urgent", reporter="Store manager (98xxxxxx10)", description="3 hours late")
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["created"] is True and body["category"] == "LATE_DELIVERY" and body["priority"] == "URGENT"
+    # the region's employee and the admin both see it, marked as coming from Google, with the reporter shown
+    for h in (emp, admin):
+        t = next(x for x in client.get(f"{API}/tickets", headers=h).json()["items"] if x["id"] == body["id"])
+        assert t["source"] == "google" and t["created_by_name"] == "Store manager (98xxxxxx10)"
+        assert t["store"]["code"] == store["external_code"]
+
+
+def test_webhook_is_idempotent_so_retries_never_duplicate(client, emp, webhook):
+    code = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]["external_code"]
+    first = _intake(client, webhook, external_id="row-dup", store_code=code, platform="blinkit")
+    again = _intake(client, webhook, external_id="row-dup", store_code=code, platform="blinkit", title="Edited later")
+    assert first.status_code == 201 and again.status_code == 200
+    assert again.json()["created"] is False and again.json()["number"] == first.json()["number"]
+
+
+def test_webhook_unknown_store_and_category_mapping(client, emp, webhook):
+    r = _intake(client, webhook, external_id="row-x", store_code="NO-SUCH-STORE")
+    assert r.status_code == 422 and "NO-SUCH-STORE" in r.json()["detail"]
+    from app.services.ticket_service import normalise_category, normalise_priority
+
+    assert normalise_category("Delivery not received") == "NO_DELIVERY"
+    assert normalise_category("bottles damaged / leaking") == "DAMAGED"
+    assert normalise_category("Water tastes bad") == "QUALITY"
+    assert normalise_category("Short supply") == "SHORT_SUPPLY"
+    assert normalise_category("Invoice problem") == "BILLING"
+    assert normalise_category("LATE_DELIVERY") == "LATE_DELIVERY"
+    assert normalise_category("something else") == "OTHER" and normalise_category(None) == "OTHER"
+    assert normalise_priority("High") == "HIGH" and normalise_priority("") == "MEDIUM" and normalise_priority("minor") == "LOW"

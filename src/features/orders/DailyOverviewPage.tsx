@@ -149,9 +149,9 @@ export function DailyOverviewPage() {
             />
           </div>
 
-          <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+          <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
             <div className="flex flex-wrap items-center gap-3 border-b border-surface-border px-4 py-3.5 sm:px-5">
-              <h3 className="text-sm font-bold text-ink-900">Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span></h3>
+              <h3 className="text-sm font-bold text-heading">Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span></h3>
               <div className="ml-auto flex flex-wrap items-center gap-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
                   <input type="checkbox" checked={behindOnly} onChange={(e) => setBehindOnly(e.target.checked)} className="accent-brand-500" />
@@ -205,9 +205,9 @@ export function DailyOverviewPage() {
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+          <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
             <div className="border-b border-surface-border px-4 py-3.5 sm:px-5">
-              <h3 className="text-sm font-bold text-ink-900">Recent submissions</h3>
+              <h3 className="text-sm font-bold text-heading">Recent submissions</h3>
             </div>
             <div className="stacked-table max-h-96 overflow-auto">
               <table className="w-full min-w-[600px] text-sm">

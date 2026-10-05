@@ -21,8 +21,8 @@ function dayTone(d: CalendarDay, clickable: boolean): string {
   }
   if (d.isFuture) return "border-transparent bg-surface-subtle text-gray-300";
   return clickable
-    ? "border-dashed border-gray-300 bg-white text-gray-700 hover:border-brand-400 hover:bg-brand-50"
-    : "border-dashed border-gray-300 bg-white text-gray-500";
+    ? "border-dashed border-gray-300 bg-surface text-gray-700 hover:border-brand-400 hover:bg-brand-50"
+    : "border-dashed border-gray-300 bg-surface text-gray-500";
 }
 
 interface Props {
@@ -88,7 +88,7 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+    <div className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border px-4 py-3.5 sm:px-5">
         <div className="flex items-center gap-1">
           {onNavigate && (
@@ -101,7 +101,7 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
               <Chevron dir="left" />
             </button>
           )}
-          <h3 className="min-w-[8.5rem] text-center text-base font-bold text-ink-900">{calendar.monthLabel}</h3>
+          <h3 className="min-w-[8.5rem] text-center text-base font-bold text-heading">{calendar.monthLabel}</h3>
           {onNavigate && (
             <button
               type="button"
@@ -132,10 +132,10 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
 
       <div className="grid grid-cols-2 divide-x divide-y divide-surface-border border-b border-surface-border sm:grid-cols-4 sm:divide-y-0">
         {[
-          { label: "Bottles", value: stats.bottles, tone: "text-ink-900" },
-          { label: "Days marked", value: `${stats.marked}/${stats.elapsed}`, tone: "text-ink-900" },
+          { label: "Bottles", value: stats.bottles, tone: "text-heading" },
+          { label: "Days marked", value: `${stats.marked}/${stats.elapsed}`, tone: "text-heading" },
           { label: "Missing", value: stats.missing, tone: stats.missing > 0 ? "text-status-warning" : "text-status-success" },
-          { label: "Avg / day", value: stats.avg, tone: "text-ink-900" },
+          { label: "Avg / day", value: stats.avg, tone: "text-heading" },
         ].map((s) => (
           <div key={s.label} className="px-4 py-3 sm:px-5">
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{s.label}</p>

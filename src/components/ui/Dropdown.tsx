@@ -183,7 +183,7 @@ export function Dropdown({
         aria-invalid={invalid || undefined}
         disabled={disabled}
         onClick={() => (open ? close() : openPanel())}
-        className={`group flex h-10 w-full font-medium normal-case tracking-normal items-center justify-between gap-2 rounded-lg border bg-white pl-3 pr-2.5 text-left text-sm shadow-sm outline-none transition-all disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-400 ${
+        className={`group flex h-10 w-full font-medium normal-case tracking-normal items-center justify-between gap-2 rounded-lg border bg-surface pl-3 pr-2.5 text-left text-sm shadow-sm outline-none transition-all disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-400 ${
           invalid
             ? "border-status-danger"
             : open
@@ -201,7 +201,7 @@ export function Dropdown({
           <div
             ref={panel}
             style={{ position: "fixed", left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
-            className="z-[200] flex animate-fade-in flex-col overflow-hidden rounded-xl border border-surface-border bg-white shadow-lg ring-1 ring-black/5"
+            className="z-[200] flex animate-fade-in flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-lg ring-1 ring-black/5"
           >
             {showSearch && (
               <div className="relative shrink-0 border-b border-surface-border p-2">
@@ -215,7 +215,7 @@ export function Dropdown({
                   }}
                   placeholder="Search…"
                   aria-label="Search options"
-                  className="h-9 w-full rounded-md bg-surface-subtle pl-8 pr-2 text-sm outline-none placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
+                  className="h-9 w-full rounded-md bg-surface-subtle pl-8 pr-2 text-sm outline-none placeholder:text-gray-400 focus:bg-surface focus:ring-2 focus:ring-brand-500/20"
                 />
               </div>
             )}

@@ -25,7 +25,7 @@ export function ToastHost() {
           <div
             key={toast.id}
             role="alert"
-            className="pointer-events-auto flex animate-slide-up items-start gap-3 rounded-lg border border-surface-border bg-white p-3 text-sm shadow-lg"
+            className="pointer-events-auto flex animate-slide-up items-start gap-3 rounded-lg border border-surface-border bg-surface p-3 text-sm shadow-lg"
           >
             <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${accent}`} />
             <span className="flex-1 text-gray-800">{toast.message}</span>

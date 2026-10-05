@@ -73,6 +73,10 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     assigned_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Tickets pushed in from outside (Google Apps Script): `external_id` makes a retry harmless, `reporter` says who raised it.
+    source: Mapped[str] = mapped_column(String(16), default="app")   # app | google
+    external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reporter: Mapped[str | None] = mapped_column(String(255), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

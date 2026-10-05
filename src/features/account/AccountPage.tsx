@@ -9,17 +9,50 @@ import { PasswordForm } from "@/features/auth/PasswordForm";
 import { useAuth } from "@/features/auth/useAuth";
 import { listSessions, revokeSession } from "@/services/auth";
 import { describeDevice, timeAgo } from "@/lib/device";
+import { useTheme } from "@/lib/theme";
 import { pushToast } from "@/lib/toast";
 
 function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-surface-border bg-white shadow-card">
+    <section className="rounded-xl border border-surface-border bg-surface shadow-card">
       <header className="border-b border-surface-border/80 px-5 py-4">
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
       </header>
       <div className="p-5">{children}</div>
     </section>
+  );
+}
+
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  const dark = theme === "dark";
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-semibold text-gray-900">Dark theme</p>
+        <p className="mt-0.5 text-xs text-gray-500">Easier on the eyes in low light. Saved on this device.</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={dark}
+        aria-label="Dark theme"
+        onClick={() => setTheme(dark ? "light" : "dark")}
+        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+          dark ? "bg-brand-500" : "bg-gray-300"
+        }`}
+      >
+        <span
+          className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[11px] shadow transition-transform ${
+            dark ? "translate-x-6" : "translate-x-1"
+          }`}
+          aria-hidden="true"
+        >
+          {dark ? "🌙" : "☀️"}
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -79,6 +112,10 @@ export function AccountPage() {
                 </dd>
               </div>
             </dl>
+          </Card>
+
+          <Card title="Appearance" subtitle="Choose how the app looks for you.">
+            <ThemeSwitch />
           </Card>
 
           <Card title="Change password" subtitle="You'll stay signed in here; every other device is signed out.">

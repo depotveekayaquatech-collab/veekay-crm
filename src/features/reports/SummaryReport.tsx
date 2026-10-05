@@ -37,7 +37,7 @@ const PRESETS: { label: string; range: () => [string, string] }[] = [
 ];
 
 const dateInput =
-  "h-10 rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+  "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 export function SummaryReport() {
   const [[start, end], setRange] = useState<[string, string]>(PRESETS[1].range);
@@ -68,7 +68,7 @@ export function SummaryReport() {
       </div>
 
       {/* controls */}
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border border-surface-border bg-white p-4 shadow-card">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <div>
           <p className="mb-1.5 text-[13px] font-semibold text-gray-700">Period</p>
           <div className="flex flex-wrap gap-1.5">
@@ -107,7 +107,7 @@ export function SummaryReport() {
                 key={g.value}
                 onClick={() => setGroupBy(g.value)}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-                  groupBy === g.value ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"
+                  groupBy === g.value ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {g.label}
@@ -130,9 +130,9 @@ export function SummaryReport() {
               { label: "Avg bottles / day", value: data.avgBottlesPerDay.toLocaleString() },
               { label: "Top performer", value: top ? top.label : "—", small: true, hint: top ? `${top.sharePercent}% of volume` : undefined },
             ].map((k, i) => (
-              <div key={k.label} className={`tile tile-${["brand", "aqua", "success", "warning"][i]} rounded-xl border border-surface-border bg-white p-5 shadow-card`}>
+              <div key={k.label} className={`tile tile-${["brand", "aqua", "success", "warning"][i]} rounded-xl border border-surface-border bg-surface p-5 shadow-card`}>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.label}</p>
-                <p className={`mt-1.5 truncate font-bold tabular-nums text-ink-900 ${k.small ? "text-xl leading-9" : "text-[1.7rem] leading-none"}`}>
+                <p className={`mt-1.5 truncate font-bold tabular-nums text-heading ${k.small ? "text-xl leading-9" : "text-[1.7rem] leading-none"}`}>
                   {k.value}
                 </p>
                 {k.hint && <p className="mt-1 text-xs text-gray-500">{k.hint}</p>}
@@ -140,7 +140,7 @@ export function SummaryReport() {
             ))}
           </div>
 
-          <section className="rounded-xl border border-surface-border bg-white shadow-card">
+          <section className="rounded-xl border border-surface-border bg-surface shadow-card">
             <header className="border-b border-surface-border/80 px-5 py-4">
               <h3 className="text-sm font-bold text-gray-900">
                 Bottles per day · {data.start} → {data.end}

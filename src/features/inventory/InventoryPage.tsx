@@ -128,9 +128,9 @@ export function InventoryPage() {
             { l: "Marked today", v: `${s.markedToday} / ${s.stores}`, t: "success" },
             { l: "Total pending days", v: s.totalPendingDays, t: "aqua" },
           ].map((k) => (
-            <div key={k.l} className={`tile tile-${k.t} rounded-xl border border-surface-border bg-white p-5 shadow-card`}>
+            <div key={k.l} className={`tile tile-${k.t} rounded-xl border border-surface-border bg-surface p-5 shadow-card`}>
               <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.l}</p>
-              <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-ink-900">{k.v}</p>
+              <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-heading">{k.v}</p>
             </div>
           ))}
         </div>
@@ -142,7 +142,7 @@ export function InventoryPage() {
             key={c.id}
             onClick={() => setChip(c.id)}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              chip === c.id ? "bg-brand-500 text-white shadow-sm" : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+              chip === c.id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
             }`}
           >
             {c.label}
@@ -153,7 +153,7 @@ export function InventoryPage() {
             value={partner}
             onChange={(e) => setPartner(e.target.value)}
             aria-label="Platform"
-            className="h-9 rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm"
+            className="h-9 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm"
           >
             <option value="">All platforms</option>
             {partners.map((p) => (
@@ -168,7 +168,7 @@ export function InventoryPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search store, vendor, city or POC"
             aria-label="Search inventory"
-            className="h-10 w-full rounded-lg border border-surface-border bg-white pl-9 pr-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+            className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
           />
         </div>
       </div>
@@ -181,7 +181,7 @@ export function InventoryPage() {
 
       <div className="flex flex-col gap-4">
         {groups.map((g) => (
-          <section key={g.vendor} className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+          <section key={g.vendor} className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
             <button
               onClick={() => toggle(g.vendor)}
               aria-expanded={isOpen(g.vendor)}

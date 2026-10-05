@@ -35,7 +35,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative flex max-h-[92vh] w-full animate-slide-up flex-col rounded-t-xl bg-white shadow-lg sm:rounded-xl ${
+        className={`relative flex max-h-[92vh] w-full animate-slide-up flex-col rounded-t-xl bg-surface shadow-lg sm:rounded-xl ${
           size === "sm" ? "sm:max-w-sm" : size === "lg" ? "sm:max-w-3xl" : "sm:max-w-lg"
         }`}
       >

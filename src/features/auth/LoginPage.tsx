@@ -63,14 +63,14 @@ export function LoginPage() {
       </div>
 
       {/* Form panel */}
-      <div className="flex items-center justify-center bg-white px-4 py-10 sm:px-6">
+      <div className="flex items-center justify-center bg-surface px-4 py-10 sm:px-6">
         <div className="w-full max-w-sm animate-slide-up">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <BrandLogo height={40} />
             <span className="text-base font-semibold text-gray-900">Veekay Aquatech</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-ink-900">Welcome back</h1>
+          <h1 className="text-2xl font-bold text-heading">Welcome back</h1>
           <p className="mt-1.5 text-sm text-gray-500">Sign in with your ID and password — employees, admins and partner accounts all use this page.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>

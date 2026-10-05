@@ -99,6 +99,8 @@ class Settings(BaseSettings):
     ATTENDANCE_TIMEZONE: str = Field(default="Asia/Kolkata")   # which local day a sign-in belongs to
     ATTENDANCE_ACTIVE_WINDOW_MINUTES: int = Field(default=30)  # still 'active' if seen this recently
     OFFICE_DEFAULT_RADIUS_M: int = Field(default=100)
+    # Shared secret for tickets pushed in from outside (e.g. a Google Apps Script). Empty = that endpoint is switched off.
+    TICKET_WEBHOOK_KEY: str = Field(default="")
     ATTENDANCE_WORK_START: str = Field(default="10:00")        # HH:MM local time; checking in later than start + grace is "late"
     ATTENDANCE_GRACE_MINUTES: int = Field(default=15)
 

@@ -4,7 +4,7 @@ import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
  * wide table never breaks the page layout. */
 export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+    <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
       <table className="w-full min-w-[560px] border-collapse text-sm">{children}</table>
     </div>
   );

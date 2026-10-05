@@ -26,6 +26,8 @@ export interface Ticket {
   title: string;
   description: string | null;
   createdByName: string | null;
+  /** "google" = pushed in by the Google Apps Script. */
+  source: "app" | "google";
   assignedToId: string | null;
   assignedToName: string | null;
   createdAt: string;

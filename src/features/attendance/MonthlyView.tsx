@@ -8,7 +8,7 @@ import { CategoryChips, GroupRow } from "@/features/attendance/parts";
 import { useMonthAttendance } from "@/features/attendance/api";
 import { downloadCsv } from "@/lib/csv";
 
-const field = "h-10 rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+const field = "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 function thisMonth(): string {
   const n = new Date();
@@ -71,7 +71,7 @@ export function MonthlyView() {
       {isError && <ErrorState message="Couldn't load attendance." onRetry={() => refetch()} />}
 
       {data && (
-        <div className="max-h-[70vh] overflow-auto rounded-xl border border-surface-border bg-white shadow-card">
+        <div className="max-h-[70vh] overflow-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr>
@@ -102,7 +102,7 @@ export function MonthlyView() {
                 <Fragment key={r.userId}>
                 {(i === 0 || rows[i - 1].category !== r.category) && <GroupRow colSpan={data.dates.length + 7} label={r.categoryLabel} count={rows.filter((x) => x.category === r.category).length} />}
                 <tr className="group">
-                  <td className="sticky left-0 z-10 border-b border-r border-surface-border/70 bg-white px-3 py-2 group-hover:bg-surface-subtle">
+                  <td className="sticky left-0 z-10 border-b border-r border-surface-border/70 bg-surface px-3 py-2 group-hover:bg-surface-subtle">
                     <div className="max-w-[12rem] truncate font-medium text-gray-900" title={r.fullName}>{r.fullName}</div>
                     <div className="text-[11px] text-gray-500">{r.employeeCode}{r.platform ? ` · ${r.platform}` : ""}</div>
                   </td>
@@ -125,8 +125,8 @@ export function MonthlyView() {
                       </td>
                     );
                   })}
-                  <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums text-ink-900">{r.daysPresent}</td>
-                  <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums text-ink-900">{(r.totalMinutes / 60).toFixed(1)}</td>
+                  <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums text-heading">{r.daysPresent}</td>
+                  <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums text-heading">{(r.totalMinutes / 60).toFixed(1)}</td>
                   <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.lateDays ? "text-status-warning" : "text-gray-300"}`}>{r.lateDays}</td>
                   <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.leaveDays ? "text-status-info" : "text-gray-300"}`}>{r.leaveDays}</td>
                   <td className={`border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-center font-bold tabular-nums ${r.absentDays ? "text-status-danger" : "text-gray-300"}`}>{r.absentDays}</td>

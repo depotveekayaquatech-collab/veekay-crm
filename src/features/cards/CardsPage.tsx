@@ -27,7 +27,7 @@ interface VendorsResponse {
 }
 
 const field =
-  "h-10 rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+  "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 function save(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -155,7 +155,7 @@ export function CardsPage() {
         subtitle="A printable A4 card for every live store, one PDF per vendor. Choose one vendor for a PDF, or several for a ZIP."
       />
 
-      <section className="flex flex-wrap items-end gap-4 rounded-xl border border-surface-border bg-white p-4 shadow-card">
+      <section className="flex flex-wrap items-end gap-4 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
           Cards
           <SelectField className={`${field} min-w-[16rem]`} value={month} onChange={(e) => setMonth(e.target.value)}>
@@ -218,7 +218,7 @@ export function CardsPage() {
       {data && vendors.length === 0 && <EmptyState title="Nothing found" description="Try a different platform, region or search." />}
 
       {data && vendors.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+        <div className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
           <div className="flex flex-wrap items-center gap-3 border-b border-surface-border bg-surface-subtle px-4 py-3">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-gray-700">
               <input type="checkbox" checked={allVisible} onChange={toggleAllVisible} className="accent-brand-500" />
@@ -287,7 +287,7 @@ export function CardsPage() {
       )}
 
       {/* sticky action bar */}
-      <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-brand-200 bg-white px-4 py-3 shadow-md">
+      <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-brand-200 bg-surface px-4 py-3 shadow-md">
         <p className="text-sm text-gray-600">
           {picked.size === 0
             ? "Select one or more vendors."

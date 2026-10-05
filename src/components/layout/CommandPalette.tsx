@@ -102,7 +102,7 @@ export function CommandPalette({
       <div
         role="dialog"
         aria-label="Command palette"
-        className="relative w-full max-w-xl animate-slide-up overflow-hidden rounded-2xl border border-surface-border bg-white shadow-lg"
+        className="relative w-full max-w-xl animate-slide-up overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-lg"
       >
         <div className="flex items-center gap-3 border-b border-surface-border px-4">
           <IconSearch className="h-5 w-5 text-gray-400" />

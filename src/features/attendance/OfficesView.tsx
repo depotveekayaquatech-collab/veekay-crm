@@ -8,7 +8,7 @@ import { getDeviceLocation } from "@/lib/geo";
 import { pushToast } from "@/lib/toast";
 import { useOfficeMutations, useOffices } from "@/features/attendance/api";
 
-const field = "h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+const field = "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 export function OfficesView() {
   const canManage = usePermission("attendance.manage");
@@ -67,7 +67,7 @@ export function OfficesView() {
       )}
 
       {data && data.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+        <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
@@ -133,7 +133,7 @@ export function OfficesView() {
       )}
 
       {canManage ? (
-        <form onSubmit={submit} className="rounded-xl border border-surface-border bg-white p-5 shadow-card">
+        <form onSubmit={submit} className="rounded-xl border border-surface-border bg-surface p-5 shadow-card">
           <h3 className="text-sm font-bold text-gray-900">Add an office</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500 lg:col-span-2">

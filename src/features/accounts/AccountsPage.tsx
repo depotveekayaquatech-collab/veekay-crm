@@ -25,7 +25,7 @@ import {
 
 const EMPTY: SearchFilters = { month: complianceMonths()[0], partner: "", entity: "", state: "", city: "", vendor: "", q: "", kind: "any" };
 const field =
-  "h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+  "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 function DocPill({ doc, label }: { doc: DocBrief | null; label: "card" | "bill" | "payment" }) {
   if (!doc) return <span className="text-xs text-gray-400">No {label === "bill" ? "invoice" : label === "payment" ? "payment proof" : label}</span>;
@@ -108,7 +108,7 @@ export function AccountsPage() {
       <PageHeader title="Billing" subtitle="Invoice due alerts, and every card, invoice and payment proof on file — search, view, print or download." />
 
       {/* Due alerts */}
-      <section className="rounded-xl border border-surface-border bg-white shadow-card">
+      <section className="rounded-xl border border-surface-border bg-surface shadow-card">
         <header className="flex items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
           <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900">
             <IconAlertTriangle className="h-4 w-4 text-status-warning" /> Bills due
@@ -153,7 +153,7 @@ export function AccountsPage() {
       </section>
 
       {/* Search */}
-      <form onSubmit={submit} className="grid gap-3 rounded-xl border border-surface-border bg-white p-4 shadow-card sm:grid-cols-2 lg:grid-cols-4">
+      <form onSubmit={submit} className="grid gap-3 rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Month
           <SelectField className={field} value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })}>
@@ -242,7 +242,7 @@ export function AccountsPage() {
       {rows.length > 0 && (
         <>
           <p className="text-sm text-gray-500">{search.data?.total} store{search.data?.total === 1 ? "" : "s"} · {monthLabel(applied.month)}</p>
-          <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+          <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">

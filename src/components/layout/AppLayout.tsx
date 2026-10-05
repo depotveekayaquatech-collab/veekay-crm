@@ -273,7 +273,7 @@ export function AppLayout() {
       )}
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex h-[4.5rem] items-center gap-3 border-b border-surface-border/70 bg-white/75 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+      <header className="sticky top-0 z-20 flex h-[4.5rem] items-center gap-3 border-b border-surface-border/70 bg-surface/75 px-4 backdrop-blur-md sm:px-6 lg:px-10">
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
@@ -284,11 +284,11 @@ export function AppLayout() {
         <div className="flex items-center gap-2 text-sm">
           <span className="text-gray-400">Veekay</span>
           <span className="text-gray-300">/</span>
-          <h1 className="font-semibold text-ink-900">{currentTitle}</h1>
+          <h1 className="font-semibold text-heading">{currentTitle}</h1>
         </div>
         <button
           onClick={() => setPaletteOpen(true)}
-          className="ml-auto flex items-center gap-2 rounded-lg border border-surface-border bg-white px-3 py-1.5 text-sm text-gray-400 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-600"
+          className="ml-auto flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-1.5 text-sm text-gray-400 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-600"
         >
           <IconSearch className="h-4 w-4" />
           <span className="hidden sm:inline">Search…</span>

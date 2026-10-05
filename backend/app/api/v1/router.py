@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     compliance,
     employees,
     health,
+    integrations,
     orders,
     partner,
     partners,
@@ -35,3 +36,4 @@ api_router.include_router(cards.public_router)
 api_router.include_router(attendance.router)
 api_router.include_router(tickets.router)
 api_router.include_router(partner.router)
+api_router.include_router(integrations.router)

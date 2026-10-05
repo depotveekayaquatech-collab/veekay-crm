@@ -46,7 +46,7 @@ export function ResetPasswordModal({ employee, onClose }: { employee: Employee; 
       {pw ? (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-subtle px-3 py-3">
-            <code className="min-w-0 flex-1 select-all break-all text-base font-bold tracking-wide text-ink-900">{pw}</code>
+            <code className="min-w-0 flex-1 select-all break-all text-base font-bold tracking-wide text-heading">{pw}</code>
             <Button size="sm" variant="secondary" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</Button>
           </div>
           <p className="rounded-lg bg-status-warning-soft px-3 py-2.5 text-xs text-status-warning">

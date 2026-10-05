@@ -46,7 +46,7 @@ export function FileDropzone({
       <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => onPick(e.target.files?.[0])} />
       {file ? (
         <>
-          <p className="text-sm font-bold text-ink-900">{file.name}</p>
+          <p className="text-sm font-bold text-heading">{file.name}</p>
           <p className="text-xs text-gray-500">{size} · click to choose a different file</p>
         </>
       ) : (

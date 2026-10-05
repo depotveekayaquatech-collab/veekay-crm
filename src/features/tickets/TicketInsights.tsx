@@ -13,9 +13,9 @@ const ROW_TINT = { ok: "", medium: "bg-status-warning-soft/50", high: "bg-status
 function BucketChart({ title, hint, rows, empty }: { title: string; hint: string; rows: Bucket[]; empty: string }) {
   const max = Math.max(1, ...rows.map((r) => r.active));
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+    <section className="flex flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
       <div className="border-b border-surface-border px-4 py-3.5 sm:px-5">
-        <h3 className="text-sm font-bold text-ink-900">{title}</h3>
+        <h3 className="text-sm font-bold text-heading">{title}</h3>
         <p className="text-xs text-gray-500">{hint}</p>
       </div>
       {rows.length === 0 ? (
@@ -55,9 +55,9 @@ function BucketChart({ title, hint, rows, empty }: { title: string; hint: string
 function Trend({ data }: { data: { label: string; created: number; resolved: number }[] }) {
   const max = Math.max(1, ...data.flatMap((d) => [d.created, d.resolved]));
   return (
-    <section className="rounded-xl border border-surface-border bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-ink-900">Last 14 days</h3>
+        <h3 className="text-sm font-bold text-heading">Last 14 days</h3>
         <div className="flex gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand-500" /> Raised</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-status-success" /> Resolved</span>
@@ -139,9 +139,9 @@ export function TicketInsights() {
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[2fr_1fr]">
-            <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+            <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
               <div className="border-b border-surface-border px-4 py-3.5 sm:px-5">
-                <h3 className="text-sm font-bold text-ink-900">Stores to look at first</h3>
+                <h3 className="text-sm font-bold text-heading">Stores to look at first</h3>
                 <p className="text-xs text-gray-500">Ranked by overdue and late-delivery tickets</p>
               </div>
               {data.hotspots.length === 0 ? (
@@ -181,8 +181,8 @@ export function TicketInsights() {
 
             <div className="flex flex-col gap-5">
               <Trend data={data.trend} />
-              <section className="rounded-xl border border-surface-border bg-white p-4 shadow-card sm:p-5">
-                <h3 className="text-sm font-bold text-ink-900">What goes wrong</h3>
+              <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
+                <h3 className="text-sm font-bold text-heading">What goes wrong</h3>
                 {data.byCategory.length === 0 ? (
                   <p className="mt-3 text-sm text-gray-500">Nothing raised in this period.</p>
                 ) : (

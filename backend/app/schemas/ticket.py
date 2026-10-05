@@ -40,6 +40,7 @@ class TicketOut(BaseModel):
     title: str
     description: str | None = None
     created_by_name: str | None = None
+    source: str = "app"          # app | google
     assigned_to_id: uuid.UUID | None = None
     assigned_to_name: str | None = None
     created_at: datetime

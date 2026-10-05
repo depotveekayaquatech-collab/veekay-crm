@@ -34,7 +34,7 @@ const EMPTY: Omit<RepoFilters, "month"> = {
 };
 
 const select =
-  "h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+  "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 const label = "flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500";
 
 const STATUS_TONE: Record<ComplianceStatus, "danger" | "warning" | "success"> = { PENDING: "danger", PARTIAL: "warning", COMPLETE: "success" };
@@ -57,7 +57,7 @@ function Tile({
       {hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}
     </>
   );
-  const cls = `tile tile-${accent} rounded-xl border bg-white p-4 text-left shadow-card transition-all duration-150 ${
+  const cls = `tile tile-${accent} rounded-xl border bg-surface p-4 text-left shadow-card transition-all duration-150 ${
     active ? "border-brand-300 ring-2 ring-brand-500/20" : "border-surface-border"
   } ${onClick ? "hover:-translate-y-0.5 hover:shadow-md" : ""}`;
   return onClick ? (
@@ -203,7 +203,7 @@ export function CompliancePage() {
       )}
 
       {/* filters */}
-      <section className="rounded-xl border border-surface-border bg-white p-4 shadow-card">
+      <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <label className={label}>
             Month
@@ -322,7 +322,7 @@ export function CompliancePage() {
               </span>
             )}
           </div>
-          <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+          <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[980px] text-sm">
               <thead>
                 <tr className="bg-surface-subtle">

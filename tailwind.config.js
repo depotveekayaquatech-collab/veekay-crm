@@ -7,29 +7,28 @@ export default {
       colors: {
         // Brand — the only accent colour in the product.
         brand: {
-          50: "#eef3ff", 100: "#dde7ff", 200: "#bccffe", 300: "#8fb0fc", 400: "#5b88f6",
-          500: "#2f6fed", 600: "#2559c9", 700: "#1e46a0", 800: "#1c3b82", 900: "#1a336a",
+          50: "rgb(var(--brand-50) / <alpha-value>)", 100: "rgb(var(--brand-100) / <alpha-value>)", 200: "rgb(var(--brand-200) / <alpha-value>)", 300: "rgb(var(--brand-300) / <alpha-value>)", 400: "rgb(var(--brand-400) / <alpha-value>)", 500: "rgb(var(--brand-500) / <alpha-value>)", 600: "rgb(var(--brand-600) / <alpha-value>)", 700: "rgb(var(--brand-700) / <alpha-value>)", 800: "rgb(var(--brand-800) / <alpha-value>)", 900: "rgb(var(--brand-900) / <alpha-value>)",
         },
         // Secondary accent — water/teal. Used sparingly: tiles, highlights, success-adjacent UI.
         aqua: {
-          50: "#e7f7fa", 100: "#c6edf2", 200: "#94dbe6", 300: "#5cc4d4", 400: "#2aa9bd",
-          500: "#0e8ea4", 600: "#0b7285", 700: "#0a5b6a",
+          50: "rgb(var(--aqua-50) / <alpha-value>)", 100: "rgb(var(--aqua-100) / <alpha-value>)", 200: "rgb(var(--aqua-200) / <alpha-value>)", 300: "rgb(var(--aqua-300) / <alpha-value>)", 400: "rgb(var(--aqua-400) / <alpha-value>)", 500: "rgb(var(--aqua-500) / <alpha-value>)", 600: "rgb(var(--aqua-600) / <alpha-value>)", 700: "rgb(var(--aqua-700) / <alpha-value>)",
         },
-        // Neutrals — every gray-* utility resolves to this ink-tinted scale.
+        // Neutrals — every gray-* utility resolves to this ink-tinted scale (inverted in dark mode).
         gray: {
-          50: "#f7f8fc", 100: "#eef0f6", 200: "#e2e5ee", 300: "#c9cedc", 400: "#98a0b5",
-          500: "#687189", 600: "#4b546c", 700: "#343c53", 800: "#1e2640", 900: "#0f1629",
+          50: "rgb(var(--gray-50) / <alpha-value>)", 100: "rgb(var(--gray-100) / <alpha-value>)", 200: "rgb(var(--gray-200) / <alpha-value>)", 300: "rgb(var(--gray-300) / <alpha-value>)", 400: "rgb(var(--gray-400) / <alpha-value>)", 500: "rgb(var(--gray-500) / <alpha-value>)", 600: "rgb(var(--gray-600) / <alpha-value>)", 700: "rgb(var(--gray-700) / <alpha-value>)", 800: "rgb(var(--gray-800) / <alpha-value>)", 900: "rgb(var(--gray-900) / <alpha-value>)",
         },
-        // Deep navy for the sidebar / dark surfaces.
+        // Deep navy for the sidebar / dark surfaces (the same in both themes).
         ink: { 950: "#070c18", 900: "#0b1222", 800: "#111a30", 700: "#1a2542", 600: "#26345a" },
-        surface: { DEFAULT: "#ffffff", subtle: "#f5f6fa", muted: "#eceef4", border: "#e2e5ee" },
+        // Headings: dark navy on light, near-white on dark.
+        heading: "rgb(var(--heading) / <alpha-value>)",
+        surface: { DEFAULT: "rgb(var(--surface) / <alpha-value>)", subtle: "rgb(var(--surface-subtle) / <alpha-value>)", muted: "rgb(var(--surface-muted) / <alpha-value>)", border: "rgb(var(--surface-border) / <alpha-value>)" },
         // Semantic status colours (info intentionally reuses the brand blue).
         status: {
-          success: "#0f7b57", "success-soft": "#ddf4ea",
-          warning: "#a86412", "warning-soft": "#fcf0d6",
-          danger: "#c8323f", "danger-soft": "#fde5e8",
-          info: "#2559c9", "info-soft": "#dde7ff",
-          neutral: "#687189",
+          success: "rgb(var(--success) / <alpha-value>)", "success-soft": "rgb(var(--success-soft) / <alpha-value>)",
+          warning: "rgb(var(--warning) / <alpha-value>)", "warning-soft": "rgb(var(--warning-soft) / <alpha-value>)",
+          danger: "rgb(var(--danger) / <alpha-value>)", "danger-soft": "rgb(var(--danger-soft) / <alpha-value>)",
+          info: "rgb(var(--info) / <alpha-value>)", "info-soft": "rgb(var(--info-soft) / <alpha-value>)",
+          neutral: "rgb(var(--neutral) / <alpha-value>)",
         },
       },
       borderRadius: { sm: "6px", md: "8px", lg: "12px", xl: "16px" },

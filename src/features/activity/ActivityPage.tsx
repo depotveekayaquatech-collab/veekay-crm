@@ -59,7 +59,7 @@ export function ActivityPage() {
       {data && data.items.length === 0 && <EmptyState title="Nothing here yet" />}
       {data && data.items.length > 0 && (
         <>
-          <div className="divide-y divide-surface-border rounded-lg border border-surface-border bg-white shadow-card">
+          <div className="divide-y divide-surface-border rounded-lg border border-surface-border bg-surface shadow-card">
             {data.items.map((a) => (
               <div key={a.id} className="flex items-start justify-between gap-4 px-4 py-3">
                 <div className="min-w-0">

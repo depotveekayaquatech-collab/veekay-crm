@@ -3,6 +3,98 @@
 @tailwind utilities;
 
 @layer base {
+  /* Theme tokens (r g b). Tailwind colours read these, so toggling `.dark` on <html> re-skins the whole app. */
+  :root {
+    --gray-50: 247 248 252;
+    --gray-100: 238 240 246;
+    --gray-200: 226 229 238;
+    --gray-300: 201 206 220;
+    --gray-400: 152 160 181;
+    --gray-500: 104 113 137;
+    --gray-600: 75 84 108;
+    --gray-700: 52 60 83;
+    --gray-800: 30 38 64;
+    --gray-900: 15 22 41;
+    --brand-50: 238 243 255;
+    --brand-100: 221 231 255;
+    --brand-200: 188 207 254;
+    --brand-300: 143 176 252;
+    --brand-400: 91 136 246;
+    --brand-500: 47 111 237;
+    --brand-600: 37 89 201;
+    --brand-700: 30 70 160;
+    --brand-800: 28 59 130;
+    --brand-900: 26 51 106;
+    --aqua-50: 231 247 250;
+    --aqua-100: 198 237 242;
+    --aqua-200: 148 219 230;
+    --aqua-300: 92 196 212;
+    --aqua-400: 42 169 189;
+    --aqua-500: 14 142 164;
+    --aqua-600: 11 114 133;
+    --aqua-700: 10 91 106;
+    --surface: 255 255 255;
+    --surface-subtle: 245 246 250;
+    --surface-muted: 236 238 244;
+    --surface-border: 226 229 238;
+    --heading: 11 18 34;
+    --success: 15 123 87;
+    --success-soft: 221 244 234;
+    --warning: 168 100 18;
+    --warning-soft: 252 240 214;
+    --danger: 200 50 63;
+    --danger-soft: 253 229 232;
+    --info: 37 89 201;
+    --info-soft: 221 231 255;
+    --neutral: 104 113 137;
+    color-scheme: light;
+  }
+  html.dark {
+    --gray-50: 18 26 46;
+    --gray-100: 25 35 59;
+    --gray-200: 35 47 75;
+    --gray-300: 74 88 124;
+    --gray-400: 107 118 145;
+    --gray-500: 152 162 186;
+    --gray-600: 180 189 209;
+    --gray-700: 206 212 226;
+    --gray-800: 227 231 240;
+    --gray-900: 242 244 250;
+    --brand-50: 20 32 63;
+    --brand-100: 26 42 85;
+    --brand-200: 36 58 122;
+    --brand-300: 143 176 252;
+    --brand-400: 91 136 246;
+    --brand-500: 47 111 237;
+    --brand-600: 122 162 251;
+    --brand-700: 157 185 251;
+    --brand-800: 188 207 254;
+    --brand-900: 221 231 255;
+    --aqua-50: 15 44 51;
+    --aqua-100: 18 58 67;
+    --aqua-200: 148 219 230;
+    --aqua-300: 92 196 212;
+    --aqua-400: 42 169 189;
+    --aqua-500: 14 142 164;
+    --aqua-600: 92 196 212;
+    --aqua-700: 148 219 230;
+    --surface: 21 30 51;
+    --surface-subtle: 13 20 36;
+    --surface-muted: 28 39 64;
+    --surface-border: 38 50 80;
+    --heading: 242 244 250;
+    --success: 52 195 143;
+    --success-soft: 17 55 42;
+    --warning: 232 168 74;
+    --warning-soft: 58 44 16;
+    --danger: 229 83 94;
+    --danger-soft: 61 25 32;
+    --info: 127 166 255;
+    --info-soft: 27 43 88;
+    --neutral: 152 162 186;
+    color-scheme: dark;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -18,11 +110,11 @@
   }
 
   body {
-    background-color: #f5f6fa;
+    background-color: rgb(var(--surface-subtle));
     background-image: radial-gradient(1000px 420px at 100% -10%, rgba(47,111,237,0.07), transparent 60%),
       radial-gradient(800px 380px at 0% -12%, rgba(42,169,189,0.08), transparent 60%);
     background-attachment: fixed;
-    color: #0f1629;
+    color: rgb(var(--gray-900));
     letter-spacing: -0.005em;
     font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     line-height: 1.55;
@@ -34,7 +126,7 @@
      browser default outline, which is invisible on some controls. */
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px #f5f6fa, 0 0 0 4px #2f6fed;
+    box-shadow: 0 0 0 2px rgb(var(--surface-subtle)), 0 0 0 4px #2f6fed;
   }
 
   ::selection {
@@ -89,7 +181,7 @@
     transition: background-color 0.12s ease;
   }
   tbody tr:hover td {
-    background-color: #f7f8fc;
+    background-color: rgb(var(--gray-50));
   }
   tbody tr:last-child td {
     border-bottom: 0;
@@ -115,10 +207,10 @@
   }
   .stacked-table tr {
     margin: 0.5rem;
-    border: 1px solid #e2e5ee;
+    border: 1px solid rgb(var(--surface-border));
     border-radius: 8px;
     padding: 0.25rem 0.5rem;
-    background: #fff;
+    background: rgb(var(--surface));
   }
   .stacked-table td {
     display: flex;
@@ -131,7 +223,7 @@
   .stacked-table td::before {
     content: attr(data-label);
     font-weight: 600;
-    color: #687189;
+    color: rgb(var(--gray-500));
     text-align: left;
   }
   .stacked-table td:first-child {
@@ -140,4 +232,17 @@
   .stacked-table td:first-child::before {
     content: "";
   }
+}
+
+/* Dark theme touches that tokens alone can't express. */
+html.dark ::selection {
+  background-color: rgb(var(--brand-200));
+  color: rgb(var(--brand-900));
+}
+/* Primary button hover ends in brand-700, which is a light text colour in dark mode. */
+html.dark .hover\:to-brand-700:hover {
+  --tw-gradient-to: #1e46a0 var(--tw-gradient-to-position);
+}
+html.dark * {
+  scrollbar-color: #33415f transparent;
 }

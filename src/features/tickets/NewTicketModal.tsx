@@ -77,7 +77,7 @@ export function NewTicketModal({ onClose, onCreated }: { onClose: () => void; on
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search store name, code or city"
                   aria-label="Search stores"
-                  className="h-10 w-full bg-white pl-9 pr-3 text-sm outline-none placeholder:text-gray-400"
+                  className="h-10 w-full bg-surface pl-9 pr-3 text-sm outline-none placeholder:text-gray-400"
                 />
               </div>
               <ul className="max-h-52 divide-y divide-surface-border overflow-y-auto">
@@ -113,7 +113,7 @@ export function NewTicketModal({ onClose, onCreated }: { onClose: () => void; on
             rows={4}
             maxLength={4000}
             placeholder="Optional — what happened, which delivery, who you spoke to"
-            className="rounded-md border border-surface-border bg-white px-3 py-2 text-sm font-normal shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+            className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm font-normal shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
           />
         </label>
         <p className="flex items-center gap-1.5 text-xs text-gray-500">

@@ -15,6 +15,7 @@
 | `veekay-api` | `PUBLIC_APP_URL`          | `https://<your-web-url>` — **printed in every card's QR; set before printing** |
 | `veekay-api` | `BOOTSTRAP_ADMIN_PASSWORD`| first admin password (≥ 12 chars). The admin must change it at first sign-in. Delete the value afterwards. |
 | `veekay-api` | `COMPANY_EMAIL` (optional)| shown on the card header                                              |
+| `veekay-api` | `TICKET_WEBHOOK_KEY` (optional) | secret for tickets pushed from a Google Apps Script — see `docs/GOOGLE_SCRIPT_TICKETS.md` |
 | `veekay-web` | `VITE_API_BASE_URL`       | `https://<your-api-url>/api/v1`                                       |
 
 Production never creates demo users. The first sign-in is `ADMIN001` with the bootstrap password.

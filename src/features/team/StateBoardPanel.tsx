@@ -15,7 +15,7 @@ export function StateBoardPanel() {
   const partnerId = partners.find((p) => p.slug === partner)?.id ?? "";
 
   return (
-    <div className="rounded-lg border border-surface-border bg-white p-4 shadow-card">
+    <div className="rounded-lg border border-surface-border bg-surface p-4 shadow-card">
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">State assignment</h3>

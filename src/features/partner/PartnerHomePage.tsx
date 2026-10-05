@@ -52,9 +52,9 @@ function delta(now: number, before: number): { text: string; up: boolean } | nul
 function TrendChart({ data }: { data: { label: string; entries: number; bottles: number }[] }) {
   const max = Math.max(1, ...data.map((d) => d.bottles));
   return (
-    <section className="rounded-xl border border-surface-border bg-white p-4 shadow-card sm:p-5">
+    <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-bold text-ink-900">Bottles delivered, last 14 days</h3>
+        <h3 className="text-sm font-bold text-heading">Bottles delivered, last 14 days</h3>
         <span className="text-xs text-gray-400">today is still counting</span>
       </div>
       <div className="mt-4 flex h-40 items-end gap-1.5" role="img" aria-label="Bottles delivered per day">
@@ -152,14 +152,14 @@ export function PartnerHomePage() {
               tone="success"
               hint={d ? <span className={d.up ? "text-status-success" : "text-status-warning"}>{d.text}</span> : `${e.today.yesterdayBottles.toLocaleString()} yesterday`}
             />
-            <StatCard label={`Bottles in ${e.month.label.split(" ")[0]}`} value={e.month.bottles.toLocaleString()} hint={`${e.month.entries.toLocaleString()} store-days recorded`} tone="warning" valueClassName="text-ink-900" />
+            <StatCard label={`Bottles in ${e.month.label.split(" ")[0]}`} value={e.month.bottles.toLocaleString()} hint={`${e.month.entries.toLocaleString()} store-days recorded`} tone="warning" valueClassName="text-heading" />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
             <TrendChart data={e.trend} />
-            <section className="flex flex-col overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+            <section className="flex flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
               <div className="flex items-center justify-between border-b border-surface-border px-4 py-3.5 sm:px-5">
-                <h3 className="text-sm font-bold text-ink-900">Still to be marked today</h3>
+                <h3 className="text-sm font-bold text-heading">Still to be marked today</h3>
                 <Badge tone={e.awaitingTotal ? "warning" : "success"}>{e.awaitingTotal}</Badge>
               </div>
               {e.awaiting.length === 0 ? (
@@ -182,9 +182,9 @@ export function PartnerHomePage() {
             </section>
           </div>
 
-          <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+          <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
             <div className="border-b border-surface-border px-4 py-3.5 sm:px-5">
-              <h3 className="text-sm font-bold text-ink-900">Regions today</h3>
+              <h3 className="text-sm font-bold text-heading">Regions today</h3>
               <p className="text-xs text-gray-500">Lowest completion first</p>
             </div>
             <div className="stacked-table overflow-x-auto">
@@ -219,10 +219,10 @@ export function PartnerHomePage() {
       )}
 
       {t && (
-        <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+        <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border px-4 py-3.5 sm:px-5">
             <div>
-              <h3 className="text-sm font-bold text-ink-900">Your tickets</h3>
+              <h3 className="text-sm font-bold text-heading">Your tickets</h3>
               <p className="text-xs text-gray-500">
                 {t.open} open · {t.inProgress} in progress · {t.resolved30d} resolved in the last 30 days
                 {t.overdue > 0 && <span className="font-semibold text-status-danger"> · {t.overdue} overdue</span>}
@@ -254,7 +254,7 @@ export function PartnerHomePage() {
       )}
 
       {!e && !t && (
-        <p className="rounded-xl border border-dashed border-surface-border bg-white px-6 py-12 text-center text-sm text-gray-500">
+        <p className="rounded-xl border border-dashed border-surface-border bg-surface px-6 py-12 text-center text-sm text-gray-500">
           Your account doesn't have anything switched on yet. Ask your Veekay contact to enable entries or tickets.
         </p>
       )}

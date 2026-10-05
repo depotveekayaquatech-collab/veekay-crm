@@ -79,6 +79,9 @@ services:
         sync: false
       - key: S3_SECRET_ACCESS_KEY
         sync: false
+      # Secret for tickets pushed in from a Google Apps Script (see docs/GOOGLE_SCRIPT_TICKETS.md). Empty = switched off.
+      - key: TICKET_WEBHOOK_KEY
+        sync: false
       # Error tracking (optional): a Sentry DSN turns it on. RELEASE is shown on each event.
       - key: SENTRY_DSN
         sync: false

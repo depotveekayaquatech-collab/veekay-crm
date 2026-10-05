@@ -10,10 +10,10 @@ export function ForcedPasswordChange() {
       <div className="w-full max-w-md animate-slide-up">
         <div className="mb-6 flex items-center gap-2.5">
           <BrandLogo height={40} />
-          <span className="text-base font-bold text-ink-900">Veekay Aquatech</span>
+          <span className="text-base font-bold text-heading">Veekay Aquatech</span>
         </div>
-        <div className="rounded-xl border border-surface-border bg-white p-6 shadow-card">
-          <h1 className="text-xl font-bold text-ink-900">Choose your own password</h1>
+        <div className="rounded-xl border border-surface-border bg-surface p-6 shadow-card">
+          <h1 className="text-xl font-bold text-heading">Choose your own password</h1>
           <p className="mt-1.5 text-sm text-gray-500">
             Hi {user?.fullName?.split(" ")[0] ?? "there"} — you signed in with a temporary password. Set a new one to continue.
           </p>

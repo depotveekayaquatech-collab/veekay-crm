@@ -10,7 +10,7 @@ import { fmtDay, fmtMinutes, fmtTime } from "@/features/attendance/format";
 import { LEAVE_LABEL, useCheckMutations, useMyAttendance, useTodayStatus, type TodayStatus } from "@/features/attendance/api";
 import { getDeviceLocation } from "@/lib/geo";
 
-const field = "h-10 rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+const field = "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 function thisMonth(): string {
   const n = new Date();
@@ -59,7 +59,7 @@ function CheckCard({ today }: { today: TodayStatus }) {
   const onLeave = today.onLeave && !today.checkedIn;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-surface-border bg-white shadow-card">
+    <section className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-card">
       <div
         className="pointer-events-none absolute inset-0 opacity-70"
         style={{
@@ -71,7 +71,7 @@ function CheckCard({ today }: { today: TodayStatus }) {
         <div>
           <p className="text-sm font-semibold text-gray-500">{greeting}</p>
           <p className="mt-1 flex items-baseline gap-3">
-            <span className="text-[2.6rem] font-bold leading-none tabular-nums text-ink-900">
+            <span className="text-[2.6rem] font-bold leading-none tabular-nums text-heading">
               {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
             <span className="text-sm text-gray-500">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</span>
@@ -172,9 +172,9 @@ export function MyAttendance() {
             ["On leave", me.leaveDays, "brand"],
             ["Absent", me.absentDays, me.absentDays ? "warning" : "success"],
           ].map(([t, v, tone]) => (
-            <div key={t as string} className={`tile tile-${tone} rounded-xl border border-surface-border bg-white p-4 shadow-card`}>
+            <div key={t as string} className={`tile tile-${tone} rounded-xl border border-surface-border bg-surface p-4 shadow-card`}>
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t}</p>
-              <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-ink-900">{v}</p>
+              <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-heading">{v}</p>
             </div>
           ))}
         </div>
@@ -185,7 +185,7 @@ export function MyAttendance() {
       {data && days.length === 0 && <EmptyState title="Nothing this month yet" description="Your check-ins, check-outs and leave will appear here." />}
 
       {days.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+        <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
@@ -207,7 +207,7 @@ export function MyAttendance() {
                   <td className="px-3 py-3 tabular-nums">
                     {e.checkOutAt ? fmtTime(e.checkOutAt) : e.status === "CHECKED_IN" ? <span className="text-xs text-gray-400">still in</span> : e.status === "NO_CHECKOUT" ? <span className="text-xs text-status-warning">didn't check out</span> : "—"}
                   </td>
-                  <td className="px-3 py-3 text-right font-semibold tabular-nums text-ink-900">{e.status === "ON_LEAVE" ? "—" : fmtMinutes(e.minutes)}</td>
+                  <td className="px-3 py-3 text-right font-semibold tabular-nums text-heading">{e.status === "ON_LEAVE" ? "—" : fmtMinutes(e.minutes)}</td>
                   <td className="px-3 py-3">
                     <StatusBadge status={e.status} />
                     {e.status === "ON_LEAVE" && e.leaveType && <div className="mt-0.5 text-[11px] text-gray-500">{LEAVE_LABEL[e.leaveType]}{e.halfDay ? " · half day" : ""}</div>}

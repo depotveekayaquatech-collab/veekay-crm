@@ -51,7 +51,7 @@ export function AttendancePage() {
                   aria-selected={tab === t.id}
                   onClick={() => setParams(t.id === tabs[0].id ? {} : { tab: t.id }, { replace: true })}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
-                    tab === t.id ? "bg-white text-ink-900 shadow-sm ring-1 ring-surface-border" : "text-gray-500 hover:text-gray-800"
+                    tab === t.id ? "bg-surface text-heading shadow-sm ring-1 ring-surface-border" : "text-gray-500 hover:text-gray-800"
                   }`}
                 >
                   {t.label}
@@ -62,7 +62,7 @@ export function AttendancePage() {
         }
       />
       {!tab && (
-        <p className="rounded-xl border border-dashed border-surface-border bg-white px-6 py-12 text-center text-sm text-gray-500">
+        <p className="rounded-xl border border-dashed border-surface-border bg-surface px-6 py-12 text-center text-sm text-gray-500">
           Attendance is not tracked for your account.
         </p>
       )}

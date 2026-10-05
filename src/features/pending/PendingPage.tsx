@@ -110,11 +110,11 @@ export function PendingPage() {
           </div>
 
           {data.pending === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-surface-border bg-white px-6 py-14 text-center shadow-card">
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-surface-border bg-surface px-6 py-14 text-center shadow-card">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-status-success-soft text-status-success">
                 <IconCheckCircle className="h-6 w-6" />
               </span>
-              <p className="text-base font-bold text-ink-900">All caught up</p>
+              <p className="text-base font-bold text-heading">All caught up</p>
               <p className="text-sm text-gray-500">Every live store has an entry for {data.dateLabel.toLowerCase()}.</p>
             </div>
           ) : (

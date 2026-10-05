@@ -17,7 +17,7 @@ import type { DashboardInsights } from "@/types/order";
 
 function Panel({ title, action, children, className = "" }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-xl border border-surface-border bg-white shadow-card ${className}`}>
+    <section className={`rounded-xl border border-surface-border bg-surface shadow-card ${className}`}>
       <header className="flex items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         {action}
@@ -95,7 +95,7 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
 
   const bg = { warning: "bg-status-warning-soft text-status-warning", danger: "bg-status-danger-soft text-status-danger", info: "bg-status-info-soft text-status-info" };
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-surface-border bg-white px-4 py-3 shadow-card">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-surface-border bg-surface px-4 py-3 shadow-card">
       <span className="mr-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500">
         <IconAlertTriangle className="h-4 w-4" /> Needs attention
       </span>
@@ -117,12 +117,12 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
 
 function Kpi({ label, value, hint, hintTone = "flat", loading, tone = "brand" }: { label: string; value: ReactNode; hint?: string; hintTone?: "up" | "down" | "flat"; loading?: boolean; tone?: "brand" | "aqua" | "success" | "warning" }) {
   return (
-    <div className={`tile tile-${tone} rounded-xl border border-surface-border bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
+    <div className={`tile tile-${tone} rounded-xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
       <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
       {loading ? (
         <Skeleton className="mt-2 h-8 w-20" />
       ) : (
-        <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-ink-900">{value}</p>
+        <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-heading">{value}</p>
       )}
       {hint && !loading && <p className={`mt-1.5 text-xs font-medium ${toneText[hintTone]}`}>{hint}</p>}
     </div>
@@ -186,7 +186,7 @@ export function TrendCard() {
             <button
               key={r}
               onClick={() => setRange(r)}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${range === r ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${range === r ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
             >
               {r}d
             </button>

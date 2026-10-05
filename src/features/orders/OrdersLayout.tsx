@@ -29,7 +29,7 @@ export function OrdersLayout() {
 
   return (
     <div className="flex flex-col gap-5">
-      <nav className="flex gap-1 overflow-x-auto rounded-xl border border-surface-border bg-white p-1.5 shadow-card" aria-label="Orders sections">
+      <nav className="flex gap-1 overflow-x-auto rounded-xl border border-surface-border bg-surface p-1.5 shadow-card" aria-label="Orders sections">
         {tabs.map((t) => {
           const Icon = t.icon;
           return (

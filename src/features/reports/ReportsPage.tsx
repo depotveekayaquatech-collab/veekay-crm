@@ -12,11 +12,11 @@ const TABS: { id: Tab; label: string }[] = [
 
 function TestReports() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-surface-border bg-white px-6 py-20 text-center shadow-card">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-surface-border bg-surface px-6 py-20 text-center shadow-card">
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-aqua-50 text-aqua-600">
         <IconReport className="h-7 w-7" />
       </span>
-      <p className="text-lg font-bold text-ink-900">Test reports are coming soon</p>
+      <p className="text-lg font-bold text-heading">Test reports are coming soon</p>
       <p className="max-w-md text-sm text-gray-500">
         This tab is reserved for test reports. Nothing to show yet — delivery numbers are in the Delivery Reports tab.
       </p>
@@ -42,7 +42,7 @@ export function ReportsPage() {
                 aria-selected={tab === t.id}
                 onClick={() => setParams(t.id === "delivery" ? {} : { tab: t.id }, { replace: true })}
                 className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
-                  tab === t.id ? "bg-white text-ink-900 shadow-sm ring-1 ring-surface-border" : "text-gray-500 hover:text-gray-800"
+                  tab === t.id ? "bg-surface text-heading shadow-sm ring-1 ring-surface-border" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {t.label}

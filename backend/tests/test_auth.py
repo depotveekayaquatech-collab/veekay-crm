@@ -117,9 +117,26 @@ def test_logout_always_succeeds_even_with_junk(client):
     assert client.post(f"{API}/auth/logout").status_code == 204
 
 
+def _login_as(client, code, user_agent, pw=DEMO_PASSWORD):
+    """Sign in as a particular 'device' (a different browser = a different User-Agent)."""
+    return client.post(f"{API}/auth/login", json={"employee_code": code, "password": pw}, headers={"User-Agent": user_agent}).json()
+
+
+def test_signing_in_again_from_the_same_browser_replaces_the_old_session(client):
+    first = _login_as(client, "EMP001", "Mozilla/5.0 Chrome/130 Windows")
+    second = _login_as(client, "EMP001", "Mozilla/5.0 Chrome/130 Windows")
+    assert client.get(f"{API}/auth/me", headers=auth(first["access_token"])).status_code == 401      # replaced, not stacked
+    assert client.get(f"{API}/auth/me", headers=auth(second["access_token"])).status_code == 200
+    sessions = client.get(f"{API}/auth/sessions", headers=auth(second["access_token"])).json()
+    assert len(sessions) == 1 and sessions[0]["current"] is True
+    phone = _login_as(client, "EMP001", "Mozilla/5.0 iPhone Safari")                                   # a different device stays
+    assert client.get(f"{API}/auth/me", headers=auth(second["access_token"])).status_code == 200
+    assert len(client.get(f"{API}/auth/sessions", headers=auth(phone["access_token"])).json()) == 2
+
+
 def test_sessions_list_marks_current_and_other_devices_can_be_revoked(client):
-    a = login(client, "EMP001").json()
-    b = login(client, "EMP001").json()
+    a = _login_as(client, "EMP001", "Mozilla/5.0 Chrome Windows")
+    b = _login_as(client, "EMP001", "Mozilla/5.0 Safari iPhone")
     sessions = client.get(f"{API}/auth/sessions", headers=auth(a["access_token"])).json()
     assert len(sessions) >= 2 and sum(1 for s in sessions if s["current"]) == 1
     other = next(s["id"] for s in sessions if not s["current"])
@@ -129,8 +146,8 @@ def test_sessions_list_marks_current_and_other_devices_can_be_revoked(client):
 
 
 def test_logout_all_signs_every_device_out_including_this_one(client):
-    a = login(client, "EMP001").json()
-    b = login(client, "EMP001").json()
+    a = _login_as(client, "EMP001", "Mozilla/5.0 Chrome Windows")
+    b = _login_as(client, "EMP001", "Mozilla/5.0 Safari iPhone")
     assert client.post(f"{API}/auth/logout-all", headers=auth(a["access_token"])).status_code == 204
     assert client.get(f"{API}/auth/me", headers=auth(a["access_token"])).status_code == 401
     assert client.get(f"{API}/auth/me", headers=auth(b["access_token"])).status_code == 401

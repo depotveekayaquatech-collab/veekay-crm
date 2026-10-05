@@ -27,10 +27,10 @@ function Phone({ value }: { value: string | null }) {
 function StoreSummary({ store }: { store: MyStore }) {
   const place = [store.city, store.state].filter(Boolean).join(", ");
   return (
-    <div className="rounded-xl border border-surface-border bg-white p-4 shadow-card sm:p-5">
+    <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="truncate text-lg font-bold text-ink-900">{store.name}</h3>
+          <h3 className="truncate text-lg font-bold text-heading">{store.name}</h3>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
             <span className="font-medium text-gray-700">{store.externalCode}</span>
             {place && (

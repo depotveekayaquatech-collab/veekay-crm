@@ -154,7 +154,8 @@ def _out(t: Ticket, kind: str, comments: int, now: datetime) -> TicketOut:
     return TicketOut(
         id=t.id, number=t.number, store=_brief(t.store), category=t.category, priority=t.priority, status=t.status,
         title=t.title, description=t.description,
-        created_by_name=t.created_by.full_name if t.created_by else None,
+        created_by_name=t.created_by.full_name if t.created_by else (t.reporter or None),
+        source=t.source,
         assigned_to_id=t.assigned_to_user_id, assigned_to_name=t.assigned_to.full_name if t.assigned_to else None,
         created_at=t.created_at, updated_at=t.updated_at, due_at=t.due_at, resolved_at=t.resolved_at,
         is_overdue=_overdue(t, now), comments_count=comments,
@@ -467,3 +468,85 @@ def analytics(db: Session, admin: User, days: int = 30) -> TicketAnalytics:
         by_category=[CategoryCount(category=k, count=v) for k, v in sorted(cat.items(), key=lambda kv: -kv[1])],
         trend=trend, hotspots=hotspots[:10],
     )
+
+
+# --------------------------------------------------------------------------
+# tickets pushed in from outside (Google Apps Script)
+# --------------------------------------------------------------------------
+
+_CATEGORY_WORDS = (
+    ("NO_DELIVERY", ("not deliver", "no delivery", "didn't deliver", "didnt deliver", "missed", "not received", "never came")),
+    ("LATE_DELIVERY", ("late", "delay", "delayed")),
+    ("SHORT_SUPPLY", ("short", "less", "quantity", "missing bottle", "fewer")),
+    ("DAMAGED", ("damage", "leak", "broken", "crack")),
+    ("QUALITY", ("quality", "dirty", "taste", "smell", "contaminat", "impure")),
+    ("BILLING", ("bill", "invoice", "payment", "charge")),
+)
+_CATEGORY_VALUES = {"LATE_DELIVERY", "NO_DELIVERY", "SHORT_SUPPLY", "QUALITY", "DAMAGED", "BILLING", "OTHER"}
+
+
+def normalise_category(text: str | None) -> str:
+    """Free text from a form ("Water arrived late") -> one of our categories; anything unrecognised is OTHER."""
+    t = (text or "").strip()
+    if t.upper().replace(" ", "_") in _CATEGORY_VALUES:
+        return t.upper().replace(" ", "_")
+    low = t.lower()
+    for value, words in _CATEGORY_WORDS:
+        if any(w in low for w in words):
+            return value
+    return "OTHER"
+
+
+def normalise_priority(text: str | None) -> str:
+    low = (text or "").strip().lower()
+    for value, words in (("URGENT", ("urgent", "critical", "emergency")), ("HIGH", ("high", "important")), ("LOW", ("low", "minor"))):
+        if any(w in low for w in words):
+            return value
+    return "MEDIUM"
+
+
+def create_external(
+    db: Session, org_id: uuid.UUID, *, external_id: str, store_code: str, platform: str | None, store_name: str | None,
+    category: str | None, priority: str | None, title: str, description: str | None, reporter: str | None,
+    raised_at: datetime | None,
+) -> tuple[Ticket, bool]:
+    """Create a ticket from an outside system. Returns (ticket, created). Sending the same external_id again is a no-op."""
+    existing = db.execute(
+        select(Ticket).where(Ticket.organization_id == org_id, Ticket.external_id == external_id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing, False
+
+    stmt = select(Store).where(Store.organization_id == org_id, func.lower(Store.external_code) == store_code.strip().lower())
+    if platform:
+        from app.models.organization import Organization
+
+        stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == platform.strip().lower())
+    matches = db.execute(stmt.options(joinedload(Store.partner_organization))).unique().scalars().all()
+    if not matches and store_name:
+        matches = db.execute(
+            select(Store).where(Store.organization_id == org_id, func.lower(Store.name) == store_name.strip().lower())
+        ).unique().scalars().all()
+    if not matches:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No store with code '{store_code}'" + (f" on {platform}" if platform else "") + ".")
+    if len(matches) > 1:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Store code '{store_code}' exists on more than one platform — send \"platform\" (blinkit / zepto).",
+        )
+    store = matches[0]
+
+    now = _now()
+    start = raised_at if raised_at and raised_at <= now else now
+    prio = normalise_priority(priority)
+    ticket = Ticket(
+        organization_id=org_id, store_id=store.id, partner_organization_id=store.partner_organization_id,
+        category=normalise_category(category), priority=prio, status=TicketStatus.OPEN.value,
+        title=title.strip()[:160], description=(description or "").strip() or None,
+        created_by_user_id=None, source="google", external_id=external_id[:128], reporter=(reporter or "").strip()[:255] or None,
+        due_at=_due(prio, start),
+    )
+    ticket.created_at = start
+    db.add(ticket)
+    db.commit()
+    return ticket, True

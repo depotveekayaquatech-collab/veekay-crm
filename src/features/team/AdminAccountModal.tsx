@@ -114,7 +114,7 @@ export function AdminAccountModal({ onClose, account }: { onClose: () => void; a
               >
                 <input type="radio" name="level" checked={level === l.id} onChange={() => setLevel(l.id)} className="mt-1 accent-brand-500" />
                 <span>
-                  <span className="block text-sm font-bold text-ink-900">{l.title}</span>
+                  <span className="block text-sm font-bold text-heading">{l.title}</span>
                   <span className="block text-xs text-gray-500">{l.text}</span>
                 </span>
               </label>

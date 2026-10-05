@@ -53,7 +53,7 @@ function StatCard({
   loading?: boolean;
 }) {
   return (
-    <div className={`tile ${tone === "info" ? "tile-aqua" : `tile-${tone}`} rounded-xl border border-surface-border bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
+    <div className={`tile ${tone === "info" ? "tile-aqua" : `tile-${tone}`} rounded-xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
@@ -94,7 +94,7 @@ function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-surface-border bg-white shadow-card ${className}`}>
+    <section className={`rounded-xl border border-surface-border bg-surface shadow-card ${className}`}>
       <header className="flex items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         {action}
@@ -400,7 +400,7 @@ function AdminDashboard() {
                   className={`rounded-md px-3 py-1.5 text-sm font-medium ${
                     storePlatform === ""
                       ? "bg-brand-500 text-white"
-                      : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+                      : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
                   }`}
                 >
                   All ({insights.allStores.length})
@@ -412,7 +412,7 @@ function AdminDashboard() {
                     className={`rounded-md px-3 py-1.5 text-sm font-medium ${
                       storePlatform === p.label
                         ? "bg-brand-500 text-white"
-                        : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+                        : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
                     }`}
                   >
                     {p.label} ({p.allStores})

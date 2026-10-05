@@ -58,7 +58,23 @@ def start_session(db: Session, user: User, *, user_agent: str | None, ip: str | 
     db.execute(delete(RefreshSession).where(
         (RefreshSession.expires_at < _now() - timedelta(days=7)) | (RefreshSession.revoked_at < cutoff)
     ))
+    _replace_same_device(db, user, user_agent, ip)
     return _issue(db, user, uuid.uuid4(), user_agent, ip)
+
+
+def _replace_same_device(db: Session, user: User, user_agent: str | None, ip: str | None) -> None:
+    """Signing in again from the same browser (same user, user-agent and address) replaces that browser's older session,
+    so "Devices signed in" lists each device once instead of one row per sign-in."""
+    ua = (user_agent or "")[:255] or None
+    same = [
+        RefreshSession.user_id == user.id,
+        RefreshSession.revoked_at.is_(None),
+        RefreshSession.expires_at > _now(),
+        RefreshSession.user_agent.is_(None) if ua is None else RefreshSession.user_agent == ua,
+        RefreshSession.ip.is_(None) if ip is None else RefreshSession.ip == ip,
+    ]
+    for family in set(db.execute(select(RefreshSession.family_id).where(*same)).scalars().all()):
+        revoke_family(db, family)
 
 
 def revoke_family(db: Session, family_id: uuid.UUID, ended_by: str = "revoked") -> None:

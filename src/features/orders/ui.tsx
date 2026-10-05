@@ -25,7 +25,7 @@ export function SegmentedControl<T extends string>({
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={`whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-medium transition-all ${
-            value === o.value ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"
+            value === o.value ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"
           }`}
         >
           {o.label}
@@ -54,7 +54,7 @@ export function SearchBox({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-10 w-full rounded-lg border border-surface-border bg-white pl-9 pr-3 text-sm shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+        className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-3 text-sm shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
       />
     </div>
   );
@@ -77,7 +77,7 @@ export function StatCard({
   value,
   hint,
   tone = "brand",
-  valueClassName = "text-ink-900",
+  valueClassName = "text-heading",
   children,
 }: {
   label: string;
@@ -88,7 +88,7 @@ export function StatCard({
   children?: ReactNode;
 }) {
   return (
-    <div className={`tile ${TILE_TONE[tone]} rounded-xl border border-surface-border bg-white p-4 shadow-card`}>
+    <div className={`tile ${TILE_TONE[tone]} rounded-xl border border-surface-border bg-surface p-4 shadow-card`}>
       <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
       <p className={`mt-1.5 text-[1.65rem] font-bold leading-none tabular-nums ${valueClassName}`}>{value}</p>
       {hint && <p className="mt-1.5 text-xs text-gray-500">{hint}</p>}
@@ -138,10 +138,10 @@ export function StorePicker({
   }, [stores, query]);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-surface-border bg-white shadow-card lg:sticky lg:top-24 lg:max-h-[calc(100vh-7.5rem)]">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card lg:sticky lg:top-24 lg:max-h-[calc(100vh-7.5rem)]">
       <div className="flex shrink-0 flex-col gap-3 border-b border-surface-border p-3.5">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-ink-900">{title}</p>
+          <p className="text-sm font-semibold text-heading">{title}</p>
           <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-gray-600">
             {visible.length}
             {visible.length !== stores.length ? ` / ${stores.length}` : ""}
@@ -186,7 +186,7 @@ export function StorePicker({
 
 export function SelectStorePrompt({ text = "Pick a store from the list to see its calendar." }: { text?: string }) {
   return (
-    <div className="flex min-h-[18rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border bg-white px-6 py-12 text-center">
+    <div className="flex min-h-[18rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border bg-surface px-6 py-12 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-500">
         <IconStore className="h-6 w-6" />
       </span>

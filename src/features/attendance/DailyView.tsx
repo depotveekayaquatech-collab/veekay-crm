@@ -12,13 +12,13 @@ import { LEAVE_LABEL, useDayAttendance, type DayStatus } from "@/features/attend
 import { downloadCsv } from "@/lib/csv";
 import { daysAgo } from "@/lib/dates";
 
-const field = "h-10 rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+const field = "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 function Tile({ title, value, tone, hint }: { title: string; value: number | string; tone: "brand" | "aqua" | "success" | "warning"; hint?: string }) {
   return (
-    <div className={`tile tile-${tone} rounded-xl border border-surface-border bg-white p-4 shadow-card`}>
+    <div className={`tile tile-${tone} rounded-xl border border-surface-border bg-surface p-4 shadow-card`}>
       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}</p>
-      <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-ink-900">{value}</p>
+      <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-heading">{value}</p>
       {hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}
     </div>
   );
@@ -76,7 +76,7 @@ export function DailyView() {
             <button
               key={l as string}
               onClick={() => setDate(daysAgo(n as number))}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${date === daysAgo(n as number) ? "bg-brand-500 text-white" : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"}`}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${date === daysAgo(n as number) ? "bg-brand-500 text-white" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"}`}
             >
               {l}
             </button>
@@ -114,7 +114,7 @@ export function DailyView() {
       {isError && <ErrorState message="Couldn't load attendance." onRetry={() => refetch()} />}
 
       {data && (
-        <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+        <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[920px] text-sm">
             <thead>
               <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
@@ -167,7 +167,7 @@ export function DailyView() {
                           "—"
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-ink-900">{present ? fmtMinutes(r.minutes) : "—"}</td>
+                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-heading">{present ? fmtMinutes(r.minutes) : "—"}</td>
                       <td className="px-4 py-3">{present ? <LocationBadge location={r.location} /> : <span className="text-gray-300">—</span>}</td>
                     </tr>
                   </Fragment>

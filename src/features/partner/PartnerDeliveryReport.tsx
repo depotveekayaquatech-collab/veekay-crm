@@ -64,13 +64,13 @@ export function PartnerDeliveryReport() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Delivery reports" subtitle="Bottles delivered to each of your stores, day by day — download as an Excel sheet." />
 
-      <section className="max-w-2xl rounded-xl border border-surface-border bg-white p-5 shadow-card sm:p-7">
+      <section className="max-w-2xl rounded-xl border border-surface-border bg-surface p-5 shadow-card sm:p-7">
         <div className="flex items-start gap-4">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-aqua-50 text-aqua-600">
             <IconReport className="h-6 w-6" />
           </span>
           <div>
-            <h3 className="text-base font-bold text-ink-900">Daily distribution{user?.fullName ? ` · ${user.fullName}` : ""}</h3>
+            <h3 className="text-base font-bold text-heading">Daily distribution{user?.fullName ? ` · ${user.fullName}` : ""}</h3>
             <p className="mt-0.5 text-sm text-gray-500">
               One row per store, one column per day. A blank cell means no number was recorded that day. The sheet has no totals.
             </p>

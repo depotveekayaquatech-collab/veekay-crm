@@ -83,7 +83,7 @@ export function TeamPage() {
               setPage(1);
             }}
             className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
-              category === id ? "bg-brand-500 text-white shadow-sm" : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+              category === id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
             }`}
           >
             {label}

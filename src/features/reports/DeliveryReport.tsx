@@ -48,7 +48,7 @@ interface Filters {
 
 const DEFAULTS: Filters = { from: daysAgo(6), to: daysAgo(0), partner: "", state: "", city: "" };
 const input =
-  "h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+  "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 function qs(f: Filters, extra: Record<string, string | number> = {}): string {
   const p = new URLSearchParams({ start: f.from, end: f.to, ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])) });
@@ -60,7 +60,7 @@ function qs(f: Filters, extra: Record<string, string | number> = {}): string {
 
 function Section({ title, subtitle, action, children }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-surface-border bg-white shadow-card">
+    <section className="rounded-xl border border-surface-border bg-surface shadow-card">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
         <div>
           <h3 className="text-sm font-bold text-gray-900">{title}</h3>
@@ -120,7 +120,7 @@ function ManualUpload() {
               setFile(e.target.files?.[0] ?? null);
               setResult(null);
             }}
-            className="h-10 rounded-lg border border-surface-border bg-white text-sm shadow-sm file:mr-3 file:h-full file:cursor-pointer file:border-0 file:bg-surface-muted file:px-3 file:text-sm file:font-semibold file:text-gray-700"
+            className="h-10 rounded-lg border border-surface-border bg-surface text-sm shadow-sm file:mr-3 file:h-full file:cursor-pointer file:border-0 file:bg-surface-muted file:px-3 file:text-sm file:font-semibold file:text-gray-700"
           />
         </label>
         <label className="flex h-10 cursor-pointer items-center gap-2 text-sm text-gray-600">
@@ -269,7 +269,7 @@ function DailyMatrix() {
                   setPageSize(Number(e.target.value));
                   setPage(1);
                 }}
-                className="h-9 rounded-lg border border-surface-border bg-white px-2 text-sm"
+                className="h-9 rounded-lg border border-surface-border bg-surface px-2 text-sm"
               >
                 {[25, 50, 100].map((n) => (
                   <option key={n} value={n}>{n}</option>
@@ -316,8 +316,8 @@ function DailyMatrix() {
                 <tbody>
                   {data.rows.map((r, i) => (
                     <tr key={r.storeId} className="group">
-                      <td className="sticky left-0 z-10 border-b border-surface-border/70 bg-white px-2 py-2 text-center text-xs text-gray-400 group-hover:bg-surface-subtle">{(data.page - 1) * data.pageSize + i + 1}</td>
-                      <td className="sticky left-10 z-10 border-b border-r border-surface-border/70 bg-white px-3 py-2 group-hover:bg-surface-subtle">
+                      <td className="sticky left-0 z-10 border-b border-surface-border/70 bg-surface px-2 py-2 text-center text-xs text-gray-400 group-hover:bg-surface-subtle">{(data.page - 1) * data.pageSize + i + 1}</td>
+                      <td className="sticky left-10 z-10 border-b border-r border-surface-border/70 bg-surface px-3 py-2 group-hover:bg-surface-subtle">
                         <div className="max-w-[15rem] truncate font-medium text-gray-900" title={r.name}>{r.name}</div>
                         <div className="text-[11px] text-gray-500">{r.externalCode}</div>
                       </td>
@@ -336,7 +336,7 @@ function DailyMatrix() {
                           </td>
                         );
                       })}
-                      <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-right font-bold tabular-nums text-ink-900">{r.totalBottles.toLocaleString()}</td>
+                      <td className="border-b border-surface-border/70 bg-surface-subtle px-3 py-2 text-right font-bold tabular-nums text-heading">{r.totalBottles.toLocaleString()}</td>
                     </tr>
                   ))}
                   <tr>
@@ -346,7 +346,7 @@ function DailyMatrix() {
                     {pageTotals.map((t, i) => (
                       <td key={data.dates[i]} className="sticky bottom-0 z-10 border-t border-surface-border bg-surface-muted px-1.5 py-2.5 text-center text-xs font-bold tabular-nums text-gray-700">{t || ""}</td>
                     ))}
-                    <td className="sticky bottom-0 z-10 border-t border-surface-border bg-surface-muted px-3 py-2.5 text-right text-xs font-bold tabular-nums text-ink-900">
+                    <td className="sticky bottom-0 z-10 border-t border-surface-border bg-surface-muted px-3 py-2.5 text-right text-xs font-bold tabular-nums text-heading">
                       {pageTotals.reduce((a, b) => a + b, 0).toLocaleString()}
                     </td>
                   </tr>
@@ -373,7 +373,7 @@ export function DeliveryReport() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-status-success">Delivery reports</p>
-          <h2 className="mt-1 text-2xl font-bold text-ink-900">{view === "matrix" ? "Daily distribution report" : "Delivery summary"}</h2>
+          <h2 className="mt-1 text-2xl font-bold text-heading">{view === "matrix" ? "Daily distribution report" : "Delivery summary"}</h2>
           <p className="mt-1 text-sm text-gray-500">
             {view === "matrix"
               ? "One store per row with delivered bottle counts for every selected day."
@@ -385,7 +385,7 @@ export function DeliveryReport() {
             <button
               key={id}
               onClick={() => setView(id)}
-              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-all ${view === id ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-all ${view === id ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
             >
               {label}
             </button>

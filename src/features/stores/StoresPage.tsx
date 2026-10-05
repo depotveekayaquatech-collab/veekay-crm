@@ -95,7 +95,7 @@ export function StoresPage() {
       />
 
       {sync.data && (
-        <div className="rounded-lg border border-surface-border bg-white p-4 text-sm shadow-card">
+        <div className="rounded-lg border border-surface-border bg-surface p-4 text-sm shadow-card">
           <p className="font-medium text-gray-900">Last sync</p>
           <ul className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-gray-600">
             {sync.data.map((r) => (
@@ -132,7 +132,7 @@ export function StoresPage() {
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               storeStatus === t.value
                 ? "bg-brand-500 text-white"
-                : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+                : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
             }`}
           >
             {t.label}

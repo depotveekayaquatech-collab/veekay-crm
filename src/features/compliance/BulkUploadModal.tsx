@@ -14,7 +14,7 @@ const OPTION_LABEL: Record<DocKind, string> = {
   bill: "Invoices",
   payment: "Payment proofs",
 };
-const field = "h-10 w-full rounded-lg border border-surface-border bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+const field = "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 /** Many files at once: each is matched to a store by the store code at the start of its file name. */
 export function BulkUploadModal({ month, months, onClose }: { month: string; months: string[]; onClose: () => void }) {

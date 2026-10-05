@@ -84,7 +84,7 @@ function Row({
             onChange={(e) => setValue(e.target.value)}
             aria-label={`Bottle count for ${store.name}`}
             placeholder="0–200"
-            className="h-10 w-28 rounded-lg border border-surface-border bg-white px-3 text-sm tabular-nums shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+            className="h-10 w-28 rounded-lg border border-surface-border bg-surface px-3 text-sm tabular-nums shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
           />
           <Button type="submit" size="md" disabled={!valid} isLoading={saving}>
             Save
@@ -143,7 +143,7 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-card">
+    <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
       <div className="flex flex-col gap-3 border-b border-surface-border p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-3">
           <SegmentedControl
@@ -176,7 +176,7 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-status-success-soft text-status-success">
             <IconCheckCircle className="h-6 w-6" />
           </span>
-          <p className="text-base font-bold text-ink-900">{query ? "No stores match" : "All caught up"}</p>
+          <p className="text-base font-bold text-heading">{query ? "No stores match" : "All caught up"}</p>
           {!query && <p className="text-sm text-gray-500">Every live store has a count for {date}.</p>}
         </div>
       ) : (

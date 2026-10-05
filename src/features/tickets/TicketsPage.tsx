@@ -118,7 +118,7 @@ function List({ isAdmin }: { isAdmin: boolean }) {
 
       {data && data.items.length > 0 && (
         <>
-          <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+          <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -140,7 +140,7 @@ function List({ isAdmin }: { isAdmin: boolean }) {
                       className={`cursor-pointer border-b border-surface-border transition-colors last:border-0 hover:bg-surface-subtle ${t.isOverdue ? "bg-status-danger-soft/30" : ""}`}
                     >
                       <td className="px-5 py-3" data-label="Ticket">
-                        <div className="text-xs font-semibold text-gray-400">{TICKET_CODE(t.number)}</div>
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-400">{TICKET_CODE(t.number)}{t.source === "google" && <Badge tone="info">Google</Badge>}</div>
                         <div className="max-w-[18rem] truncate font-medium text-gray-900">{t.title}</div>
                         {t.commentsCount > 0 && <div className="text-xs text-gray-400">{t.commentsCount} comment{t.commentsCount === 1 ? "" : "s"}</div>}
                       </td>

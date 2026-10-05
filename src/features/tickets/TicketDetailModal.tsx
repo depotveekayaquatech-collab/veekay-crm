@@ -61,7 +61,7 @@ export function TicketDetailModal({ id, onClose }: { id: string; onClose: () => 
               <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">Activity</h4>
               <ol className="flex flex-col gap-3">
                 <li className="text-xs text-gray-500">
-                  Raised by <span className="font-semibold text-gray-700">{t.createdByName ?? "someone"}</span> · {timeAgo(t.createdAt)}
+                  Raised by <span className="font-semibold text-gray-700">{t.createdByName ?? "someone"}</span>{t.source === "google" ? " via Google" : ""} · {timeAgo(t.createdAt)}
                 </li>
                 {t.comments.map((c) =>
                   c.event ? (
@@ -72,7 +72,7 @@ export function TicketDetailModal({ id, onClose }: { id: string; onClose: () => 
                       </span>
                     </li>
                   ) : (
-                    <li key={c.id} className="rounded-lg border border-surface-border bg-white px-3.5 py-2.5">
+                    <li key={c.id} className="rounded-lg border border-surface-border bg-surface px-3.5 py-2.5">
                       <p className="text-xs text-gray-500">
                         <span className="font-semibold text-gray-800">{c.authorName ?? "Someone"}</span> · {timeAgo(c.createdAt)}
                       </p>
@@ -91,7 +91,7 @@ export function TicketDetailModal({ id, onClose }: { id: string; onClose: () => 
                 maxLength={2000}
                 placeholder="Write an update…"
                 aria-label="Add a comment"
-                className="rounded-md border border-surface-border bg-white px-3 py-2 text-sm shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
               />
               <div className="flex justify-end">
                 <Button type="submit" size="sm" isLoading={comment.isPending} disabled={!text.trim()}>Post update</Button>

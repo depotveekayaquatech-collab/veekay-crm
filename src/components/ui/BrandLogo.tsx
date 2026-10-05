@@ -14,7 +14,7 @@ export function BrandLogo({ height = 36, tile = false, className = "" }: { heigh
   );
   if (!tile) return img;
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-white px-2.5 py-1.5 shadow-sm ring-1 ring-black/5 ${className}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-surface px-2.5 py-1.5 shadow-sm ring-1 ring-black/5 ${className}`}>
       {img}
     </span>
   );

@@ -101,8 +101,8 @@ export function CorrectEntriesPage() {
         <div className="flex min-w-0 flex-col gap-5">
           {!storeId && <SelectStorePrompt text="Pick a store, then tap any past day to change or clear its count." />}
           {storeId && selected && (
-            <div className="rounded-xl border border-surface-border bg-white px-4 py-3.5 shadow-card sm:px-5">
-              <h3 className="text-lg font-bold text-ink-900">{selected.name}</h3>
+            <div className="rounded-xl border border-surface-border bg-surface px-4 py-3.5 shadow-card sm:px-5">
+              <h3 className="text-lg font-bold text-heading">{selected.name}</h3>
               <p className="text-sm text-gray-500">
                 {selected.externalCode}
                 {selected.partnerName ? ` · ${selected.partnerName}` : ""}

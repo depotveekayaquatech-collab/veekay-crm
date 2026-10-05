@@ -76,7 +76,7 @@ export function CategoryChips({
       key={id}
       onClick={() => onChange(id)}
       className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-        value === id ? "bg-brand-500 text-white shadow-sm" : "bg-white text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+        value === id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
       }`}
     >
       {label} <span className={value === id ? "text-white/70" : "text-gray-400"}>{n}</span>

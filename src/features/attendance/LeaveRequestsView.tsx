@@ -44,7 +44,7 @@ function ReviewModal({ leave, approve, onClose }: { leave: Leave; approve: boole
           rows={3}
           maxLength={500}
           autoFocus
-          className="rounded-md border border-surface-border bg-white px-3 py-2 text-sm font-normal shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+          className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm font-normal shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
         />
       </label>
     </Modal>
@@ -81,7 +81,7 @@ export function LeaveRequestsView() {
       )}
 
       {data && data.items.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+        <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">

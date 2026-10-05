@@ -48,9 +48,9 @@ export function LeavePanel() {
 
   return (
     <div className="grid items-start gap-6 xl:grid-cols-[24rem_1fr]">
-      <form onSubmit={submit} className="flex flex-col gap-4 rounded-xl border border-surface-border bg-white p-5 shadow-card">
+      <form onSubmit={submit} className="flex flex-col gap-4 rounded-xl border border-surface-border bg-surface p-5 shadow-card">
         <div>
-          <h3 className="text-base font-bold text-ink-900">Apply for leave</h3>
+          <h3 className="text-base font-bold text-heading">Apply for leave</h3>
           <p className="text-xs text-gray-500">Your admin approves it; approved leave shows as "On leave", not "Absent".</p>
         </div>
         <Select label="Type of leave" value={type} onChange={(e) => setType(e.target.value as LeaveType)} options={TYPES} />
@@ -83,7 +83,7 @@ export function LeavePanel() {
             maxLength={500}
             required
             placeholder="A short reason for your admin"
-            className="rounded-md border border-surface-border bg-white px-3 py-2 text-sm font-normal shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+            className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm font-normal shadow-sm outline-none placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
           />
         </label>
         <p className="rounded-lg bg-surface-subtle px-3 py-2 text-xs text-gray-600">
@@ -97,9 +97,9 @@ export function LeavePanel() {
         {data && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {TYPES.map((t) => (
-              <div key={t.value} className="tile tile-brand rounded-xl border border-surface-border bg-white p-4 shadow-card">
+              <div key={t.value} className="tile tile-brand rounded-xl border border-surface-border bg-surface p-4 shadow-card">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.label}</p>
-                <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-ink-900">{data.taken[t.value] ?? 0}</p>
+                <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-heading">{data.taken[t.value] ?? 0}</p>
                 <p className="mt-1 text-[11px] text-gray-400">days taken in {year}</p>
               </div>
             ))}
@@ -111,7 +111,7 @@ export function LeavePanel() {
         {data && data.items.length === 0 && <EmptyState title="No leave requests yet" description="Apply on the left — approved leave appears in your attendance." />}
 
         {data && data.items.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
+          <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[620px] text-sm">
               <thead>
                 <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
