@@ -33,6 +33,8 @@ interface NavItem {
   prefix?: boolean;
   /** Hidden for accounts holding this role (partner logins don't use the dashboard or attendance). */
   excludeRole?: string;
+  /** Shown only to accounts holding this role (e.g. the partner delivery-report download). */
+  requireRole?: string;
 }
 
 interface NavGroup {
@@ -81,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Insights",
     items: [
       { label: "Reports", to: "/reports", icon: IconReport, permission: "orders.overview" },
+      { label: "Delivery reports", to: "/delivery-reports", icon: IconReport, permission: "reports.delivery", requireRole: "partner" },
       { label: "Audit log", to: "/activity", icon: IconActivity, permission: "activity.view" },
     ],
   },
@@ -96,6 +99,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const canSee = (item: NavItem, has: (p: string) => boolean, roles: string[]) =>
   !(item.excludeRole && roles.includes(item.excludeRole)) &&
+  !(item.requireRole && !roles.includes(item.requireRole)) &&
   (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission));
 
 const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);

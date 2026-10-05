@@ -61,6 +61,7 @@ PERMISSIONS = [
     ("attendance.view", "View everyone's attendance (sign-in / sign-out times and location)"),
     ("attendance.manage", "Set the office locations used to recognise 'at the office'"),
     ("leave.review", "Approve or reject leave requests"),
+    ("reports.delivery", "Download delivery reports (partner accounts)"),
     ("tickets.view", "View tickets for your stores"),
     ("tickets.create", "Raise tickets"),
     ("tickets.manage", "Manage every ticket: assign, change status, see all regions and insights"),

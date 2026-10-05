@@ -18,6 +18,7 @@ import { CompliancePage } from "@/features/compliance/CompliancePage";
 import { AccountsPage } from "@/features/accounts/AccountsPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { PartnerHomePage } from "@/features/partner/PartnerHomePage";
+import { PartnerDeliveryReport } from "@/features/partner/PartnerDeliveryReport";
 import { TicketsPage } from "@/features/tickets/TicketsPage";
 import { PendingPage } from "@/features/pending/PendingPage";
 import { TeamPage } from "@/features/team/TeamPage";
@@ -73,6 +74,7 @@ export function AppRoutes() {
         }
       >
         <Route path="/" element={<HomeRoute />} />
+        <Route path="/delivery-reports" element={<Require permission="reports.delivery"><PartnerDeliveryReport /></Require>} />
         <Route path="/tickets" element={<RequireAny permissions={["tickets.view", "tickets.manage"]}><TicketsPage /></RequireAny>} />
         <Route path="/orders" element={<OrdersLayout />}>
           <Route index element={<OrdersIndex><MarkOrdersPage /></OrdersIndex>} />

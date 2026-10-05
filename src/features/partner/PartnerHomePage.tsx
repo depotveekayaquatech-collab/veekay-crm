@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { IconBox, IconCard, IconClipboard, IconPlus, IconTicket } from "@/components/ui/icons";
+import { IconBox, IconCard, IconClipboard, IconPlus, IconReport, IconTicket } from "@/components/ui/icons";
 import { ProgressBar, StatCard } from "@/features/orders/ui";
 import { PriorityBadge, StatusBadge } from "@/features/tickets/parts";
 import { timeAgo } from "@/lib/ticketTime";
@@ -82,6 +82,7 @@ export function PartnerHomePage() {
     { to: "/orders", label: "Store entries", icon: IconClipboard, show: hasPermission("orders.view") },
     { to: "/inventory", label: "Vendors", icon: IconBox, show: hasPermission("orders.view") },
     { to: "/cards", label: "Store cards", icon: IconCard, show: hasPermission("orders.view") },
+    { to: "/delivery-reports", label: "Delivery reports", icon: IconReport, show: hasPermission("reports.delivery") },
     { to: "/tickets", label: "Tickets", icon: IconTicket, show: hasPermission("tickets.view") },
   ].filter((l) => l.show);
 

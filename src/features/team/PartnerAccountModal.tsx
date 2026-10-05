@@ -11,6 +11,7 @@ import type { Employee } from "@/types/employee";
 const PARTNER_ACCESS = [
   { code: "orders.view", label: "Daily entries, vendors & store cards", hint: "Sees every live store on their platform: each store's daily bottle count, vendor contacts and printable cards." },
   { code: "tickets.view", label: "View tickets", hint: "Follows the tickets for their platform's stores and can comment on them." },
+  { code: "reports.delivery", label: "Download delivery reports", hint: "Can download an Excel sheet of bottles delivered per store per day. Download only — nothing is shown on screen, and there are no totals." },
   { code: "tickets.create", label: "Raise tickets", hint: "Can report late or missed deliveries, quality problems and so on." },
 ];
 

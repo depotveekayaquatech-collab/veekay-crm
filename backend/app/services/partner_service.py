@@ -16,7 +16,7 @@ from app.models.organization import Organization
 from app.models.store import Store, StoreStatus
 from app.models.ticket import ACTIVE_STATUSES, Ticket
 from app.models.user import User
-from app.services import assignment_service, order_service
+from app.services import assignment_service, matrix_service, order_service
 
 TREND_DAYS = 14
 
@@ -139,3 +139,15 @@ def overview(db: Session, user: User, perms: set[str]) -> dict:
             ],
         }
     return out
+
+
+def delivery_report_xlsx(db: Session, user: User, start: date, end: date) -> tuple[bytes, str]:
+    """The daily distribution sheet for the partner's own platform — never another platform, and without totals."""
+    if not assignment_service.is_partner_account(db, user) or user.platform_organization_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This report is for partner accounts.")
+    platform = db.get(Organization, user.platform_organization_id)
+    slug = platform.slug if platform else None
+    if not slug:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Your platform couldn't be found.")
+    data = matrix_service.matrix_xlsx(db, user, start, end, partner=slug, state=None, city=None, totals=False)
+    return data, f"{slug}-delivery-report-{start}_{end}.xlsx"

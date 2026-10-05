@@ -187,3 +187,52 @@ def test_new_admins_must_replace_the_temporary_password(client, admin, made):
     code, r = _create(client, admin, made, account_type="admin", admin_access="full")
     t = login(client, code, "Temp#Pass1234").json()
     assert client.get(f"{API}/auth/me", headers=auth(t["access_token"])).json()["must_change_password"] is True
+
+
+# ---------------------------------------------------------------- partner delivery report (download only, no totals)
+def _report_partner(client, admin, made, perms):
+    code, r = _create(client, admin, made, account_type="partner", platform_id=_platform(client, admin, "blinkit"), permission_codes=perms)
+    assert r.status_code == 201, r.text
+    return _sign_in(client, code)
+
+
+def test_partner_delivery_report_is_an_excel_without_totals_for_its_own_platform(client, admin, made):
+    import io
+    from datetime import date, timedelta
+
+    from openpyxl import load_workbook
+
+    h = _report_partner(client, admin, made, ["orders.view", "reports.delivery"])
+    end = date.today()
+    r = client.get(f"{API}/partner/delivery-report?start={end - timedelta(days=2)}&end={end}", headers=h)
+    assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"]
+    assert "blinkit-delivery-report" in r.headers["content-disposition"]
+    ws = load_workbook(io.BytesIO(r.content)).active
+    header = [c.value for c in ws[1]]
+    assert header[:6] == ["#", "Store", "Store code", "Channel", "State", "City"] and len(header) == 6 + 3
+    assert "Total" not in header                                              # no row-total column
+    labels = {str(ws.cell(row=i, column=2).value).upper() for i in range(2, ws.max_row + 1)}
+    assert "TOTAL" not in labels                                              # no total row
+    channels = {ws.cell(row=i, column=4).value for i in range(2, ws.max_row + 1)}
+    assert channels == {"Blinkit"}                                            # never another platform
+
+
+def test_delivery_report_needs_its_permission_and_a_sane_range(client, admin, partner, made):
+    assert client.get(f"{API}/partner/delivery-report", headers=partner).status_code == 403            # partner without reports.delivery
+    h = _report_partner(client, admin, made, ["reports.delivery"])
+    assert client.get(f"{API}/partner/delivery-report?start=2026-01-01&end=2026-12-31", headers=h).status_code == 422   # > 62 days
+    assert client.get(f"{API}/partner/delivery-report?start=2026-02-10&end=2026-02-01", headers=h).status_code == 422
+    assert client.get(f"{API}/partner/delivery-report", headers=admin).status_code == 403             # staff use the main Reports page
+
+
+def test_admin_report_still_has_totals(client, admin):
+    import io
+    from datetime import date, timedelta
+
+    from openpyxl import load_workbook
+
+    end = date.today()
+    r = client.get(f"{API}/orders/matrix/export?start={end - timedelta(days=1)}&end={end}&partner=blinkit", headers=admin)
+    ws = load_workbook(io.BytesIO(r.content)).active
+    assert [c.value for c in ws[1]][-1] == "Total"
+    assert any(str(ws.cell(row=i, column=2).value) == "TOTAL" for i in range(2, ws.max_row + 1))

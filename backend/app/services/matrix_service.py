@@ -92,6 +92,7 @@ def matrix(
 
 def matrix_xlsx(
     db: Session, admin: User, start: date, end: date, *, partner: str | None, state: str | None, city: str | None,
+    totals: bool = True,
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -104,7 +105,7 @@ def matrix_xlsx(
     wb = Workbook()
     ws = wb.active
     ws.title = "Daily distribution"
-    head = ["#", "Store", "Store code", "Channel", "State", "City", *[d.strftime("%d-%b") for d in dates], "Total"]
+    head = ["#", "Store", "Store code", "Channel", "State", "City", *[d.strftime("%d-%b") for d in dates], *(["Total"] if totals else [])]
     ws.append(head)
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF")
@@ -115,7 +116,7 @@ def matrix_xlsx(
         ws.append([
             i, s.name, s.external_code, s.partner_organization.name if s.partner_organization else "", s.state or "", s.city or "",
             *[v.get(d) for d in dates],        # blank cell = not marked; 0 stays 0
-            sum(v.values()),
+            *([sum(v.values())] if totals else []),
         ])
     n_fixed = 6
     ws.freeze_panes = ws.cell(row=2, column=n_fixed + 1)
@@ -126,13 +127,14 @@ def matrix_xlsx(
         ws.column_dimensions[get_column_letter(j)].width = 8
         for r in range(2, ws.max_row + 1):
             ws.cell(row=r, column=j).alignment = Alignment(horizontal="center")
-    ws.cell(row=ws.max_row + 1, column=2, value="TOTAL").font = Font(bold=True)
-    total_row = ws.max_row
-    for j in range(n_fixed + 1, len(head) + 1):
-        col = get_column_letter(j)
-        cell = ws.cell(row=total_row, column=j, value=f"=SUM({col}2:{col}{total_row - 1})")
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center")
+    if totals:
+        ws.cell(row=ws.max_row + 1, column=2, value="TOTAL").font = Font(bold=True)
+        total_row = ws.max_row
+        for j in range(n_fixed + 1, len(head) + 1):
+            col = get_column_letter(j)
+            cell = ws.cell(row=total_row, column=j, value=f"=SUM({col}2:{col}{total_row - 1})")
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

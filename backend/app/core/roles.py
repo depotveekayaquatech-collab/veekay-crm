@@ -20,7 +20,7 @@ CATEGORY_LABELS = {
 CATEGORY_ORDER = ["admin", "accounts", "partner", "blinkit", "zepto", "other"]
 
 # The only permissions a partner account may ever hold — enforced server-side whatever the UI sends.
-PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create"]
+PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create", "reports.delivery"]
 
 
 def staff_category(roles: list[str] | set[str], platform_slug: str | None) -> str:
