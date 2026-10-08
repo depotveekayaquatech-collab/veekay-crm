@@ -6,6 +6,7 @@ employees split by the platform they serve. Pure functions — no database acces
 ADMIN = "admin"
 ACCOUNTANT = "accountant"
 MANAGER = "manager"  # a "custom admin": counts as an admin on the Team page, but only holds the permissions ticked for them
+DEVELOPER = "developer"  # created only by scripts/create_developer.py; never offered, listed or assignable in the app
 PARTNER = "partner"  # a Blinkit / Zepto login: sees only its own platform, and only what an admin switched on
 
 CATEGORY_LABELS = {
@@ -18,6 +19,10 @@ CATEGORY_LABELS = {
 }
 # Display order.
 CATEGORY_ORDER = ["admin", "accounts", "partner", "blinkit", "zepto", "other"]
+
+# Permissions that only the developer role can hold. Admins never get them (not even a "full" admin), they can't be
+# granted per person, and the permission catalogue doesn't list them.
+RESERVED_PERMISSIONS = frozenset({"sheets.sync", "cash.adjust"})
 
 # The only permissions a partner account may ever hold — enforced server-side whatever the UI sends.
 PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create", "reports.delivery"]

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.models.audit_log import AuditLog
+from sqlalchemy import exists
 from app.models.order_entry import EntrySource, OrderEntry
 from app.models.organization import Organization, OrganizationKind
 from app.models.region import Region
@@ -26,6 +27,8 @@ from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.order_entry_repository import OrderEntryRepository
 from app.schemas.order import (
     AdminEntryRequest,
+    ScopeRow,
+    StatusByPlatform,
     AttentionStore,
     CalendarDay,
     CoverageRow,
@@ -64,10 +67,43 @@ def _store_meta(store: Store) -> dict:
 # employee: my stores + calendar + mark
 # --------------------------------------------------------------------------
 
-def my_stores(db: Session, employee: User) -> list[MyStore]:
-    stores = assignment_service.visible_stores(db, employee)
+def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[MyStore]:
     today = _today()
     yesterday = today - timedelta(days=1)
+
+    if is_admin:
+        # Admins work with every live store: read plain columns instead of building ~1,500 ORM objects.
+        rows = db.execute(
+            select(
+                Store.id, Store.name, Store.external_code, Store.state, Store.city, Region.name, Store.vendor_name,
+                Store.vendor_number, Store.poc_name, Store.poc_number, Store.status, Organization.slug, Organization.name,
+                Store.region_id,
+            )
+            .select_from(Store)
+            .outerjoin(Region, Region.id == Store.region_id)
+            .join(Organization, Organization.id == Store.partner_organization_id)
+            .where(Store.organization_id == employee.organization_id, Store.status == StoreStatus.LIVE.value)
+            .order_by(Store.name)
+        ).all()
+        counts = {
+            (r[0], r[1]): int(r[2])
+            for r in db.execute(
+                select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count).where(
+                    OrderEntry.organization_id == employee.organization_id, OrderEntry.order_date.in_([today, yesterday])
+                )
+            )
+        }
+        return [
+            MyStore(
+                id=r[0], name=r[1], external_code=r[2], state=r[3], city=r[4], region_name=r[5], vendor_name=r[6],
+                vendor_number=r[7], poc_name=r[8], poc_number=r[9], status=r[10], today=today, partner_slug=r[11],
+                partner_name=r[12], region_id=r[13], today_count=counts.get((r[0], today)),
+                yesterday_count=counts.get((r[0], yesterday)),
+            )
+            for r in rows
+        ]
+
+    stores = assignment_service.visible_stores(db, employee)
     counts: dict[tuple[uuid.UUID, date], int] = {}
     if stores:
         rows = db.execute(
@@ -130,7 +166,12 @@ def get_calendar(
     )
 
 
-def mark(db: Session, employee: User, payload: MarkRequest) -> OrderCalendar:
+def mark(db: Session, employee: User, payload: MarkRequest, *, is_admin: bool = False) -> OrderCalendar:
+    if is_admin:
+        # An admin needs nobody's sign-off: any store, any (non-future) date, and saved days can be changed.
+        return admin_set_entry(
+            db, employee, AdminEntryRequest(store_id=payload.store_id, order_date=payload.order_date, bottle_count=payload.bottle_count)
+        )
     count = payload.bottle_count
     if not (settings.MIN_BOTTLE_COUNT <= count <= settings.MAX_BOTTLE_COUNT):
         raise HTTPException(
@@ -148,17 +189,24 @@ def mark(db: Session, employee: User, payload: MarkRequest) -> OrderCalendar:
     _check_order_date(payload.order_date)
 
     repo = OrderEntryRepository(db)
-    if repo.get(store.id, payload.order_date) is not None:
+    existing = repo.get(store.id, payload.order_date)
+    if existing is not None and existing.cash_adjustment != existing.bottle_count:
         raise HTTPException(status.HTTP_409_CONFLICT, "This date is already marked and cannot be changed. Ask an admin to correct it.")
-
-    repo.add(OrderEntry(
-        organization_id=employee.organization_id,
-        store_id=store.id,
-        order_date=payload.order_date,
-        bottle_count=count,
-        source=EntrySource.EMPLOYEE.value,
-        marked_by_user_id=employee.id,
-    ))
+    if existing is not None:
+        # The day only holds a developer adjustment so far (no real employee entry): the employee's count goes
+        # underneath it and the adjustment stays on top.
+        existing.bottle_count = count + existing.cash_adjustment
+        existing.source = EntrySource.EMPLOYEE.value
+        existing.marked_by_user_id = employee.id
+    else:
+        repo.add(OrderEntry(
+            organization_id=employee.organization_id,
+            store_id=store.id,
+            order_date=payload.order_date,
+            bottle_count=count,
+            source=EntrySource.EMPLOYEE.value,
+            marked_by_user_id=employee.id,
+        ))
     activity_service.record(
         db, actor=employee, action="order.marked", entity_type="order_entry", entity_id=store.id,
         metadata={**_store_meta(store), "order_date": payload.order_date.isoformat(), "bottle_count": count},
@@ -183,6 +231,7 @@ def admin_set_entry(db: Session, admin: User, payload: AdminEntryRequest) -> Ord
     else:
         if existing is not None:
             existing.bottle_count = payload.bottle_count
+            existing.cash_adjustment = 0  # an explicit admin correction sets the final number
             existing.source = EntrySource.ADMIN.value
             existing.marked_by_user_id = admin.id
         else:
@@ -206,6 +255,23 @@ def admin_set_entry(db: Session, admin: User, payload: AdminEntryRequest) -> Ord
 # admin: daily overview + submissions
 # --------------------------------------------------------------------------
 
+def _employee_rollups(
+    db: Session, org_id: uuid.UUID, partner: Organization, target: date
+) -> list[tuple[User, int, int, int]]:
+    """[(employee, stores, entries_done, bottles)] for every employee of a platform on one day — a handful of
+    queries in total, however many employees there are."""
+    employees = EmployeeRepository(db).all_for_platform(org_id, partner.id)
+    scopes, all_ids = assignment_service.employee_store_scopes(db, partner, employees)
+    by_store = OrderEntryRepository(db).rollup_by_store(all_ids, target)
+    out = []
+    for emp in employees:
+        ids = scopes.get(emp.id, [])
+        done = sum(1 for sid in ids if sid in by_store)
+        bottles = sum(by_store[sid][1] for sid in ids if sid in by_store)
+        out.append((emp, len(ids), done, bottles))
+    return out
+
+
 def daily_overview(db: Session, admin: User, partner_slug: str, day_offset: int) -> DailyOverview:
     partner = db.execute(
         select(Organization).where(Organization.slug == partner_slug)
@@ -218,23 +284,13 @@ def daily_overview(db: Session, admin: User, partner_slug: str, day_offset: int)
     repo = OrderEntryRepository(db)
 
     rows: list[EmployeeOverviewRow] = []
-    for emp in EmployeeRepository(db).all_for_platform(admin.organization_id, partner.id):
-        try:
-            stores = assignment_service.visible_stores(db, emp)
-            total = len(stores)
-            done, bottles = repo.rollup_for_date([s.id for s in stores], target)
-            pct = round((done / total) * 100, 1) if total else 0.0
-            rows.append(EmployeeOverviewRow(
-                employee_id=emp.id, employee_code=emp.employee_code, employee_name=emp.full_name,
-                region_name=emp.region.name if emp.region else None,
-                total_stores=total, entries_done=done, bottles=bottles, percent=pct,
-            ))
-        except Exception as exc:  # noqa: BLE001 — one bad employee must not blank the table
-            rows.append(EmployeeOverviewRow(
-                employee_id=emp.id, employee_code=emp.employee_code, employee_name=emp.full_name,
-                region_name=None, total_stores=0, entries_done=0, bottles=0, percent=0.0,
-                error=str(exc),
-            ))
+    for emp, total, done, bottles in _employee_rollups(db, admin.organization_id, partner, target):
+        rows.append(EmployeeOverviewRow(
+            employee_id=emp.id, employee_code=emp.employee_code, employee_name=emp.full_name,
+            region_name=emp.region.name if emp.region else None,
+            total_stores=total, entries_done=done, bottles=bottles,
+            percent=round((done / total) * 100, 1) if total else 0.0,
+        ))
 
     rows.sort(key=lambda r: r.employee_name.lower())
 
@@ -300,48 +356,85 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
     for value, count in status_rows:
         store_status[value] = int(count)
 
-    # --- every store, both platforms (same rows as the Stores page / Sheet sync) ---
-    all_store_rows = db.execute(
-        select(Store)
+    # --- per-platform status counts (one grouped query; replaces shipping every store to the browser) ---
+    plat_rows = db.execute(
+        select(Organization.id, Organization.slug, Organization.name, Store.status, func.count(Store.id))
+        .select_from(Store)
+        .join(Organization, Organization.id == Store.partner_organization_id)
         .where(Store.organization_id == org_id)
-        .options(joinedload(Store.region), joinedload(Store.partner_organization))
-        .order_by(Store.name)
-    ).unique().scalars().all()
+        .group_by(Organization.id, Organization.slug, Organization.name, Store.status)
+        .order_by(Organization.name)
+    ).all()
+    by_platform: dict[uuid.UUID, dict] = {}
+    for pid, slug, label, st, n in plat_rows:
+        d = by_platform.setdefault(pid, {"slug": slug, "label": label, "LIVE": 0, "PENDING": 0, "CLOSE": 0})
+        d[st] = int(n)
+    status_by_platform = [
+        StatusByPlatform(slug=d["slug"], label=d["label"], live=d["LIVE"], pending=d["PENDING"], close=d["CLOSE"],
+                         total=d["LIVE"] + d["PENDING"] + d["CLOSE"])
+        for d in by_platform.values()
+    ]
 
-    def _to_row(s: Store) -> AttentionStore:
-        return AttentionStore(
-            id=s.id, name=s.name, external_code=s.external_code,
-            platform=s.partner_organization.name if s.partner_organization else None,
-            status=s.status, city=s.city, state=s.state,
-            region_name=s.region.name if s.region else None,
-        )
+    # --- (platform, region, state) combinations, for the linked filter dropdowns ---
+    scopes = [
+        ScopeRow(partner_slug=r[0], region=r[1], state=r[2])
+        for r in db.execute(
+            select(Organization.slug, Region.name, Store.state)
+            .select_from(Store)
+            .join(Organization, Organization.id == Store.partner_organization_id)
+            .outerjoin(Region, Region.id == Store.region_id)
+            .where(Store.organization_id == org_id)
+            .group_by(Organization.slug, Region.name, Store.state)
+            .order_by(Organization.slug, Region.name, Store.state)
+        ).all()
+    ]
 
-    all_stores = [_to_row(s) for s in all_store_rows]
+    # --- stores that need attention: not live yet (50 at most) ---
     attention_stores = [
-        _to_row(s)
-        for s in sorted(all_store_rows, key=lambda s: (s.status, s.name))
-        if s.status != StoreStatus.LIVE.value
-    ][:50]
-
-    # --- per-platform today summary + leaderboard ---
-    partners = db.execute(
-        select(Organization).where(
-            Organization.kind == OrganizationKind.PARTNER.value
+        AttentionStore(
+            id=r[0], name=r[1], external_code=r[2], platform=r[3], status=r[4], city=r[5], state=r[6], region_name=r[7]
         )
+        for r in db.execute(
+            select(Store.id, Store.name, Store.external_code, Organization.name, Store.status, Store.city, Store.state, Region.name)
+            .select_from(Store)
+            .join(Organization, Organization.id == Store.partner_organization_id)
+            .outerjoin(Region, Region.id == Store.region_id)
+            .where(Store.organization_id == org_id, Store.status != StoreStatus.LIVE.value)
+            .order_by(Store.status, Store.name)
+            .limit(50)
+        ).all()
+    ]
+
+    # --- live stores with no order in the last 30 days ---
+    recent = exists().where(OrderEntry.store_id == Store.id, OrderEntry.order_date >= today - timedelta(days=29))
+    dormant_where = (Store.organization_id == org_id, Store.status == StoreStatus.LIVE.value, ~recent)
+    dormant_live = int(db.execute(select(func.count(Store.id)).where(*dormant_where)).scalar_one())
+    dormant_stores = [
+        AttentionStore(
+            id=r[0], name=r[1], external_code=r[2], platform=r[3], status=r[4], city=r[5], state=r[6], region_name=r[7]
+        )
+        for r in db.execute(
+            select(Store.id, Store.name, Store.external_code, Organization.name, Store.status, Store.city, Store.state, Region.name)
+            .select_from(Store)
+            .join(Organization, Organization.id == Store.partner_organization_id)
+            .outerjoin(Region, Region.id == Store.region_id)
+            .where(*dormant_where)
+            .order_by(Store.name)
+            .limit(24)
+        ).all()
+    ] if dormant_live else []
+
+    # --- per-platform today summary + leaderboard (bulk: no per-employee queries) ---
+    partners = db.execute(
+        select(Organization).where(Organization.kind == OrganizationKind.PARTNER.value)
     ).scalars().all()
 
     platforms: list[PlatformSummary] = []
     leaderboard: list[LeaderRow] = []
     for partner in partners:
         p_total = p_done = p_bottles = p_emps = 0
-        for emp in EmployeeRepository(db).all_for_platform(org_id, partner.id):
+        for emp, total, done, bottles in _employee_rollups(db, org_id, partner, today):
             p_emps += 1
-            try:
-                stores = assignment_service.visible_stores(db, emp)
-            except Exception:  # noqa: BLE001
-                continue
-            total = len(stores)
-            done, bottles = repo.rollup_for_date([s.id for s in stores], today)
             p_total += total
             p_done += done
             p_bottles += bottles
@@ -351,14 +444,14 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
                 entries_done=done, total_stores=total, bottles=bottles,
                 percent=round((done / total) * 100, 1) if total else 0.0,
             ))
-        p_all = [s for s in all_store_rows if s.partner_organization_id == partner.id]
+        counts = by_platform.get(partner.id, {"LIVE": 0, "PENDING": 0, "CLOSE": 0})
         platforms.append(PlatformSummary(
             slug=partner.slug, label=partner.name,
             total_stores=p_total, entries_done=p_done, bottles=p_bottles,
             percent=round((p_done / p_total) * 100, 1) if p_total else 0.0,
             employees=p_emps,
-            all_stores=len(p_all),
-            live_stores=sum(1 for s in p_all if s.status == StoreStatus.LIVE.value),
+            all_stores=counts["LIVE"] + counts["PENDING"] + counts["CLOSE"],
+            live_stores=counts["LIVE"],
         ))
 
     leaderboard.sort(key=lambda r: (r.bottles, r.entries_done), reverse=True)
@@ -366,7 +459,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
     e_today, b_today = totals.get(today, (0, 0))
     _, b_yesterday = totals.get(today - timedelta(days=1), (0, 0))
 
-    # --- store coverage: same `stores` rows the Stores page / sync use ---
+    # --- store coverage ---
     live_case = func.sum(case((Store.status == StoreStatus.LIVE.value, 1), else_=0))
     region_rows = db.execute(
         select(Region.name, live_case, func.count(Store.id))
@@ -410,7 +503,10 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
         stores_by_region=stores_by_region,
         stores_by_state=stores_by_state,
         attention_stores=attention_stores,
-        all_stores=all_stores,
+        status_by_platform=status_by_platform,
+        scopes=scopes,
+        dormant_live=dormant_live,
+        dormant_stores=dormant_stores,
         last_store_sync=last_store_sync,
     )
 

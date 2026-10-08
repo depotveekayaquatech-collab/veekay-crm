@@ -28,7 +28,7 @@ function apply(theme: Theme) {
 
 function applyNow(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0d1424" : "#2f6fed");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0f1328" : "#2f6fed");
 }
 
 /** Persist the choice, apply it right away, and tell every `useTheme` subscriber. */

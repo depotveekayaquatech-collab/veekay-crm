@@ -12,8 +12,16 @@ from app.models.refresh_session import RefreshSession
 from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office
 from app.models.compliance_document import BillStatus, ComplianceDocument, ComplianceDocumentVersion, DocKind
 from app.models.ticket import Ticket, TicketComment
+from app.models.test_report import TestReport
+from app.models.cash_purchase import CashPurchase
+from app.models.cash_adjustment import CashAdjustment, CashSyncRecord, CashSyncRun
 
 __all__ = [
+    "CashPurchase",
+    "CashAdjustment",
+    "CashSyncRecord",
+    "CashSyncRun",
+    "TestReport",
     "Organization",
     "Permission",
     "RolePermission",

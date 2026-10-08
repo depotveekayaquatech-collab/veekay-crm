@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { useAllRegions } from "@/features/regions/useRegions";
+import { useAllStores } from "@/features/stores/useAllStores";
 import { usePartners } from "@/features/stores/useStores";
 import { usePermissionGroups, useTeamMutations } from "@/features/team/useTeam";
 import type { Employee } from "@/types/employee";
@@ -36,6 +37,17 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
 
   const platformSlug = partners.find((p) => p.id === platformId)?.slug ?? "";
   const isEmployeeModel = EMPLOYEE_MODEL_SLUGS.includes(platformSlug);
+
+  // The Region list follows the Platform: only regions that have stores of that platform (all of them when no
+  // platform is picked, or the platform has no regions yet so nobody is locked out). The saved region always stays.
+  const { data: stores = [] } = useAllStores();
+  const regionsFor = (slug: string) => {
+    if (!slug) return regions;
+    const ids = new Set(stores.filter((s) => s.partnerSlug === slug && s.regionId).map((s) => s.regionId));
+    const scoped = regions.filter((r) => ids.has(r.id) || r.id === employee?.regionId);
+    return scoped.length ? scoped : regions;
+  };
+  const regionOptions = useMemo(() => regionsFor(platformSlug), [regions, stores, platformSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggle(codeStr: string) {
     setPerms((prev) => {
@@ -115,7 +127,13 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
           <Select
             label="Platform"
             value={platformId}
-            onChange={(e) => setPlatformId(e.target.value)}
+            onChange={(e) => {
+              const id = e.target.value;
+              setPlatformId(id);
+              // A region that doesn't belong to the newly chosen platform is cleared.
+              const slug = partners.find((p) => p.id === id)?.slug ?? "";
+              if (!regionsFor(slug).some((r) => r.id === regionId)) setRegionId("");
+            }}
             placeholder="None"
             options={partners.map((p) => ({ value: p.id, label: p.name }))}
           />
@@ -125,7 +143,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
               value={regionId}
               onChange={(e) => setRegionId(e.target.value)}
               placeholder="None"
-              options={regions.map((r) => ({ value: r.id, label: r.name }))}
+              options={regionOptions.map((r) => ({ value: r.id, label: r.name }))}
             />
           )}
         </div>

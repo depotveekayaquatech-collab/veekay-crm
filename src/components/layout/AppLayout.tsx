@@ -1,7 +1,8 @@
-import { useEffect, useState, type ComponentType, type SVGProps } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Suspense, useEffect, useState, type ComponentType, type SVGProps } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { ShortcutsModal, type GoShortcut } from "@/components/layout/ShortcutsModal";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   IconActivity,
@@ -14,6 +15,8 @@ import {
   IconLogout,
   IconMenu,
   IconReceipt,
+  IconRefresh,
+  IconWallet,
   IconReport,
   IconSearch,
   IconShield,
@@ -32,7 +35,7 @@ interface NavItem {
   /** Highlight for nested routes too (e.g. /orders/pending under Orders). */
   prefix?: boolean;
   /** Hidden for accounts holding this role (partner logins don't use the dashboard or attendance). */
-  excludeRole?: string;
+  excludeRole?: string | string[];
   /** Shown only to accounts holding this role (e.g. the partner delivery-report download). */
   requireRole?: string;
 }
@@ -49,7 +52,7 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Overview",
-    items: [{ label: "Dashboard", to: "/", icon: IconGrid }],
+    items: [{ label: "Dashboard", to: "/", icon: IconGrid, excludeRole: "developer" }],
   },
   {
     title: "Operations",
@@ -77,6 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Compliance", to: "/compliance", icon: IconShield, permission: "compliance.upload" },
       { label: "Billing", to: "/accounts", icon: IconReceipt, permission: "accounts.view" },
+      { label: "Cash purchases", to: "/cash", icon: IconWallet, anyPermission: ["cash.view", "cash.add"], excludeRole: "partner" },
     ],
   },
   {
@@ -88,19 +92,31 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: "Developer",
+    items: [
+      { label: "Data sync", to: "/data-sync", icon: IconRefresh, permission: "sheets.sync" },
+      { label: "Cash purchase", to: "/developer/cash", icon: IconWallet, permission: "cash.adjust" },
+    ],
+  },
+  {
     title: "People & access",
     items: [
       // No permission: every staff member can open it — admins see the whole team, everyone else sees their own record.
-      { label: "Attendance", to: "/attendance", icon: IconClock, excludeRole: "partner" },
+      { label: "Attendance", to: "/attendance", icon: IconClock, excludeRole: ["partner", "developer"] },
       { label: "Users & access", to: "/team", icon: IconUsers, permission: "employees.view" },
     ],
   },
 ];
 
-const canSee = (item: NavItem, has: (p: string) => boolean, roles: string[]) =>
-  !(item.excludeRole && roles.includes(item.excludeRole)) &&
-  !(item.requireRole && !roles.includes(item.requireRole)) &&
-  (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission));
+const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[]) => {
+  // A developer who is also an admin (the demo login) is an admin first: the developer-only trimming doesn't apply.
+  const roles = allRoles.includes("admin") ? allRoles.filter((r) => r !== "developer") : allRoles;
+  return (
+    !(item.excludeRole && [item.excludeRole].flat().some((r) => roles.includes(r))) &&
+    !(item.requireRole && !roles.includes(item.requireRole)) &&
+    (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission))
+  );
+};
 
 const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
@@ -122,7 +138,7 @@ function BrandMark() {
       <BrandLogo tile height={30} />
       <div className="leading-tight">
         <div className="text-[15px] font-bold tracking-tight text-white">Veekay CRM</div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">Aquatech</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">Aquatrack</div>
       </div>
     </div>
   );
@@ -145,7 +161,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2" aria-label="Main">
         {visibleGroups.map((group) => (
           <div key={group.title} className="mt-4 first:mt-1">
-            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white/30">{group.title}</p>
+            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-brand-300/70">{group.title}</p>
             <div className="space-y-0.5">
             {group.items.map((item) => {
               const Icon = item.icon;
@@ -158,7 +174,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   className={({ isActive }) =>
                     `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                       isActive
-                        ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+                        ? "bg-gradient-to-r from-brand-500/30 to-brand-500/5 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
                         : "text-white/60 hover:bg-white/5 hover:text-white"
                     }`
                   }
@@ -166,11 +182,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   {({ isActive }) => (
                     <>
                       {isActive && (
-                        <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-aqua-300 to-brand-400" />
+                        <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-aqua-300 to-brand-400 shadow-[0_0_10px_rgb(var(--brand-400)/0.8)]" />
                       )}
                       <Icon
+                        aria-hidden="true"
                         className={`h-[18px] w-[18px] shrink-0 ${
-                          isActive ? "text-aqua-300" : "text-white/40 group-hover:text-white/70"
+                          isActive ? "text-brand-300" : "text-white/40 group-hover:text-white/70"
                         }`}
                       />
                       {item.label}
@@ -213,12 +230,34 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+function PageFallback() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading page">
+      <div className="h-8 w-56 animate-pulse rounded-lg bg-surface-border/60" />
+      <div className="h-40 animate-pulse rounded-2xl bg-surface-border/50" />
+      <div className="h-64 animate-pulse rounded-2xl bg-surface-border/40" />
+    </div>
+  );
+}
+
 export function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
   const pages = NAV_ITEMS.filter((i) => canSee(i, hasPermission, user?.roles ?? []));
+
+  // "g then o" style jumps, limited to pages this user can open.
+  const goKeys: (GoShortcut & { to: string })[] = [
+    { key: "d", label: "Dashboard", to: "/" },
+    { key: "o", label: "Orders", to: "/orders" },
+    { key: "t", label: "Tickets", to: "/tickets" },
+    { key: "s", label: "Stores", to: "/stores" },
+    { key: "r", label: "Reports", to: "/reports" },
+    { key: "a", label: "Attendance", to: "/attendance" },
+  ].filter((g) => pages.some((p) => p.to === g.to));
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -230,6 +269,33 @@ export function AppLayout() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Single-key shortcuts: "?" opens help, "g" then a letter jumps to a page. Never fires while typing.
+  useEffect(() => {
+    let armedAt = 0;
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+      if (e.key === "?") {
+        e.preventDefault();
+        setHelpOpen(true);
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === "g") {
+        armedAt = Date.now();
+        return;
+      }
+      if (armedAt && Date.now() - armedAt < 1200) {
+        const hit = goKeys.find((g) => g.key === key);
+        armedAt = 0;
+        if (hit) navigate(hit.to);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   // Lock body scroll while the mobile drawer is open.
   useEffect(() => {
@@ -246,6 +312,12 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-surface-subtle lg:pl-[17rem]">
+      <a
+        href="#main-content"
+        className="sr-only z-50 rounded-lg bg-surface px-4 py-2 text-sm font-semibold text-heading shadow-lg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to main content
+      </a>
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[17rem] bg-ink-900 lg:block">
         <SidebarContent />
@@ -288,13 +360,24 @@ export function AppLayout() {
         </div>
         <button
           onClick={() => setPaletteOpen(true)}
-          className="ml-auto flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-1.5 text-sm text-gray-400 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-600"
+          aria-label="Search pages and stores"
+          className="ml-auto flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-1.5 text-sm text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-700"
         >
-          <IconSearch className="h-4 w-4" />
+          <IconSearch className="h-4 w-4" aria-hidden="true" />
           <span className="hidden sm:inline">Search…</span>
           <kbd className="hidden rounded border border-surface-border px-1.5 text-[10px] font-semibold sm:inline">Ctrl K</kbd>
         </button>
+        <button
+          onClick={() => setHelpOpen(true)}
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?)"
+          className="hidden h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-sm font-bold text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-800 sm:flex"
+        >
+          ?
+        </button>
       </header>
+
+      <ShortcutsModal open={helpOpen} onClose={() => setHelpOpen(false)} go={goKeys} />
 
       <CommandPalette
         open={paletteOpen}
@@ -303,8 +386,10 @@ export function AppLayout() {
         canSearchStores={hasPermission("stores.view")}
       />
 
-      <main className="mx-auto w-full max-w-[1680px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
-        <Outlet />
+      <main id="main-content" tabIndex={-1} className="mx-auto scroll-mt-24 outline-none w-full max-w-[1680px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+        <Suspense fallback={<PageFallback />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

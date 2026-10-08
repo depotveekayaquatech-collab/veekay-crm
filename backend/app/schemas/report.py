@@ -32,6 +32,7 @@ class SalesReport(BaseModel):
     days: int
     avg_bottles_per_day: float
     rows: list[ReportRow]
+    row_count: int = 0          # rows before any `limit` was applied (e.g. how many stores had orders)
     series: list[ReportPoint]
 
 

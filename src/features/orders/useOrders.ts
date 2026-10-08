@@ -7,6 +7,7 @@ import {
   getMyStores,
   importOrdersFile,
   markOrder,
+  syncOrders,
 } from "@/services/orders";
 import { pushToast } from "@/lib/toast";
 
@@ -71,6 +72,21 @@ export function useImportOrders() {
         qc.invalidateQueries({ queryKey: [key] });
       }
       pushToast(`Order sheet imported — ${r.created} added, ${r.updated} updated.`, "success");
+    },
+  });
+}
+
+export function useSyncOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ platform, overwrite }: { platform?: string; overwrite?: boolean } = {}) => syncOrders(platform, overwrite),
+    onSuccess: (results) => {
+      for (const key of ["calendar", "daily-overview", "order-insights", "report", "pending", "my-stores"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+      const added = results.reduce((n, r) => n + r.created, 0);
+      const changed = results.reduce((n, r) => n + r.updated, 0);
+      pushToast(`Order sheet synced — ${added} added, ${changed} updated.`, "success");
     },
   });
 }

@@ -17,7 +17,7 @@ function dayTone(d: CalendarDay, clickable: boolean): string {
   if (d.marked) {
     return d.source === "admin"
       ? "border-status-warning/30 bg-status-warning-soft text-status-warning"
-      : "border-status-success/25 bg-status-success-soft text-status-success";
+      : "border-status-success/25 text-status-success";
   }
   if (d.isFuture) return "border-transparent bg-surface-subtle text-gray-300";
   return clickable
@@ -55,6 +55,9 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
     };
   }, [calendar]);
 
+  // Busier days get a stronger tint, so the month reads like a heat-map at a glance.
+  const maxCount = useMemo(() => Math.max(1, ...calendar.days.map((d) => d.count ?? 0)), [calendar]);
+
   const now = new Date();
   const isCurrentMonth = calendar.year === now.getFullYear() && calendar.month === now.getMonth() + 1;
 
@@ -88,7 +91,7 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
+    <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border px-4 py-3.5 sm:px-5">
         <div className="flex items-center gap-1">
           {onNavigate && (
@@ -101,7 +104,7 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
               <Chevron dir="left" />
             </button>
           )}
-          <h3 className="min-w-[8.5rem] text-center text-base font-bold text-heading">{calendar.monthLabel}</h3>
+          <h3 className="min-w-[9rem] text-center text-base font-extrabold text-heading">{calendar.monthLabel}</h3>
           {onNavigate && (
             <button
               type="button"
@@ -164,7 +167,8 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
                 onClick={() => pick(d)}
                 disabled={!clickable}
                 title={d.marked ? `${d.count} bottles (${d.source})` : d.isFuture ? undefined : "Not marked"}
-                className={`relative flex h-14 flex-col sm:h-[4.25rem] items-center justify-center rounded-lg border text-sm transition-all disabled:cursor-default ${dayTone(d, clickable)} ${
+                style={d.marked && d.source !== "admin" ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` } : undefined}
+                className={`relative flex h-14 flex-col sm:h-[4.25rem] items-center justify-center rounded-lg border text-sm transition-[transform,box-shadow,background-color,border-color] disabled:cursor-default ${dayTone(d, clickable)} ${
                   d.isToday ? "ring-2 ring-brand-400 ring-offset-1" : ""
                 } ${isSel ? "scale-[1.04] border-brand-500 bg-brand-50 text-brand-700 shadow-md" : ""}`}
               >

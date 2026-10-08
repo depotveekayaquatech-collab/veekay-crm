@@ -218,3 +218,11 @@ export const IconClock = (p: IconProps) => (
     <path d="M12 7v5l3 2" />
   </Base>
 );
+
+export const IconWallet = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 7a2 2 0 012-2h11v3" />
+    <path d="M4 7v10a2 2 0 002 2h13a1 1 0 001-1V9a1 1 0 00-1-1H6a2 2 0 01-2-2z" />
+    <circle cx="16" cy="13.5" r="1.2" />
+  </Base>
+);

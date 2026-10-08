@@ -45,10 +45,23 @@ class OrderEntryRepository:
         ).one()
         return (int(row[0]), int(row[1]))
 
+    def rollup_by_store(self, store_ids: list[uuid.UUID], target: date) -> dict[uuid.UUID, tuple[int, int]]:
+        """{store_id: (entries, bottles)} on `target` for the given stores — one grouped query for any number of employees."""
+        if not store_ids:
+            return {}
+        rows = self.db.execute(
+            select(OrderEntry.store_id, func.count(OrderEntry.id), func.coalesce(func.sum(OrderEntry.bottle_count), 0))
+            .where(OrderEntry.order_date == target, OrderEntry.store_id.in_(store_ids))
+            .group_by(OrderEntry.store_id)
+        ).all()
+        return {r[0]: (int(r[1]), int(r[2])) for r in rows}
+
     def daily_totals_between(
-        self, org_id: uuid.UUID, start: date, end: date
+        self, org_id: uuid.UUID, start: date, end: date,
+        *, partner_slug: str | None = None, region: str | None = None, state: str | None = None,
     ) -> dict[date, tuple[int, int]]:
-        """{order_date: (entries_count, bottles_total)} for start..end inclusive."""
+        """{order_date: (entries_count, bottles_total)} for start..end inclusive, optionally for one
+        platform / region name / state only."""
         stmt = (
             select(
                 OrderEntry.order_date,
@@ -62,6 +75,20 @@ class OrderEntryRepository:
             )
             .group_by(OrderEntry.order_date)
         )
+        if partner_slug or region or state:
+            from app.models.organization import Organization
+            from app.models.region import Region
+            from app.models.store import Store
+
+            stmt = stmt.join(Store, Store.id == OrderEntry.store_id)
+            if partner_slug:
+                stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(
+                    Organization.slug == partner_slug
+                )
+            if region:
+                stmt = stmt.join(Region, Region.id == Store.region_id).where(func.lower(Region.name) == region.lower())
+            if state:
+                stmt = stmt.where(func.lower(Store.state) == state.lower())
         return {r[0]: (int(r[1]), int(r[2])) for r in self.db.execute(stmt).all()}
 
     def recent_for_partner(

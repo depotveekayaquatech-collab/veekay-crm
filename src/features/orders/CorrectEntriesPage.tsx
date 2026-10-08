@@ -2,7 +2,9 @@ import { distinctOptions } from "@/lib/options";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { Modal } from "@/components/ui/Modal";
+import { IconAlertTriangle, IconStore } from "@/components/ui/icons";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { useAllStores } from "@/features/stores/useAllStores";
@@ -15,7 +17,7 @@ import type { CalendarDay } from "@/types/order";
 export function CorrectEntriesPage() {
   const { data: partners = [] } = usePartners();
   const { data: stores = [], isLoading: storesLoading } = useAllStores(true);
-  const [pickedPartner, setPartner] = useState("");
+  const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const [region, setRegion] = useState("");
   const partner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
   const [storeId, setStoreId] = useState("");
@@ -55,9 +57,13 @@ export function CorrectEntriesPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-status-warning/25 bg-status-warning-soft/60 px-4 py-3 text-sm text-status-warning">
-        <span className="font-semibold">Admin tool.</span>
-        <span className="text-gray-700">Overwrite or clear any day for any store. Every change is recorded in the activity log.</span>
+      <div className="flex items-center gap-3 rounded-2xl border border-status-warning/30 bg-status-warning-soft/60 px-4 py-3.5 text-sm">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-status-warning/15 text-status-warning">
+          <IconAlertTriangle className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <p className="text-gray-700">
+          <span className="font-bold text-status-warning">Admin tool.</span> Overwrite or clear any day for any store — every change is recorded in the activity log.
+        </p>
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[21rem_1fr]">
@@ -101,13 +107,18 @@ export function CorrectEntriesPage() {
         <div className="flex min-w-0 flex-col gap-5">
           {!storeId && <SelectStorePrompt text="Pick a store, then tap any past day to change or clear its count." />}
           {storeId && selected && (
-            <div className="rounded-xl border border-surface-border bg-surface px-4 py-3.5 shadow-card sm:px-5">
-              <h3 className="text-lg font-bold text-heading">{selected.name}</h3>
-              <p className="text-sm text-gray-500">
-                {selected.externalCode}
-                {selected.partnerName ? ` · ${selected.partnerName}` : ""}
-                {selected.city ? ` · ${selected.city}` : ""}
-              </p>
+            <div className="flex items-center gap-3.5 overflow-hidden rounded-2xl border border-surface-border bg-surface px-4 py-3.5 shadow-card sm:px-5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-aqua-400 text-white">
+                <IconStore className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="truncate text-lg font-extrabold text-heading">{selected.name}</h3>
+                <p className="text-sm text-gray-500">
+                  {selected.externalCode}
+                  {selected.partnerName ? ` · ${selected.partnerName}` : ""}
+                  {selected.city ? ` · ${selected.city}` : ""}
+                </p>
+              </div>
             </div>
           )}
           {storeId && isError && <ErrorState message="Couldn't load this store's calendar." onRetry={() => refetch()} />}

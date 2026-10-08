@@ -11,12 +11,14 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "onC
   error?: string;
   options: Option[];
   placeholder?: string;
+  /** Force the search box on (it is automatic for long lists). */
+  searchable?: boolean;
   value?: string;
   onChange?: (e: ChangeEvent<HTMLSelectElement>) => void;
 }
 
 /** Labelled form dropdown. Keeps the `<select>` calling convention (`onChange(e)` → `e.target.value`). */
-export function Select({ label, error, options, placeholder, id, className = "", value = "", onChange, disabled }: SelectProps) {
+export function Select({ label, error, options, placeholder, searchable, id, className = "", value = "", onChange, disabled }: SelectProps) {
   const selectId = id ?? label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -28,6 +30,7 @@ export function Select({ label, error, options, placeholder, id, className = "",
         value={value}
         options={options}
         placeholder={placeholder}
+        searchable={searchable}
         disabled={disabled}
         invalid={Boolean(error)}
         onValueChange={(v) => onChange?.({ target: { value: v }, currentTarget: { value: v } } as unknown as ChangeEvent<HTMLSelectElement>)}

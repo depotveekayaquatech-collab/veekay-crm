@@ -3,7 +3,7 @@
  * shaping happens in the caller. Matches the icon set's "one visual
  * language, no libraries" approach.
  */
-import { useId } from "react";
+import { useId, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 /* ------------------------------------------------------------------ */
 /* Area / line chart                                                   */
@@ -18,12 +18,21 @@ export function AreaChart({
   data,
   height = 180,
   valueSuffix = "",
+  selected = null,
+  onSelect,
 }: {
   data: AreaPoint[];
   height?: number;
   valueSuffix?: string;
+  /** Index of the pinned point (e.g. the day being inspected). */
+  selected?: number | null;
+  /** Called when a point is clicked or picked with the arrow keys; enables the interactive mode. */
+  onSelect?: (index: number) => void;
 }) {
-  const gradientId = useId();
+  const [hover, setHover] = useState<number | null>(null);
+  const uid = useId();
+  const gradientId = `${uid}-fill`;
+  const strokeId = `${uid}-stroke`;
   const w = 640;
   const h = height;
   const padX = 8;
@@ -40,13 +49,42 @@ export function AreaChart({
   const line = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
   const area = `${line} L${pts[pts.length - 1]?.[0].toFixed(1)} ${h - padY} L${pts[0]?.[0].toFixed(1)} ${h - padY} Z`;
 
+  const active = hover ?? selected;
+  const activePt = active !== null && active >= 0 && active < pts.length ? pts[active] : null;
+
+  function indexAt(e: PointerEvent<HTMLDivElement>): number {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const f = rect.width ? (e.clientX - rect.left) / rect.width : 0;
+    return Math.max(0, Math.min(data.length - 1, Math.round(f * (data.length - 1))));
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (!onSelect || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+    e.preventDefault();
+    const cur = selected ?? data.length - 1;
+    onSelect(Math.max(0, Math.min(data.length - 1, cur + (e.key === "ArrowRight" ? 1 : -1))));
+  }
+
   return (
     <div className="w-full">
+      <div
+        className={`relative ${onSelect ? "cursor-crosshair touch-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" : ""}`}
+        tabIndex={onSelect ? 0 : undefined}
+        onKeyDown={onKeyDown}
+        onPointerMove={onSelect ? (e) => setHover(indexAt(e)) : undefined}
+        onPointerLeave={onSelect ? () => setHover(null) : undefined}
+        onClick={onSelect ? (e) => onSelect(indexAt(e as unknown as PointerEvent<HTMLDivElement>)) : undefined}
+        aria-label={onSelect ? "Trend chart. Use the arrow keys to move between days." : undefined}
+      >
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" preserveAspectRatio="none" role="img" aria-label="Trend chart">
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgb(47 111 237)" stopOpacity="0.20" />
-            <stop offset="100%" stopColor="rgb(47 111 237)" stopOpacity="0" />
+            <stop offset="0%" style={{ stopColor: "rgb(var(--brand-500))" }} stopOpacity="0.35" />
+            <stop offset="100%" style={{ stopColor: "rgb(var(--aqua-400))" }} stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id={strokeId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" style={{ stopColor: "rgb(var(--brand-400))" }} />
+            <stop offset="100%" style={{ stopColor: "rgb(var(--aqua-400))" }} />
           </linearGradient>
         </defs>
         {[0.25, 0.5, 0.75].map((f) => (
@@ -62,13 +100,35 @@ export function AreaChart({
           />
         ))}
         <path d={area} fill={`url(#${gradientId})`} />
-        <path d={line} fill="none" className="stroke-brand-500" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={line} fill="none" stroke={`url(#${strokeId})`} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
         {pts.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r={data.length > 20 ? 0 : 3} className="fill-white stroke-brand-500" strokeWidth={2}>
+          <circle key={i} cx={x} cy={y} r={data.length > 20 || onSelect ? 0 : 3} className="fill-surface stroke-aqua-400" strokeWidth={2}>
             <title>{`${data[i].label}: ${data[i].value}${valueSuffix}`}</title>
           </circle>
         ))}
+        {activePt && <line x1={activePt[0]} x2={activePt[0]} y1={padY} y2={h - padY} className="stroke-brand-400" strokeWidth={1.5} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
       </svg>
+      {activePt && active !== null && (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-aqua-400 bg-surface shadow"
+            style={{ left: `${(activePt[0] / w) * 100}%`, top: `${(activePt[1] / h) * 100}%` }}
+          />
+          <div
+            className="pointer-events-none absolute z-10 -translate-y-full whitespace-nowrap rounded-lg border border-surface-border bg-surface px-2.5 py-1.5 text-xs shadow-lg"
+            style={{
+              left: `${Math.min(88, Math.max(12, (activePt[0] / w) * 100))}%`,
+              top: `calc(${(activePt[1] / h) * 100}% - 10px)`,
+              transform: "translate(-50%, -100%)",
+            }}
+          >
+            <span className="font-semibold text-gray-500">{data[active].label}</span>
+            <span className="ml-2 font-bold tabular-nums text-heading">{data[active].value.toLocaleString()}{valueSuffix}</span>
+          </div>
+        </>
+      )}
+      </div>
       <div className="mt-1 flex justify-between text-[10px] text-gray-400">
         <span>{data[0]?.label}</span>
         {data.length > 2 && <span>{data[Math.floor(data.length / 2)]?.label}</span>}
@@ -165,7 +225,7 @@ export function BarList({ items }: { items: BarItem[] }) {
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-              <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
+              <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-aqua-400 transition-[width]" style={{ width: `${pct}%` }} />
             </div>
             {it.sub && <p className="mt-0.5 text-xs text-gray-400">{it.sub}</p>}
           </div>

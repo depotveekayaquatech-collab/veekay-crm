@@ -28,7 +28,10 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
-def sales_report(db: Session, admin: User, start: date, end: date, group_by: str) -> SalesReport:
+def sales_report(
+    db: Session, admin: User, start: date, end: date, group_by: str,
+    *, partner_slug: str | None = None, region: str | None = None, state: str | None = None,
+) -> SalesReport:
     if group_by not in GROUPINGS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"group_by must be one of {', '.join(GROUPINGS)}.")
     if end < start:
@@ -71,6 +74,13 @@ def sales_report(db: Session, admin: User, start: date, end: date, group_by: str
         )
         .group_by(*cols)
     )
+    # Optional narrowing: one platform, one region, one state (the chart and the breakdown stay in step).
+    if partner_slug:
+        stmt = stmt.where(partner.slug == partner_slug)
+    if region:
+        stmt = stmt.where(func.lower(Region.name) == region.lower())
+    if state:
+        stmt = stmt.where(func.lower(Store.state) == state.lower())
 
     raw = db.execute(stmt).all()
     total_bottles = sum(int(r[len(cols) + 1]) for r in raw)
@@ -90,7 +100,7 @@ def sales_report(db: Session, admin: User, start: date, end: date, group_by: str
     rows.sort(key=lambda x: (-x.bottles, x.label.lower()))
 
     days = (end - start).days + 1
-    totals = OrderEntryRepository(db).daily_totals_between(org_id, start, end)
+    totals = OrderEntryRepository(db).daily_totals_between(org_id, start, end, partner_slug=partner_slug, region=region, state=state)
     series = []
     for i in range(days):
         d = start + timedelta(days=i)
@@ -101,7 +111,7 @@ def sales_report(db: Session, admin: User, start: date, end: date, group_by: str
         start=start, end=end, group_by=group_by,
         total_bottles=total_bottles, total_entries=total_entries, days=days,
         avg_bottles_per_day=round(total_bottles / days, 1),
-        rows=rows, series=series,
+        rows=rows, row_count=len(rows), series=series,
     )
 
 

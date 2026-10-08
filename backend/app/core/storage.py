@@ -43,6 +43,7 @@ class _Backend(Protocol):
     def exists(self, key: str) -> bool: ...
     def delete(self, key: str) -> None: ...
     def healthcheck(self) -> None: ...
+    def signed_url(self, key: str, *, filename: str, content_type: str, expires: int) -> str | None: ...
 
 
 # --------------------------------------------------------------------------
@@ -84,6 +85,9 @@ class LocalBackend:
             self._path(key).unlink(missing_ok=True)
         except (OSError, ValueError):
             pass
+
+    def signed_url(self, key: str, *, filename: str, content_type: str, expires: int) -> str | None:
+        return None  # a folder on this machine has no public address: the API streams the file instead
 
     def healthcheck(self) -> None:
         root = self._root()
@@ -148,6 +152,20 @@ class S3Backend:
         except Exception:  # noqa: BLE001 — deleting a missing file is not an error
             pass
 
+    def signed_url(self, key: str, *, filename: str, content_type: str, expires: int) -> str | None:
+        """A link the browser can open for `expires` seconds — the bytes come from the bucket, not from us."""
+        safe_name = safe_segment(filename, "file").replace('"', "")
+        return self._c().generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": settings.S3_BUCKET,
+                "Key": self._k(key),
+                "ResponseContentType": content_type,
+                "ResponseContentDisposition": f'inline; filename="{safe_name}"',
+            },
+            ExpiresIn=expires,
+        )
+
     def healthcheck(self) -> None:
         self._c().head_bucket(Bucket=settings.S3_BUCKET)
 
@@ -198,3 +216,8 @@ def delete(key: str) -> None:
 
 def healthcheck() -> None:
     backend().healthcheck()
+
+
+def signed_url(key: str, *, filename: str, content_type: str) -> str | None:
+    """Short-lived direct link to a stored file, or None when the backend can't offer one (local disk)."""
+    return backend().signed_url(key, filename=filename, content_type=content_type, expires=settings.S3_URL_EXPIRE_SECONDS)

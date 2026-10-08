@@ -332,9 +332,10 @@ def clear_bill(db: Session, user: User, doc_id: uuid.UUID) -> DocBrief:
 # reading
 # --------------------------------------------------------------------------
 
-def read_file(
-    db: Session, user: User, perms: set[str], doc_id: uuid.UUID, version: int | None = None,
-) -> tuple[bytes, str, str]:
+def _file_ref(
+    db: Session, user: User, perms: set[str], doc_id: uuid.UUID, version: int | None,
+) -> tuple[str, str, str]:
+    """(storage key, content type, display name) of a document the caller may see, after the permission check."""
     doc = _doc_for_access(db, user, perms, doc_id, write=False)
     key, content_type, name = doc.file_key, doc.content_type, doc.file_name
     if version is not None:
@@ -344,7 +345,28 @@ def read_file(
         key, content_type, name = v.file_key, v.content_type, f"v{v.version}-{v.file_name}"
     if not storage.exists(key):
         raise _err(status.HTTP_404_NOT_FOUND, "The file is missing from storage. Please upload it again.")
+    return key, content_type, name
+
+
+def read_file(
+    db: Session, user: User, perms: set[str], doc_id: uuid.UUID, version: int | None = None,
+) -> tuple[bytes, str, str]:
+    key, content_type, name = _file_ref(db, user, perms, doc_id, version)
     return storage.read(key), content_type, name
+
+
+def file_link(
+    db: Session, user: User, perms: set[str], doc_id: uuid.UUID, version: int | None = None,
+) -> dict:
+    """Permission-checked, short-lived direct link to the file. `url` is None on local-disk storage
+    (the caller then falls back to the streaming /file route)."""
+    key, content_type, name = _file_ref(db, user, perms, doc_id, version)
+    return {
+        "url": storage.signed_url(key, filename=name, content_type=content_type),
+        "content_type": content_type,
+        "file_name": name,
+        "expires_in": settings.S3_URL_EXPIRE_SECONDS,
+    }
 
 
 def zip_docs(db: Session, user: User, perms: set[str], ids: list[uuid.UUID]) -> bytes:

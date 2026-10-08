@@ -224,10 +224,28 @@ export function useClearBill() {
   });
 }
 
-/** Open a stored document in a new tab (fetched with the auth header, so no public URL exists). */
+interface DocLink {
+  url: string | null;
+  contentType: string;
+  fileName: string;
+}
+
+/** Ask the API for a short-lived direct link to the file (permission-checked). `url` is null on local-disk storage. */
+async function documentLink(id: string): Promise<DocLink> {
+  return camelize<DocLink>(await apiRequest(`/compliance/${id}/url`));
+}
+
+/** Open a stored document in a new tab. With bucket storage the browser loads it straight from the bucket
+ * through a signed link, so the API never streams the bytes; on local-disk storage it falls back to /file. */
 export async function openDocument(id: string): Promise<void> {
   const win = window.open("", "_blank"); // opened synchronously so popup blockers allow it
   try {
+    const link = await documentLink(id);
+    if (link.url) {
+      if (win) win.location.href = link.url;
+      else window.location.href = link.url;
+      return;
+    }
     const blob = await apiBlob(`/compliance/${id}/file`);
     const url = URL.createObjectURL(blob);
     if (win) win.location.href = url;
@@ -252,22 +270,28 @@ export async function downloadDocsZip(ids: string[]): Promise<void> {
 
 /** Print photos from a clean window; PDFs can't be printed reliably from here, so they open in a tab instead. */
 export async function printDocuments(ids: string[]): Promise<{ printed: number; opened: number }> {
-  const blobs = await Promise.all(ids.map(async (id) => ({ id, blob: await apiBlob(`/compliance/${id}/file`) })));
-  const images = blobs.filter((b) => b.blob.type.startsWith("image/"));
-  const pdfs = blobs.filter((b) => !b.blob.type.startsWith("image/"));
+  const docs = await Promise.all(
+    ids.map(async (id) => {
+      const link = await documentLink(id);
+      // Direct signed link when the bucket offers one; otherwise fetch through the API and use a local blob URL.
+      const src = link.url ?? URL.createObjectURL(await apiBlob(`/compliance/${id}/file`));
+      return { src, isImage: link.contentType.startsWith("image/") };
+    }),
+  );
+  const images = docs.filter((d) => d.isImage);
+  const pdfs = docs.filter((d) => !d.isImage);
   if (images.length) {
     const w = window.open("", "_blank");
     if (w) {
-      const urls = images.map((b) => URL.createObjectURL(b.blob));
       w.document.write(
         `<!doctype html><title>Print documents</title><style>body{margin:0}img{display:block;max-width:100%;max-height:100vh;margin:0 auto;page-break-after:always}</style>` +
-          urls.map((u) => `<img src="${u}">`).join(""),
+          images.map((d) => `<img src="${d.src}">`).join(""),
       );
       w.document.close();
       w.onload = () => w.print();
     }
   }
-  pdfs.slice(0, 5).forEach((b) => window.open(URL.createObjectURL(b.blob), "_blank"));
+  pdfs.slice(0, 5).forEach((d) => window.open(d.src, "_blank"));
   return { printed: images.length, opened: Math.min(pdfs.length, 5) };
 }
 

@@ -1,20 +1,17 @@
 import { SelectField } from "@/components/ui/Dropdown";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { IconCheckCircle, IconDownload, IconUpload } from "@/components/ui/icons";
+import { IconDownload } from "@/components/ui/icons";
 import { usePartners } from "@/features/stores/useStores";
-import { useImportOrders } from "@/features/orders/useOrders";
 import { SummaryReport } from "@/features/reports/SummaryReport";
-import { usePermission } from "@/hooks/usePermission";
 import { apiBlob, apiRequest } from "@/services/api";
 import { camelize } from "@/lib/camel";
 import { daysAgo } from "@/lib/dates";
 import { pushToast } from "@/lib/toast";
-import type { OrderImportResult } from "@/types/order";
 
 interface MatrixRow {
   storeId: string;
@@ -73,94 +70,10 @@ function Section({ title, subtitle, action, children }: { title: string; subtitl
   );
 }
 
-/* -------------------------- manual delivery upload -------------------------- */
-
-function ManualUpload() {
-  const { data: partners = [] } = usePartners();
-  const upload = useImportOrders();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [partner, setPartner] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [overwrite, setOverwrite] = useState(false);
-  const [result, setResult] = useState<OrderImportResult | null>(null);
-  const activePartner = partner || partners[0]?.slug || "";
-
-  function run() {
-    if (!file || !activePartner) return;
-    upload.mutate(
-      { platform: activePartner, file, overwrite },
-      {
-        onSuccess: (r) => {
-          setResult(r);
-          setFile(null);
-          if (fileRef.current) fileRef.current.value = "";
-        },
-      },
-    );
-  }
-
-  return (
-    <Section title="Manual delivery upload" subtitle="Upload an Excel / CSV order sheet to mark deliveries and create any missing entries.">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
-          Channel
-          <SelectField className={`${input} w-40`} value={activePartner} onChange={(e) => setPartner(e.target.value)}>
-            {partners.map((p) => (
-              <option key={p.slug} value={p.slug}>{p.name}</option>
-            ))}
-          </SelectField>
-        </label>
-        <label className="flex min-w-[16rem] flex-1 flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
-          Order sheet
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xlsm,.csv"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setResult(null);
-            }}
-            className="h-10 rounded-lg border border-surface-border bg-surface text-sm shadow-sm file:mr-3 file:h-full file:cursor-pointer file:border-0 file:bg-surface-muted file:px-3 file:text-sm file:font-semibold file:text-gray-700"
-          />
-        </label>
-        <label className="flex h-10 cursor-pointer items-center gap-2 text-sm text-gray-600">
-          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} className="accent-brand-500" />
-          Overwrite existing
-        </label>
-        <Button onClick={run} disabled={!file} isLoading={upload.isPending}>
-          <IconUpload className="h-4 w-4" />
-          Upload Excel
-        </Button>
-      </div>
-
-      {upload.error && (
-        <p role="alert" className="mt-3 rounded-lg bg-status-danger-soft px-3 py-2 text-sm text-status-danger">
-          {upload.error instanceof Error ? upload.error.message : "Upload failed."}
-        </p>
-      )}
-      {result && (
-        <div className="mt-4 rounded-lg bg-status-success-soft px-4 py-3 text-sm text-status-success">
-          <p className="flex items-center gap-2 font-bold">
-            <IconCheckCircle className="h-4 w-4" /> {result.created} added · {result.updated} updated · {result.unchanged} unchanged
-          </p>
-          {result.warnings.length > 0 && (
-            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-status-warning">
-              {result.warnings.map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </Section>
-  );
-}
-
 /* ------------------------------ daily matrix ------------------------------ */
 
 function DailyMatrix() {
   const { data: partners = [] } = usePartners();
-  const canUpload = usePermission("orders.correct");
   const [draft, setDraft] = useState<Filters>(DEFAULTS);
   const [applied, setApplied] = useState<Filters>(DEFAULTS);
   const [page, setPage] = useState(1);
@@ -210,8 +123,6 @@ function DailyMatrix() {
 
   return (
     <div className="flex flex-col gap-6">
-      {canUpload && <ManualUpload />}
-
       <Section title="Report filters" subtitle="Changing the date range regenerates the daily columns (up to 62 days).">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">

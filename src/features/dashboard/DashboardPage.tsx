@@ -5,6 +5,11 @@ import { getCalendar } from "@/services/orders";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/feedback/Skeleton";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { Select } from "@/components/ui/Select";
+import { useTestReports } from "@/features/reports/testReports";
+import { useDebounced } from "@/hooks/useDebounced";
+import { listStores } from "@/services/stores";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
@@ -30,11 +35,11 @@ import {
 
 type Tone = "brand" | "success" | "warning" | "info";
 
-const toneRing: Record<Tone, string> = {
-  brand: "bg-brand-50 text-brand-600",
-  success: "bg-status-success-soft text-status-success",
-  warning: "bg-status-warning-soft text-status-warning",
-  info: "bg-aqua-50 text-aqua-600",
+const toneFill: Record<Tone, string> = {
+  brand: "stat-brand",
+  success: "stat-success",
+  warning: "stat-warning",
+  info: "stat-aqua",
 };
 
 function StatCard({
@@ -53,19 +58,22 @@ function StatCard({
   loading?: boolean;
 }) {
   return (
-    <div className={`tile ${tone === "info" ? "tile-aqua" : `tile-${tone}`} rounded-xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
-      <div className="flex items-start justify-between gap-3">
+    <div
+      className={`${toneFill[tone]} relative overflow-hidden rounded-2xl p-5 text-white shadow-md transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-lg`}
+    >
+      <span aria-hidden="true" className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">{label}</p>
           {loading ? (
-            <Skeleton className="mt-2 h-8 w-16" />
+            <Skeleton className="mt-2 h-8 w-16 !bg-white/25" />
           ) : (
-            <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-gray-900">{value}</p>
+            <p className="mt-1.5 text-[2rem] font-bold leading-none tabular-nums">{typeof value === "number" ? <AnimatedNumber value={value} /> : value}</p>
           )}
-          {hint && !loading && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+          {hint && !loading && <p className="mt-1.5 text-xs text-white/80">{hint}</p>}
         </div>
-        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${toneRing[tone]}`}>
-          <Icon className="h-5 w-5" />
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+          <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
       </div>
     </div>
@@ -77,7 +85,7 @@ function ProgressBar({ percent }: { percent: number }) {
   const tone = p >= 85 ? "bg-status-success" : p >= 50 ? "bg-status-warning" : "bg-status-danger";
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-      <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${p}%` }} />
+      <div className={`h-full rounded-full transition-[width] ${tone}`} style={{ width: `${p}%` }} />
     </div>
   );
 }
@@ -131,6 +139,9 @@ function trendDelta(today: number, yesterday: number): { text: string; tone: Ton
 /* admin dashboard                                                     */
 /* ------------------------------------------------------------------ */
 
+const ALL_PLATFORMS = "__all";
+const STORE_PAGE = 15;
+
 const STATUS_COLORS: Record<string, string> = {
   LIVE: "#0f7b57",
   PENDING: "#d99a2b",
@@ -154,23 +165,41 @@ function AdminDashboard() {
         Math.max(1, insights.platforms.reduce((s, p) => s + p.totalStores, 0)) *
         100
       : 0;
+  // One donut per platform: the server sends the counts, not every store.
+  const statusByPlatform = useMemo(
+    () => (insights?.statusByPlatform ?? []).map((p) => ({ label: p.label, total: p.total, counts: { LIVE: p.live, PENDING: p.pending, CLOSE: p.close } })),
+    [insights],
+  );
+  const [statusPick, setStatusPick] = useState<string | null>(null);
+  const statusChoice = statusPick ?? statusByPlatform[0]?.label ?? ALL_PLATFORMS;
+  const statusShown = useMemo(() => {
+    if (statusChoice === ALL_PLATFORMS) {
+      const counts = { LIVE: 0, PENDING: 0, CLOSE: 0 };
+      statusByPlatform.forEach((p) => {
+        counts.LIVE += p.counts.LIVE;
+        counts.PENDING += p.counts.PENDING;
+        counts.CLOSE += p.counts.CLOSE;
+      });
+      return { label: "All platforms", total: statusByPlatform.reduce((n, p) => n + p.total, 0), counts };
+    }
+    return statusByPlatform.find((p) => p.label === statusChoice) ?? null;
+  }, [statusByPlatform, statusChoice]);
+  const testReports = useTestReports("zepto");
   const delta = insights ? trendDelta(insights.bottlesToday, insights.bottlesYesterday) : null;
 
-  const [storePlatform, setStorePlatform] = useState("");
+  // The store directory is searched and paged on the server (15 rows per request), never downloaded whole.
+  const [storePartner, setStorePartner] = useState("");
   const [storeQuery, setStoreQuery] = useState("");
-  const visibleStores = useMemo(() => {
-    const list = insights?.allStores ?? [];
-    const q = storeQuery.trim().toLowerCase();
-    return list.filter(
-      (s) =>
-        (!storePlatform || s.platform === storePlatform) &&
-        (!q ||
-          s.name.toLowerCase().includes(q) ||
-          s.externalCode.toLowerCase().includes(q) ||
-          (s.city ?? "").toLowerCase().includes(q) ||
-          (s.state ?? "").toLowerCase().includes(q)),
-    );
-  }, [insights?.allStores, storePlatform, storeQuery]);
+  const [storePage, setStorePage] = useState(1);
+  const storeSearch = useDebounced(storeQuery.trim(), 300);
+  const directory = useQuery({
+    queryKey: ["dashboard-stores", storePartner, storeSearch, storePage],
+    queryFn: () => listStores({ page: storePage, pageSize: STORE_PAGE, partner: storePartner || undefined, search: storeSearch || undefined }),
+    placeholderData: (prev) => prev,
+  });
+  const storeRows = directory.data?.items ?? [];
+  const storeTotal = directory.data?.total ?? 0;
+  const storePages = Math.max(1, Math.ceil(storeTotal / STORE_PAGE));
 
   const quickActions = [
     { to: "/orders/overview", label: "Daily overview", icon: IconChart, perm: "orders.overview" },
@@ -224,21 +253,71 @@ function AdminDashboard() {
 
       {/* Trend + status */}
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <TrendCard />
+        <TrendCard insights={insights} />
 
-        <Card title="Store status">
+        <Card
+          title="Store status"
+          action={
+            statusByPlatform.length > 0 ? (
+              <div className="w-40 [&_label]:sr-only">
+                <Select
+                  label="Platform"
+                  value={statusChoice}
+                  onChange={(e) => setStatusPick(e.target.value)}
+                  options={[...statusByPlatform.map((p) => ({ value: p.label, label: p.label })), { value: ALL_PLATFORMS, label: "All platforms" }]}
+                />
+              </div>
+            ) : undefined
+          }
+        >
           {isLoading || !insights ? (
             <Skeleton className="h-40" />
           ) : (
-            <DonutChart
-              centerValue={totalStores}
-              centerLabel="stores"
-              slices={(["LIVE", "PENDING", "CLOSE"] as const).map((k) => ({
-                label: k[0] + k.slice(1).toLowerCase(),
-                value: insights.storeStatus[k],
-                color: STATUS_COLORS[k],
-              }))}
-            />
+            <div className="flex flex-col gap-6">
+              {statusShown ? (
+                <DonutChart
+                  centerValue={statusShown.total}
+                  centerLabel={statusChoice === ALL_PLATFORMS ? "stores in total" : "stores"}
+                  slices={(["LIVE", "PENDING", "CLOSE"] as const).map((k) => ({
+                    label: k[0] + k.slice(1).toLowerCase(),
+                    value: statusShown.counts[k],
+                    color: STATUS_COLORS[k],
+                  }))}
+                />
+              ) : (
+                <p className="text-sm text-gray-500">No stores yet.</p>
+              )}
+
+              {/* Second section: test reports (Zepto only for now) */}
+              <section className="-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5" aria-label="Test reports">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-bold text-heading">Test reports</h4>
+                  <CardLink to="/reports?tab=test">Manage →</CardLink>
+                </div>
+                {testReports.isLoading ? (
+                  <Skeleton className="mt-3 h-16" />
+                ) : testReports.data?.platform.enabled ? (
+                  <>
+                    <div className="mt-3 flex items-end gap-3">
+                      <p className="text-3xl font-extrabold tabular-nums leading-none text-heading">{testReports.data.summary.reportsTotal}</p>
+                      <p className="pb-0.5 text-xs text-gray-500">
+                        {testReports.data.platform.name} test report{testReports.data.summary.reportsTotal === 1 ? "" : "s"} available
+                        <br />
+                        across {testReports.data.summary.reportsTotal} of {testReports.data.summary.statesTotal} states
+                      </p>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <Badge tone="success">{testReports.data.summary.valid} valid</Badge>
+                      {testReports.data.summary.expiring > 0 && <Badge tone="warning">{testReports.data.summary.expiring} expiring soon</Badge>}
+                      {testReports.data.summary.expired > 0 && <Badge tone="danger">{testReports.data.summary.expired} expired</Badge>}
+                      {testReports.data.summary.missing > 0 && <Badge tone="neutral">{testReports.data.summary.missing} states with none</Badge>}
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-500">Test reports aren't available yet.</p>
+                )}
+              </section>
+            </div>
           )}
         </Card>
       </div>
@@ -377,14 +456,12 @@ function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Full store directory — every store on both platforms */}
+      {/* Store directory — searched and paged on the server */}
       <Card
         title="All stores"
         action={
           <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-gray-400 sm:inline">
-              {visibleStores.length} of {insights?.allStores.length ?? 0}
-            </span>
+            <span className="hidden text-xs text-gray-400 sm:inline">{storeTotal.toLocaleString()} match</span>
             <CardLink to="/stores">Open Stores →</CardLink>
           </div>
         }
@@ -395,41 +472,38 @@ function AdminDashboard() {
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setStorePlatform("")}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                    storePlatform === ""
-                      ? "bg-brand-500 text-white"
-                      : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
-                  }`}
-                >
-                  All ({insights.allStores.length})
-                </button>
-                {insights.platforms.map((p) => (
+                {[{ slug: "", label: "All", count: insights.statusByPlatform.reduce((n, p) => n + p.total, 0) }, ...insights.statusByPlatform.map((p) => ({ slug: p.slug, label: p.label, count: p.total }))].map((p) => (
                   <button
-                    key={p.slug}
-                    onClick={() => setStorePlatform(p.label)}
+                    key={p.slug || "all"}
+                    onClick={() => {
+                      setStorePartner(p.slug);
+                      setStorePage(1);
+                    }}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                      storePlatform === p.label
+                      storePartner === p.slug
                         ? "bg-brand-500 text-white"
                         : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
                     }`}
                   >
-                    {p.label} ({p.allStores})
+                    {p.label} ({p.count.toLocaleString()})
                   </button>
                 ))}
               </div>
               <input
                 value={storeQuery}
-                onChange={(e) => setStoreQuery(e.target.value)}
+                onChange={(e) => {
+                  setStoreQuery(e.target.value);
+                  setStorePage(1);
+                }}
+                aria-label="Search stores"
                 placeholder="Search name, code, city…"
                 className="ml-auto h-9 w-full rounded-md border border-surface-border px-3 text-sm outline-none focus:border-brand-400 sm:w-64"
               />
             </div>
 
-            <div className="stacked-table max-h-[28rem] overflow-auto rounded-lg border border-surface-border">
+            <div className={`stacked-table overflow-auto rounded-lg border border-surface-border transition-opacity ${directory.isFetching ? "opacity-70" : ""}`}>
               <table className="w-full min-w-[640px] text-sm">
-                <thead className="sticky top-0 bg-surface-subtle">
+                <thead className="bg-surface-subtle">
                   <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                     <th className="px-4 py-2.5">Store</th>
                     <th className="px-4 py-2.5">Code</th>
@@ -439,34 +513,56 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleStores.length === 0 && (
+                  {directory.isLoading && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
-                        No stores match.
-                      </td>
+                      <td colSpan={5} className="px-4 py-10 text-center text-gray-400">Loading…</td>
                     </tr>
                   )}
-                  {visibleStores.map((s) => (
+                  {!directory.isLoading && storeRows.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-gray-500">No stores match.</td>
+                    </tr>
+                  )}
+                  {storeRows.map((s) => (
                     <tr key={s.id} className="border-t border-surface-border">
                       <td className="px-4 py-2.5 font-medium text-gray-900" data-label="Store">{s.name}</td>
                       <td className="px-4 py-2.5 text-gray-500" data-label="Code">{s.externalCode}</td>
-                      <td className="px-4 py-2.5" data-label="Platform">{s.platform ?? "—"}</td>
+                      <td className="px-4 py-2.5" data-label="Platform">{s.partnerName ?? "—"}</td>
                       <td className="px-4 py-2.5 text-gray-500" data-label="Region / State">
                         {s.regionName ?? s.state ?? "—"}
                         {s.city ? ` · ${s.city}` : ""}
                       </td>
                       <td className="px-4 py-2.5" data-label="Status">
-                        <Badge
-                          tone={s.status === "LIVE" ? "success" : s.status === "PENDING" ? "warning" : "neutral"}
-                        >
-                          {s.status}
-                        </Badge>
+                        <Badge tone={s.status === "LIVE" ? "success" : s.status === "PENDING" ? "warning" : "neutral"}>{s.status}</Badge>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {storePages > 1 && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-gray-500">Page {storePage} of {storePages.toLocaleString()}</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={storePage <= 1}
+                    onClick={() => setStorePage((p) => Math.max(1, p - 1))}
+                    className="rounded-lg border border-surface-border bg-surface px-3 py-1.5 font-semibold text-gray-700 hover:bg-surface-subtle disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={storePage >= storePages}
+                    onClick={() => setStorePage((p) => Math.min(storePages, p + 1))}
+                    className="rounded-lg border border-surface-border bg-surface px-3 py-1.5 font-semibold text-gray-700 hover:bg-surface-subtle disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Card>

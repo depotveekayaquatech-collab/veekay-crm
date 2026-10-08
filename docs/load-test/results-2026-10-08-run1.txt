@@ -1,0 +1,109 @@
+
+=== REALISTIC EMPLOYEE WORKLOAD: 10 concurrent employees, 40s, 1-3 s think time  (43s, 224 requests, 5.3 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          10      51      82      82      82     0.5    0  200:10
+GET /cash-purchases                   17      25     185     185     185     8.1    0  200:17
+GET /compliance/stores                10      49      82      82      82    31.7    0  200:10
+GET /orders/calendar                  63      34     165     185     185     3.5    0  200:63
+GET /orders/my-stores                 32      60     213     219     219   128.5    0  200:32
+GET /tickets                          19      58     201     201     201    16.4    0  200:19
+POST /orders/mark                     63      99     191     254     254     3.5    0  200:63
+login                                 10     478     494     494     494     0.7    0  200:10
+    resources: API workers CPU avg 26% peak 319% (of 800% = 8 threads), RAM peak 520 MB | Postgres CPU avg 6% peak 29%, RAM peak 655 MB
+
+=== REALISTIC EMPLOYEE WORKLOAD: 25 concurrent employees, 40s, 1-3 s think time  (54s, 568 requests, 10.5 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          25     126     242     260     260     0.5    0  200:25
+GET /cash-purchases                   28      19      58      80      80     8.2    0  200:28
+GET /compliance/stores                36      47     132     141     141    31.7    0  200:36
+GET /orders/calendar                 176      36      96     122     135     3.5    0  200:176
+GET /orders/my-stores                 70      60     532     633     633   111.6    0  200:70
+GET /tickets                          49      55     118     166     166    16.4    0  200:49
+POST /orders/mark                    159      94     164     174     206     3.2    0  200:147,409:12
+login                                 25     957   11320   11346   11346     0.7    0  200:25
+    resources: API workers CPU avg 46% peak 553% (of 800% = 8 threads), RAM peak 528 MB | Postgres CPU n/a, RAM n/a
+
+=== REALISTIC EMPLOYEE WORKLOAD: 50 concurrent employees, 40s, 1-3 s think time  (46s, 1133 requests, 24.7 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          50     605    1435    1539    1539     0.5    0  200:50
+GET /cash-purchases                   83      27      89     151     151     8.3    0  200:83
+GET /compliance/stores                64      63     128     175     175    31.8    0  200:64
+GET /orders/calendar                 363      45     124     187     510     3.5    0  200:363
+GET /orders/my-stores                135     106     576     907     959   118.0    0  200:135
+GET /tickets                          85      75     165     239     239    16.4    0  200:85
+POST /orders/mark                    303      87     167     239     378     2.6    0  200:227,409:76
+login                                 50    2055    2333    2405    2405     0.7    0  200:50
+    resources: API workers CPU avg 107% peak 568% (of 800% = 8 threads), RAM peak 534 MB | Postgres CPU avg 5% peak 5%, RAM n/a
+
+=== MIXED PEAK: 50 employees + 10 admins on dashboards, 60s  (66s, 1790 requests, 27.2 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          50     513    1246    1269    1269     0.5    0  200:50
+GET /cash-purchases                  124      24      81     125     131     8.3    0  200:124
+GET /compliance/stores               120      60     151     200     317    31.8    0  200:120
+GET /orders/calendar                 504      44     134     178     307     3.5    0  200:504
+GET /orders/daily-overview            30     178     376     455     455    25.7    0  200:30
+GET /orders/insights                  30     133    2973    2975    2975     4.1    0  200:30
+GET /orders/matrix                    21      79     152     163     163    17.8    0  200:21
+GET /orders/my-stores                196      73    1016    1225    1291   116.0    0  200:196
+GET /orders/pending                   30      67     159     172     172   180.6    0  200:30
+GET /orders/report                    29     146     185     200     200     2.8    0  200:29
+GET /stores (page)                    20      22     116     116     116    12.7    0  200:20
+GET /tickets                         150      65     169     221     248    16.4    0  200:150
+POST /orders/mark                    436      76     187     226     306     1.9    0  200:230,409:206
+login                                 50    2298    2519    2687    2687     0.7    0  200:50
+    resources: API workers CPU avg 103% peak 570% (of 800% = 8 threads), RAM peak 539 MB | Postgres CPU avg 4% peak 4%, RAM n/a
+
+=== SEARCH under load: 25 users, no pauses, server-side search, 30s  (30s, 3406 requests, 112.6 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /stores?search= (25 rows)       3406      77     883    1636    2758    10.9    0  200:3406
+    resources: API workers CPU avg 116% peak 181% (of 800% = 8 threads), RAM peak 538 MB | Postgres CPU avg 185% peak 185%, RAM n/a
+
+=== SAME 25 users loading /stores/all instead (what the browser does today), 30s  (30s, 3104 requests, 102.1 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /stores/all (1,500 rows)        3104      87     922    1513    2704   729.4    0  200:3104
+    resources: API workers CPU avg 70% peak 84% (of 800% = 8 threads), RAM peak 543 MB | Postgres CPU n/a, RAM n/a
+
+=== ORDER LISTS under load: 25 users, no pauses, 30s  (30s, 1595 requests, 52.3 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/matrix (31d x 25 stores)   372     513     788     858     876    17.8    0  200:372
+GET /orders/matrix p.20              417     496     788     898     962    17.8    0  200:417
+GET /orders/pending                  402     516     820     917     988   135.4    0  200:402
+GET /orders/report (31d)             404     283     519     556     693     2.8    0  200:404
+    resources: API workers CPU avg 214% peak 241% (of 800% = 8 threads), RAM peak 552 MB | Postgres CPU avg 162% peak 162%, RAM peak 1111 MB
+
+(upload test image: 0.63 MB JPEG)
+
+=== SIMULTANEOUS UPLOADS: 5 employees each upload a proof + a 3-photo document at once  (1s, 20 requests, 15.5 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/my-stores                  5     102     123     123     123   135.0    0  200:5
+POST /cash-purchases (proof 0.6 MB)     5      65     301     301     301     0.4    0  201:5
+POST /compliance/upload (3 photos -> merged PDF)     5     428     472     472     472     0.3    0  200:5
+login (setup)                          5     321     327     327     327     0.7    0  200:5
+    resources: API workers CPU avg 112% peak 216% (of 800% = 8 threads), RAM peak 567 MB | Postgres CPU avg 11% peak 23%, RAM peak 1046 MB
+
+=== SIMULTANEOUS UPLOADS: 10 employees each upload a proof + a 3-photo document at once  (60s, 22 requests, 0.4 req/s, 6 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/my-stores                  4      84      93      93      93   135.2    0  200:4
+POST /cash-purchases (proof 0.6 MB)     4      79     248     248     248     0.4    0  201:4
+POST /compliance/upload (3 photos -> merged PDF)     4     346     431     431     431     0.3    0  200:4
+Traceback (most recent call last):
+  File "C:\Users\veeka\AppData\Local\Temp\claude\c--Users-veeka-Desktop-office-veekay-crm\40a2c428-bd05-47b9-9aae-e164eb9e4d3f\scratchpad\loadtest\load.py", line 285, in <module>
+    asyncio.run(PHASES[name]())
+  File "C:\Users\veeka\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\veeka\AppData\Local\Programs\Python\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\veeka\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\veeka\AppData\Local\Temp\claude\c--Users-veeka-Desktop-office-veekay-crm\40a2c428-bd05-47b9-9aae-e164eb9e4d3f\scratchpad\loadtest\load.py", line 276, in phase_upload
+    await with_sampler(go, f"SIMULTANEOUS UPLOADS: {n} employees each upload a proof + a 3-photo document at once")
+  File "C:\Users\veeka\AppData\Local\Temp\claude\c--Users-veeka-Desktop-office-veekay-crm\40a2c428-bd05-47b9-9aae-e164eb9e4d3f\scratchpad\loadtest\load.py", line 184, in with_sampler
+    rps, errs = st.report(title, "")
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\veeka\AppData\Local\Temp\claude\c--Users-veeka-Desktop-office-veekay-crm\40a2c428-bd05-47b9-9aae-e164eb9e4d3f\scratchpad\loadtest\load.py", line 56, in report
+    sts = ",".join(f"{k}:{n}" for k, n in sorted(self.status[name].items()))
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'str' and 'int'

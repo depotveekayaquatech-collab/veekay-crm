@@ -13,6 +13,10 @@ primary_region = "bom"          # Mumbai; pick the region closest to your users 
   LOG_JSON = "true"
   TRUST_PROXY_HEADERS = "true"
   STORAGE_BACKEND = "s3"
+  WEB_CONCURRENCY = "2"          # uvicorn worker processes per machine (one per CPU core)
+  DB_POOL_SIZE = "10"            # per worker; 2 workers x (10 + 20 overflow) stays well inside a managed Postgres limit
+  DB_MAX_OVERFLOW = "20"
+  DASHBOARD_CACHE_SECONDS = "30"
 
 [deploy]
   release_command = "alembic upgrade head && python scripts/seed.py"
@@ -20,7 +24,7 @@ primary_region = "bom"          # Mumbai; pick the region closest to your users 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"     # the daily store-sync scheduler lives in the process
+  auto_stop_machines = "off"     # the daily sheet-sync scheduler lives in the process (a DB lock keeps it to one run)
   auto_start_machines = true
   min_machines_running = 1
 
@@ -32,5 +36,5 @@ primary_region = "bom"          # Mumbai; pick the region closest to your users 
     grace_period = "20s"
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = "shared-cpu-2x"         # 2 cores for the 2 workers; PDF / photo work needs the 1 GB
+  memory = "1024mb"

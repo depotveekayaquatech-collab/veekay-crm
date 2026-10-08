@@ -6,6 +6,8 @@ from moto import mock_aws
 from app.core import storage
 from app.core.config import settings
 
+from .conftest import API
+
 
 # ---------------------------------------------------------------- local
 def test_local_roundtrip_exists_and_delete():
@@ -116,3 +118,46 @@ def test_compliance_uploads_use_whichever_backend_is_configured(s3, client, admi
     assert len(keys) == 1 and keys[0].startswith("veekay/Bills/October 2026/")
     view = client.get(f"/api/v1/compliance/{r.json()['id']}/file", headers=admin)
     assert view.status_code == 200 and view.content[:3] == b"\xff\xd8\xff"
+
+
+# ---------------------------------------------------------------- direct links (no server streaming)
+def test_local_storage_has_no_direct_link():
+    storage.save("x/doc.pdf", b"1")
+    assert storage.signed_url("x/doc.pdf", filename="doc.pdf", content_type="application/pdf") is None
+
+
+def test_s3_gives_a_short_lived_signed_link_to_the_object(s3, monkeypatch):
+    monkeypatch.setattr(settings, "S3_URL_EXPIRE_SECONDS", 120)
+    storage.save("Bills/Oct/1-bill.pdf", b"pdf-bytes")
+    url = storage.signed_url("Bills/Oct/1-bill.pdf", filename='my "bill".pdf', content_type="application/pdf")
+    assert url and url.startswith("https://") and "veekay-test" in url
+    assert "veekay/Bills/Oct/1-bill.pdf" in url
+    assert "Expires=120" in url or "X-Amz-Expires=120" in url
+    assert "Signature=" in url or "X-Amz-Signature=" in url
+    assert "response-content-disposition=inline" in url
+
+
+def test_file_url_endpoint_checks_permission_then_returns_a_direct_link(client, admin, emp, zepto_emp, make_store, s3):
+    from .test_compliance import up
+
+    store = make_store()                                       # a Blinkit / North store
+    doc = up(client, admin, store).json()
+
+    r = client.get(f"{API}/compliance/{doc['id']}/url", headers=admin)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["url"].startswith("https://") and "veekay-test" in body["url"]
+    assert body["content_type"] == "image/jpeg" and body["expires_in"] == settings.S3_URL_EXPIRE_SECONDS
+
+    # The same access rules as the streaming route: another platform's employee gets nothing, not even a link.
+    assert client.get(f"{API}/compliance/{doc['id']}/url", headers=zepto_emp).status_code == 403
+    assert client.get(f"{API}/compliance/{doc['id']}/url", headers={}).status_code == 401
+
+
+def test_file_url_endpoint_falls_back_to_streaming_on_local_disk(client, admin, make_store):
+    from .test_compliance import up
+
+    doc = up(client, admin, make_store()).json()
+    body = client.get(f"{API}/compliance/{doc['id']}/url", headers=admin).json()
+    assert body["url"] is None                                 # the web app then uses /file
+    assert client.get(f"{API}/compliance/{doc['id']}/file", headers=admin).status_code == 200

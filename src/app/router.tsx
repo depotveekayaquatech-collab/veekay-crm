@@ -1,32 +1,38 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { FullPageLoader } from "@/components/feedback/Skeleton";
-import { HomePage } from "@/app/HomePage";
-import { DashboardPage } from "@/features/dashboard/DashboardPage";
-import { LoginPage } from "@/features/auth/LoginPage";
 import { OrdersIndex, OrdersLayout } from "@/features/orders/OrdersLayout";
-import { MarkOrdersPage } from "@/features/orders/MarkOrdersPage";
-import { DailyOverviewPage } from "@/features/orders/DailyOverviewPage";
-import { CorrectEntriesPage } from "@/features/orders/CorrectEntriesPage";
-import { ReportsPage } from "@/features/reports/ReportsPage";
-import { AttendancePage } from "@/features/attendance/AttendancePage";
-import { AccountPage } from "@/features/account/AccountPage";
 import { ForcedPasswordChange } from "@/features/auth/ForcedPasswordChange";
-import { CardsPage } from "@/features/cards/CardsPage";
-import { CountPage } from "@/features/cards/CountPage";
-import { CompliancePage } from "@/features/compliance/CompliancePage";
-import { AccountsPage } from "@/features/accounts/AccountsPage";
-import { InventoryPage } from "@/features/inventory/InventoryPage";
-import { PartnerHomePage } from "@/features/partner/PartnerHomePage";
-import { PartnerDeliveryReport } from "@/features/partner/PartnerDeliveryReport";
-import { TicketsPage } from "@/features/tickets/TicketsPage";
-import { PendingPage } from "@/features/pending/PendingPage";
-import { TeamPage } from "@/features/team/TeamPage";
-import { StoresPage } from "@/features/stores/StoresPage";
-import { ActivityPage } from "@/features/activity/ActivityPage";
-import { NotFoundPage } from "@/app/NotFoundPage";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
+
+// Every page is its own chunk, fetched the first time it is opened — so the first load only carries the shell.
+const HomePage = lazy(() => import("@/app/HomePage").then((m) => ({ default: m.HomePage })));
+const DashboardPage = lazy(() => import("@/features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const LoginPage = lazy(() => import("@/features/auth/LoginPage").then((m) => ({ default: m.LoginPage })));
+const MarkOrdersPage = lazy(() => import("@/features/orders/MarkOrdersPage").then((m) => ({ default: m.MarkOrdersPage })));
+const DailyOverviewPage = lazy(() => import("@/features/orders/DailyOverviewPage").then((m) => ({ default: m.DailyOverviewPage })));
+const CorrectEntriesPage = lazy(() => import("@/features/orders/CorrectEntriesPage").then((m) => ({ default: m.CorrectEntriesPage })));
+const ReportsPage = lazy(() => import("@/features/reports/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+const AttendancePage = lazy(() => import("@/features/attendance/AttendancePage").then((m) => ({ default: m.AttendancePage })));
+const AccountPage = lazy(() => import("@/features/account/AccountPage").then((m) => ({ default: m.AccountPage })));
+const CardsPage = lazy(() => import("@/features/cards/CardsPage").then((m) => ({ default: m.CardsPage })));
+const CountPage = lazy(() => import("@/features/cards/CountPage").then((m) => ({ default: m.CountPage })));
+const CompliancePage = lazy(() => import("@/features/compliance/CompliancePage").then((m) => ({ default: m.CompliancePage })));
+const CashPurchasesPage = lazy(() => import("@/features/cash/CashPurchasesPage").then((m) => ({ default: m.CashPurchasesPage })));
+const DataSyncPage = lazy(() => import("@/features/datasync/DataSyncPage").then((m) => ({ default: m.DataSyncPage })));
+const CashToolsPage = lazy(() => import("@/features/datasync/CashToolsPage").then((m) => ({ default: m.CashToolsPage })));
+const AccountsPage = lazy(() => import("@/features/accounts/AccountsPage").then((m) => ({ default: m.AccountsPage })));
+const InventoryPage = lazy(() => import("@/features/inventory/InventoryPage").then((m) => ({ default: m.InventoryPage })));
+const PartnerHomePage = lazy(() => import("@/features/partner/PartnerHomePage").then((m) => ({ default: m.PartnerHomePage })));
+const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliveryReport").then((m) => ({ default: m.PartnerDeliveryReport })));
+const TicketsPage = lazy(() => import("@/features/tickets/TicketsPage").then((m) => ({ default: m.TicketsPage })));
+const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m) => ({ default: m.PendingPage })));
+const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
+const StoresPage = lazy(() => import("@/features/stores/StoresPage").then((m) => ({ default: m.StoresPage })));
+const ActivityPage = lazy(() => import("@/features/activity/ActivityPage").then((m) => ({ default: m.ActivityPage })));
+const NotFoundPage = lazy(() => import("@/app/NotFoundPage").then((m) => ({ default: m.NotFoundPage })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -51,6 +57,8 @@ function RequireAny({ permissions, children }: { permissions: string[]; children
 /** "/" — the dashboard for staff; a partner login (Blinkit / Zepto) gets its own portal home. */
 function HomeRoute() {
   const { user } = useAuth();
+  // A developer account has no business pages at all, only the sheet tools.
+  if (user?.roles.includes("developer") && !user.roles.includes("admin")) return <Navigate to="/data-sync" replace />;
   return user?.roles.includes("partner") ? <PartnerHomePage /> : <DashboardPage />;
 }
 
@@ -63,6 +71,7 @@ function LoginRoute() {
 
 export function AppRoutes() {
   return (
+    <Suspense fallback={<FullPageLoader />}>
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
       <Route path="/count" element={<CountPage />} />
@@ -86,6 +95,9 @@ export function AppRoutes() {
         <Route path="/account" element={<AccountPage />} />
         <Route path="/cards" element={<Require permission="orders.view"><CardsPage /></Require>} />
         <Route path="/compliance" element={<Require permission="compliance.upload"><CompliancePage /></Require>} />
+        <Route path="/cash" element={<RequireAny permissions={["cash.view", "cash.add"]}><CashPurchasesPage /></RequireAny>} />
+        <Route path="/data-sync" element={<Require permission="sheets.sync"><DataSyncPage /></Require>} />
+        <Route path="/developer/cash" element={<Require permission="cash.adjust"><CashToolsPage /></Require>} />
         <Route path="/accounts" element={<Require permission="accounts.view"><AccountsPage /></Require>} />
         <Route path="/inventory" element={<Require permission="orders.view"><InventoryPage /></Require>} />
         <Route path="/pending" element={<Navigate to="/orders/pending" replace />} />
@@ -98,5 +110,6 @@ export function AppRoutes() {
       <Route path="/home" element={<HomePage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
   );
 }

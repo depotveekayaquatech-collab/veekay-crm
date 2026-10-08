@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.order_entry import OrderEntry
 from app.models.organization import Organization
+from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.schemas.inventory import Inventory, InventoryStore, InventorySummary
@@ -62,35 +63,40 @@ def month_stats(db: Session, store_ids: list[uuid.UUID], today: date) -> dict[uu
 
 def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | None) -> Inventory:
     today = _today()
+    cols = (
+        Store.id, Store.name, Store.external_code, Organization.name, Organization.slug, Region.name, Store.state,
+        Store.city, Store.vendor_name, Store.vendor_number, Store.poc_name, Store.poc_number, Store.start_date,
+    )
     if is_admin:
+        # Plain columns, not ~1,500 ORM objects with joined relationships: several times faster and lighter.
         stmt = (
-            select(Store)
+            select(*cols)
+            .select_from(Store)
+            .join(Organization, Organization.id == Store.partner_organization_id)
+            .outerjoin(Region, Region.id == Store.region_id)
             .where(Store.organization_id == user.organization_id, Store.status == StoreStatus.LIVE.value)
-            .options(joinedload(Store.region), joinedload(Store.partner_organization))
             .order_by(Store.name)
         )
         if partner_slug:
-            stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(
-                Organization.slug == partner_slug
-            )
-        stores = db.execute(stmt).unique().scalars().all()
+            stmt = stmt.where(Organization.slug == partner_slug)
+        recs = db.execute(stmt).all()
     else:
-        stores = sorted(assignment_service.visible_stores(db, user), key=lambda s: s.name.lower())
+        recs = [
+            (s.id, s.name, s.external_code, s.partner_organization.name if s.partner_organization else None,
+             s.partner_organization.slug if s.partner_organization else None, s.region.name if s.region else None,
+             s.state, s.city, s.vendor_name, s.vendor_number, s.poc_name, s.poc_number, s.start_date)
+            for s in sorted(assignment_service.visible_stores(db, user), key=lambda s: s.name.lower())
+        ]
 
-    stats = month_stats(db, [s.id for s in stores], today)
+    stats = month_stats(db, [r[0] for r in recs], today)
     items: list[InventoryStore] = []
-    for s in stores:
-        last, bottles, entries, marked_today = stats.get(s.id, (None, 0, 0, False))
+    for sid, name, code, plat, plat_slug, region, state, city, vendor, vendor_no, poc, poc_no, start in recs:
+        last, bottles, entries, marked_today = stats.get(sid, (None, 0, 0, False))
         items.append(InventoryStore(
-            id=s.id, name=s.name, external_code=s.external_code,
-            platform=s.partner_organization.name if s.partner_organization else None,
-            platform_slug=s.partner_organization.slug if s.partner_organization else None,
-            region_name=s.region.name if s.region else None,
-            state=s.state, city=s.city,
-            vendor_name=s.vendor_name, vendor_number=s.vendor_number,
-            poc_name=s.poc_name, poc_number=s.poc_number,
-            start_date=s.start_date,
-            last_entry_date=last, pending_days=pending_days(last, today, s.start_date),
+            id=sid, name=name, external_code=code, platform=plat, platform_slug=plat_slug, region_name=region,
+            state=state, city=city, vendor_name=vendor, vendor_number=vendor_no, poc_name=poc, poc_number=poc_no,
+            start_date=start,
+            last_entry_date=last, pending_days=pending_days(last, today, start),
             marked_today=marked_today, month_bottles=bottles, month_entries=entries,
         ))
 

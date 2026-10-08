@@ -43,7 +43,7 @@ export function LoginPage() {
         />
         <div className="relative flex items-center gap-3">
           <BrandLogo tile height={44} />
-          <span className="text-lg font-semibold tracking-tight">Veekay Aquatech</span>
+          <span className="text-lg font-semibold tracking-tight">Aquatrack</span>
         </div>
 
         <div className="relative max-w-md">
@@ -59,7 +59,7 @@ export function LoginPage() {
           </p>
         </div>
 
-        <p className="relative text-xs text-white/60">© {new Date().getFullYear()} Veekay Aquatech Pvt. Ltd.</p>
+        <p className="relative text-xs text-white/60">© {new Date().getFullYear()} Aquatrack</p>
       </div>
 
       {/* Form panel */}
@@ -67,7 +67,7 @@ export function LoginPage() {
         <div className="w-full max-w-sm animate-slide-up">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <BrandLogo height={40} />
-            <span className="text-base font-semibold text-gray-900">Veekay Aquatech</span>
+            <span className="text-base font-semibold text-gray-900">Aquatrack</span>
           </div>
 
           <h1 className="text-2xl font-bold text-heading">Welcome back</h1>

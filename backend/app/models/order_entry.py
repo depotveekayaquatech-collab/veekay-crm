@@ -41,6 +41,9 @@ class OrderEntry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     order_date: Mapped[date] = mapped_column(Date, index=True)
     bottle_count: Mapped[int] = mapped_column(Integer)
+    # The part of bottle_count added by developer cash-purchase adjustments. bottle_count is always the FINAL number
+    # (what every report shows); the employee's real entry is bottle_count - cash_adjustment. Never shown to employees.
+    cash_adjustment: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     source: Mapped[str] = mapped_column(String(16), default=EntrySource.EMPLOYEE.value)
 
     marked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

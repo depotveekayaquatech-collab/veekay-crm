@@ -15,6 +15,7 @@ from app.core.middleware import (
     RateLimitMiddleware,
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
+    CacheInvalidationMiddleware,
     SelectiveGZip,
 )
 
@@ -85,6 +86,7 @@ async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
 #   request id/log -> CORS -> rate limit -> body limit -> security headers -> gzip -> app
 # CORS sits outside the rate limiter so a 429 still carries CORS headers and the browser can read it.
 app.add_middleware(SelectiveGZip)
+app.add_middleware(CacheInvalidationMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(BodyLimitMiddleware)
 app.add_middleware(RateLimitMiddleware)

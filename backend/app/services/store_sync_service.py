@@ -106,7 +106,8 @@ class SyncResult:
 # --------------------------------------------------------------------------
 
 
-def _fetch_rows(sheet_id: str, gid: str) -> list[dict[str, str]]:
+def fetch_csv_text(sheet_id: str, gid: str) -> str:
+    """Download one tab of a public Google Sheet as CSV text. Raises SyncError with a readable reason."""
     url = _CSV_URL.format(sheet_id=sheet_id, gid=gid)
     req = urllib.request.Request(url, headers={"User-Agent": "veekay-crm-store-sync/1.0"})
     try:
@@ -121,8 +122,11 @@ def _fetch_rows(sheet_id: str, gid: str) -> list[dict[str, str]]:
         raise SyncError(f"Google Sheets returned HTTP {exc.code} for this sheet.") from exc
     except urllib.error.URLError as exc:
         raise SyncError(f"Could not reach Google Sheets: {exc.reason}") from exc
+    return body
 
-    return _parse_csv_text(body)
+
+def _fetch_rows(sheet_id: str, gid: str) -> list[dict[str, str]]:
+    return _parse_csv_text(fetch_csv_text(sheet_id, gid))
 
 
 def _parse_csv_text(body: str) -> list[dict[str, str]]:

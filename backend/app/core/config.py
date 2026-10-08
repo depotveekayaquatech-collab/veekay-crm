@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     DEBUG: bool = Field(default=False)
 
     # App
-    PROJECT_NAME: str = "Veekay Aquatech CRM"
+    PROJECT_NAME: str = "Aquatrack"
     API_V1_PREFIX: str = "/api/v1"
 
     # Database
@@ -99,6 +99,21 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY_ID: str = Field(default="")
     S3_SECRET_ACCESS_KEY: str = Field(default="")
     S3_PREFIX: str = Field(default="veekay/")
+    # Files are handed to the browser as short-lived signed links straight from the bucket, so the API never streams them.
+    S3_URL_EXPIRE_SECONDS: int = Field(default=300, ge=30, le=3600)
+
+    # ---- Database connection pool (per worker process) ----
+    DB_POOL_SIZE: int = Field(default=10, ge=1, le=50)
+    DB_MAX_OVERFLOW: int = Field(default=20, ge=0, le=100)
+    DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=30)
+
+    # ---- Read cache for the dashboard roll-ups (seconds; 0 turns it off) ----
+    DASHBOARD_CACHE_SECONDS: int = Field(default=30, ge=0, le=600)
+
+    # ---- Test reports (water tests, valid for six months) ----
+    # Platforms that accept test reports. Blinkit is off for now: add "blinkit" here to switch it on.
+    TEST_REPORT_PLATFORMS: list[str] = Field(default_factory=lambda: ["zepto"])
+    TEST_REPORT_ALERT_DAYS: int = Field(default=30, ge=1, le=120)   # warn this many days before a report expires
 
     # ---- Attendance ----
     ATTENDANCE_TIMEZONE: str = Field(default="Asia/Kolkata")   # which local day a sign-in belongs to
@@ -141,6 +156,15 @@ class Settings(BaseSettings):
     STORE_SYNC_MINUTE: int = Field(default=0)
     STORE_SYNC_TIMEZONE: str = Field(default="Asia/Kolkata")
 
+    # ---- Order sync from Google Sheets ----
+    # Same "<partner_slug>=<spreadsheet_id>[:<gid>]" format, but a platform may appear more than once
+    # (one entry per month tab). Each sheet is "one row per store, one column per date".
+    #   ORDER_SYNC_SHEETS='["blinkit=1AbC...:0","blinkit=1AbC...:123456","zepto=1XyZ...:0"]'
+    ORDER_SYNC_SHEETS: list[str] = Field(default_factory=list)
+    ORDER_SYNC_ENABLED: bool = Field(default=True)      # run it right after the daily store sync
+    # Off (default): a day that already has a different count is kept. On: the sheet replaces it.
+    ORDER_SYNC_OVERWRITE: bool = Field(default=False)
+
     @model_validator(mode="after")
     def _refuse_unsafe_production(self) -> "Settings":
         """Fail fast at boot rather than run a production server with dev-grade settings."""
@@ -174,6 +198,18 @@ class Settings(BaseSettings):
             slug, ref = raw.split("=", 1)
             sheet_id, _, gid = ref.strip().partition(":")
             out[slug.strip().lower()] = (sheet_id.strip(), gid.strip() or "0")
+        return out
+
+    def order_sheet_sources(self) -> dict[str, list[tuple[str, str]]]:
+        """{partner_slug: [(spreadsheet_id, gid), ...]} parsed from ORDER_SYNC_SHEETS."""
+        out: dict[str, list[tuple[str, str]]] = {}
+        for raw in self.ORDER_SYNC_SHEETS:
+            if "=" not in raw:
+                continue
+            slug, ref = raw.split("=", 1)
+            sheet_id, _, gid = ref.strip().partition(":")
+            if sheet_id.strip():
+                out.setdefault(slug.strip().lower(), []).append((sheet_id.strip(), gid.strip() or "0"))
         return out
 
 

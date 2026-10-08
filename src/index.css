@@ -47,51 +47,67 @@
     --info: 37 89 201;
     --info-soft: 221 231 255;
     --neutral: 104 113 137;
+    --ink-950: 7 12 24;
+    --ink-900: 11 18 34;
+    --ink-800: 17 26 48;
+    --ink-700: 26 37 66;
+    --ink-600: 38 52 90;
+    --btn-a: 47 111 237;
+    --btn-b: 37 89 201;
+    --btn-c: 30 70 160;
     color-scheme: light;
   }
   html.dark {
-    --gray-50: 18 26 46;
-    --gray-100: 25 35 59;
-    --gray-200: 35 47 75;
-    --gray-300: 74 88 124;
-    --gray-400: 107 118 145;
-    --gray-500: 152 162 186;
-    --gray-600: 180 189 209;
-    --gray-700: 206 212 226;
-    --gray-800: 227 231 240;
-    --gray-900: 242 244 250;
-    --brand-50: 20 32 63;
-    --brand-100: 26 42 85;
-    --brand-200: 36 58 122;
-    --brand-300: 143 176 252;
-    --brand-400: 91 136 246;
-    --brand-500: 47 111 237;
-    --brand-600: 122 162 251;
-    --brand-700: 157 185 251;
-    --brand-800: 188 207 254;
-    --brand-900: 221 231 255;
-    --aqua-50: 15 44 51;
-    --aqua-100: 18 58 67;
-    --aqua-200: 148 219 230;
-    --aqua-300: 92 196 212;
-    --aqua-400: 42 169 189;
-    --aqua-500: 14 142 164;
-    --aqua-600: 92 196 212;
-    --aqua-700: 148 219 230;
-    --surface: 21 30 51;
-    --surface-subtle: 13 20 36;
-    --surface-muted: 28 39 64;
-    --surface-border: 38 50 80;
-    --heading: 242 244 250;
-    --success: 52 195 143;
-    --success-soft: 17 55 42;
-    --warning: 232 168 74;
-    --warning-soft: 58 44 16;
-    --danger: 229 83 94;
-    --danger-soft: 61 25 32;
-    --info: 127 166 255;
-    --info-soft: 27 43 88;
-    --neutral: 152 162 186;
+    --gray-50: 20 25 49;
+    --gray-100: 28 34 66;
+    --gray-200: 40 47 86;
+    --gray-300: 74 82 128;
+    --gray-400: 112 122 160;
+    --gray-500: 154 163 196;
+    --gray-600: 182 190 216;
+    --gray-700: 208 214 232;
+    --gray-800: 228 232 244;
+    --gray-900: 244 246 252;
+    --brand-50: 38 28 74;
+    --brand-100: 52 38 104;
+    --brand-200: 80 56 150;
+    --brand-300: 205 150 248;
+    --brand-400: 186 110 244;
+    --brand-500: 152 92 238;
+    --brand-600: 200 160 250;
+    --brand-700: 222 192 253;
+    --brand-800: 236 216 254;
+    --brand-900: 246 236 255;
+    --aqua-50: 14 44 62;
+    --aqua-100: 16 62 84;
+    --aqua-200: 120 226 232;
+    --aqua-300: 70 214 222;
+    --aqua-400: 34 196 206;
+    --aqua-500: 20 170 186;
+    --aqua-600: 90 218 226;
+    --aqua-700: 140 232 238;
+    --surface: 24 29 56;
+    --surface-subtle: 15 19 40;
+    --surface-muted: 33 39 74;
+    --surface-border: 44 52 94;
+    --heading: 246 247 253;
+    --success: 45 212 170;
+    --success-soft: 16 58 56;
+    --warning: 245 180 80;
+    --warning-soft: 64 46 22;
+    --danger: 255 107 138;
+    --danger-soft: 70 26 48;
+    --info: 98 210 235;
+    --info-soft: 20 52 76;
+    --neutral: 154 163 196;
+    --ink-950: 9 12 30;
+    --ink-900: 14 18 42;
+    --ink-800: 20 25 56;
+    --ink-700: 28 35 74;
+    --ink-600: 42 52 100;
+    --btn-a: 200 100 240;
+    --btn-b: 132 92 240;
+    --btn-c: 108 74 214;
     color-scheme: dark;
   }
 
@@ -126,7 +142,12 @@
      browser default outline, which is invisible on some controls. */
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgb(var(--surface-subtle)), 0 0 0 4px #2f6fed;
+    box-shadow: 0 0 0 2px rgb(var(--surface-subtle)), 0 0 0 4px rgb(var(--brand-500));
+  }
+
+  html.dark body {
+    background-image: radial-gradient(1000px 460px at 100% -10%, rgba(176,98,240,0.14), transparent 60%),
+      radial-gradient(800px 420px at 0% -12%, rgba(34,196,206,0.12), transparent 60%);
   }
 
   ::selection {
@@ -157,7 +178,7 @@
 
 @layer components {
   .card {
-    @apply rounded-xl border border-surface-border bg-white shadow-card;
+    @apply rounded-xl border border-surface-border bg-surface shadow-card;
   }
   .tile {
     position: relative;
@@ -171,11 +192,29 @@
     background: var(--tile, #2f6fed);
   }
   .tile-brand { --tile: linear-gradient(90deg, #2f6fed, #5b88f6); }
+  html.dark .tile-brand { --tile: linear-gradient(90deg, #c864f0, #845cf0); }
+  html.dark .tile-aqua { --tile: linear-gradient(90deg, #19c3b8, #4a7cf0); }
+  html.dark .tile-success { --tile: linear-gradient(90deg, #12b886, #2dd4aa); }
+  html.dark .tile-warning { --tile: linear-gradient(90deg, #f2a03d, #e8683f); }
+  /* Filled KPI cards: white text on a diagonal gradient. */
+  .stat-brand { background-image: linear-gradient(135deg, #2f6fed, #5b88f6); }
+  .stat-aqua { background-image: linear-gradient(135deg, #0e8ea4, #2aa9bd); }
+  .stat-success { background-image: linear-gradient(135deg, #0f7b57, #2f9f78); }
+  .stat-warning { background-image: linear-gradient(135deg, #c9821a, #e0a032); }
+  html.dark .stat-brand { background-image: linear-gradient(135deg, #c864f0, #845cf0); }
+  html.dark .stat-aqua { background-image: linear-gradient(135deg, #19c3b8, #4a7cf0); }
+  html.dark .stat-success { background-image: linear-gradient(135deg, #12b886, #0f8f6c); }
+  html.dark .stat-warning { background-image: linear-gradient(135deg, #f2a03d, #e8683f); }
   .tile-aqua { --tile: linear-gradient(90deg, #0e8ea4, #2aa9bd); }
   .tile-success { --tile: linear-gradient(90deg, #0f7b57, #34a77e); }
   .tile-warning { --tile: linear-gradient(90deg, #d99a2b, #ebb952); }
   h1, h2, h3 {
     letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  /* Figures line up down a column instead of jittering. */
+  td, th {
+    font-variant-numeric: tabular-nums;
   }
   tbody tr {
     transition: background-color 0.12s ease;
@@ -239,9 +278,9 @@ html.dark ::selection {
   background-color: rgb(var(--brand-200));
   color: rgb(var(--brand-900));
 }
-/* Primary button hover ends in brand-700, which is a light text colour in dark mode. */
-html.dark .hover\:to-brand-700:hover {
-  --tw-gradient-to: #1e46a0 var(--tw-gradient-to-position);
+/* Night cards float on a deep indigo ground: hairline highlight + soft dark drop. */
+html.dark .shadow-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px -14px rgba(4, 6, 22, 0.75);
 }
 html.dark * {
   scrollbar-color: #33415f transparent;

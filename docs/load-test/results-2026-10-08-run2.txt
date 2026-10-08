@@ -1,0 +1,122 @@
+
+=== LOGIN burst: 10 users sign in at the same instant (bcrypt cost 12)  (2s, 10 requests, 5.7 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+login                                 10    1510    1644    1644    1644     0.7    0  200:10
+    resources: API workers CPU avg 384% peak 485% (of 800% = 8 threads), RAM peak 256 MB | Postgres CPU avg 2% peak 3%, RAM peak 222 MB
+
+=== LOGIN burst: 25 users sign in at the same instant (bcrypt cost 12)  (60s, 25 requests, 0.4 req/s, 10 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+login                                 25    2102   60194   60195   60195     0.4   10  200:15,ReadTimeout:10
+    resources: API workers CPU avg 19% peak 513% (of 800% = 8 threads), RAM peak 257 MB | Postgres CPU avg 0% peak 2%, RAM peak 395 MB
+
+=== LOGIN burst: 50 users sign in at the same instant (bcrypt cost 12)  (7s, 50 requests, 7.3 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+login                                 50    5305    6622    6655    6655     0.7    0  200:50
+    resources: API workers CPU avg 479% peak 659% (of 800% = 8 threads), RAM peak 263 MB | Postgres CPU avg 3% peak 4%, RAM peak 453 MB
+
+=== REALISTIC EMPLOYEE WORKLOAD: 10 concurrent employees, 40s, 1-3 s think time  (45s, 221 requests, 4.9 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          10     513     584     584     584     0.5    0  200:10
+GET /cash-purchases                   24      45     330     363     363     8.2    0  200:24
+GET /compliance/stores                10     140     498     498     498    31.9    0  200:10
+GET /orders/calendar                  65      87     414     552     552     3.5    0  200:65
+GET /orders/my-stores                 29     157     825    1101    1101   120.2    0  200:29
+GET /tickets                          16     134     400     400     400    16.4    0  200:16
+POST /orders/mark                     57     204     460     606     606     3.5    0  200:57
+login                                 10    1520    1547    1547    1547     0.7    0  200:10
+    resources: API workers CPU avg 63% peak 500% (of 800% = 8 threads), RAM peak 278 MB | Postgres CPU avg 6% peak 20%, RAM peak 736 MB
+
+=== REALISTIC EMPLOYEE WORKLOAD: 25 concurrent employees, 40s, 1-3 s think time  (47s, 548 requests, 11.6 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          25     632    1343    1508    1508     0.5    0  200:25
+GET /cash-purchases                   31      60     250     290     290     8.3    0  200:31
+GET /compliance/stores                34     160     341     380     380    31.8    0  200:34
+GET /orders/calendar                 160     122     316     373     375     3.5    0  200:160
+GET /orders/my-stores                 70     259     797    1554    1554   119.5    0  200:70
+GET /tickets                          41     192     374     384     384    16.4    0  200:41
+POST /orders/mark                    162     238     483     550     584     3.1    0  200:144,409:18
+login                                 25    2955    3049    3059    3059     0.7    0  200:25
+    resources: API workers CPU avg 124% peak 504% (of 800% = 8 threads), RAM peak 284 MB | Postgres CPU avg 0% peak 0%, RAM peak 737 MB
+
+=== REALISTIC EMPLOYEE WORKLOAD: 50 concurrent employees, 40s, 1-3 s think time  (56s, 752 requests, 13.4 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          50    2007    5760    5894    5894     0.5    0  200:50
+GET /cash-purchases                   55    1091    1701    1802    1802     8.2    0  200:55
+GET /compliance/stores                39    1548    2085    2376    2376    31.8    0  200:39
+GET /orders/calendar                 218    1491    2173    2358    3576     3.5    0  200:218
+GET /orders/my-stores                106    1807    3537    4663    6225   116.4    0  200:106
+GET /tickets                          62    1649    2559    2932    2932    16.3    0  200:62
+POST /orders/mark                    172    2011    2976    3400    3861     2.6    0  200:128,409:44
+login                                 50    5905    6312    6347    6347     0.7    0  200:50
+    resources: API workers CPU avg 134% peak 606% (of 800% = 8 threads), RAM peak 298 MB | Postgres CPU avg 4% peak 4%, RAM peak 822 MB
+
+=== MIXED PEAK: 50 employees + 10 admins on dashboards, 60s  (75s, 1390 requests, 18.6 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /auth/me                          50    2154    5898    6583    6583     0.5    0  200:50
+GET /cash-purchases                   87     377     899    1202    1202     8.3    0  200:87
+GET /compliance/stores                72     690    1274    1851    1851    31.7    0  200:72
+GET /orders/calendar                 371     588    1343    2053    3375     3.5    0  200:371
+GET /orders/daily-overview            22    1299    2163    2319    2319    25.7    0  200:22
+GET /orders/insights                  24    2563    9945   11917   11917     4.1    0  200:24
+GET /orders/matrix                    20     667     854     854     854    17.8    0  200:20
+GET /orders/my-stores                156     840    4171    6527    7174   119.6    0  200:156
+GET /orders/pending                   20     659    1365    1365    1365   189.6    0  200:20
+GET /orders/report                    20     665     946     946     946     2.8    0  200:20
+GET /stores (page)                    18     508     841     841     841    12.7    0  200:18
+GET /tickets                         116     734    1466    2156    3041    16.3    0  200:116
+POST /orders/mark                    364     883    1843    2310    2720     2.2    0  200:233,409:131
+login                                 50    4428    6879    7666    7666     0.7    0  200:50
+    resources: API workers CPU avg 206% peak 625% (of 800% = 8 threads), RAM peak 306 MB | Postgres CPU avg 4% peak 4%, RAM peak 789 MB
+
+=== SEARCH under load: 25 users, no pauses, server-side search, 30s  (31s, 1259 requests, 40.9 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /stores?search= (25 rows)       1259     258    1983    3282    6079    10.7    0  200:1259
+    resources: API workers CPU avg 110% peak 139% (of 800% = 8 threads), RAM peak 303 MB | Postgres CPU n/a, RAM n/a
+
+=== SAME 25 users loading /stores/all instead (what the browser does today), 30s  (31s, 826 requests, 26.6 req/s, 1 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /stores/all (1,500 rows)         826     531    3103    5928    8624   728.6    1  200:825,RemoteProtocolError:1
+    resources: API workers CPU avg 48% peak 83% (of 800% = 8 threads), RAM peak 306 MB | Postgres CPU avg 7% peak 10%, RAM peak 907 MB
+
+=== ORDER LISTS under load: 25 users, no pauses, 30s  (31s, 771 requests, 24.7 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/matrix (31d x 25 stores)   201    1019    1720    1811    1977    17.8    0  200:201
+GET /orders/matrix p.20              215    1035    1691    1866    2031    17.9    0  200:215
+GET /orders/pending                  181    1106    1924    2137    2190   167.2    0  200:181
+GET /orders/report (31d)             174     494    1129    1280    1355     2.8    0  200:174
+    resources: API workers CPU avg 205% peak 230% (of 800% = 8 threads), RAM peak 308 MB | Postgres CPU avg 73% peak 92%, RAM peak 1064 MB
+
+(upload test image: 1.29 MB JPEG)
+
+=== SIMULTANEOUS UPLOADS: 5 employees, each a proof + a 3-photo document, different stores  (4s, 20 requests, 5.3 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/my-stores                  5     506     514     514     514   135.0    0  200:5
+POST /cash-purchases (proof 1.3 MB)     5     191     231     231     231     0.4    0  201:5
+POST /compliance/upload (3 photos -> merged PDF)     5    1492    1968    1968    1968     0.3    0  200:5
+login (setup)                          5     851     879     879     879     0.7    0  200:5
+    resources: API workers CPU avg 206% peak 323% (of 800% = 8 threads), RAM peak 403 MB | Postgres CPU avg 4% peak 5%, RAM peak 1052 MB
+
+=== SIMULTANEOUS UPLOADS: 10 employees, each a proof + a 3-photo document, different stores  (6s, 40 requests, 6.9 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/my-stores                 10     515     657     657     657   124.1    0  200:10
+POST /cash-purchases (proof 1.3 MB)    10     328     617     617     617     0.4    0  201:10
+POST /compliance/upload (3 photos -> merged PDF)    10    2062    3260    3260    3260     0.3    0  200:10
+login (setup)                         10    1435    1486    1486    1486     0.7    0  200:10
+    resources: API workers CPU avg 217% peak 476% (of 800% = 8 threads), RAM peak 366 MB | Postgres CPU avg 6% peak 15%, RAM peak 1069 MB
+
+=== SIMULTANEOUS UPLOADS: 25 employees, each a proof + a 3-photo document, different stores  (61s, 58 requests, 1.0 req/s, 14 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/my-stores                 11    1149    1372    1372    1372   114.9    0  200:11
+POST /cash-purchases (proof 1.3 MB)    11     516    1116    1116    1116     0.4    0  201:11
+POST /compliance/upload (3 photos -> merged PDF)    11    3446    5814    5814    5814     0.3    0  200:11
+login (setup)                         25   60128   60514   60519   60519     0.3   14  200:11,ReadTimeout:14
+    resources: API workers CPU avg 25% peak 471% (of 800% = 8 threads), RAM peak 364 MB | Postgres CPU avg 6% peak 9%, RAM peak 1072 MB
+
+=== CONTENTION CASE: 10 employees upload the SAME store / month / document type at once  (8s, 40 requests, 4.9 req/s, 0 errors) 
+endpoint                               n     p50     p95     p99     max      KB  err  statuses
+GET /orders/my-stores                 10     842    1115    1115    1115   124.1    0  200:10
+POST /cash-purchases (proof 1.3 MB)    10     509     784     784     784     0.4    0  201:10
+POST /compliance/upload (3 photos -> merged PDF)    10    2408    4149    4149    4149     0.3    0  200:10
+login (setup)                         10    2233    2275    2275    2275     0.7    0  200:10
+    resources: API workers CPU avg 218% peak 526% (of 800% = 8 threads), RAM peak 375 MB | Postgres CPU avg 3% peak 3%, RAM n/a
+FINISHED

@@ -37,6 +37,7 @@ from app.models.region import Region
 from app.models.role import Role
 from app.models.state_assignment import StateAssignment
 from app.models.store import Store
+from app.core.roles import RESERVED_PERMISSIONS
 from app.models.user import User, UserRole, UserStatus
 
 PERMISSIONS = [
@@ -62,18 +63,22 @@ PERMISSIONS = [
     ("attendance.manage", "Set the office locations used to recognise 'at the office'"),
     ("leave.review", "Approve or reject leave requests"),
     ("reports.delivery", "Download delivery reports (partner accounts)"),
+    ("cash.view", "See every cash purchase and download the sheet"),
+    ("cash.add", "Record cash purchases (you see your own entries)"),
+    ("sheets.sync", "Sheet sync and bulk sheet / file uploads of stores and orders (developer only)"),
+    ("cash.adjust", "Cash-purchase adjustments to the order sheet and their history (developer only)"),
     ("tickets.view", "View tickets for your stores"),
     ("tickets.create", "Raise tickets"),
     ("tickets.manage", "Manage every ticket: assign, change status, see all regions and insights"),
 ]
 
-ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS]
+ADMIN_PERMISSIONS = [code for code, _ in PERMISSIONS if code not in RESERVED_PERMISSIONS]
 # The 'employee' role grants nothing on its own — every field employee's
 # access is the exact set of per-user permission checkboxes an admin ticks
 # (so an admin can also take capability away, not only add it).
 EMPLOYEE_PERMISSIONS: list[str] = []
-DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload", "tickets.view", "tickets.create"]
-ACCOUNTANT_PERMISSIONS = ["accounts.view", "accounts.clear"]
+DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload", "tickets.view", "tickets.create", "cash.add"]
+ACCOUNTANT_PERMISSIONS = ["accounts.view", "accounts.clear", "cash.view", "cash.add"]
 
 SEED_PASSWORD = "Pass@123"
 
@@ -136,6 +141,7 @@ def main() -> None:
         ensure_role("accountant", "Accountant", ACCOUNTANT_PERMISSIONS)
         ensure_role("partner", "Partner account", [])
         ensure_role("manager", "Custom admin", [])
+        ensure_role("developer", "Developer", sorted(RESERVED_PERMISSIONS))
         db.flush()
 
         regions = {}
@@ -193,6 +199,10 @@ def main() -> None:
 
         if demo:
             ensure_user("ADMIN001", "Admin User", admin_role)
+            # Demo only: this login is an admin AND a developer (every admin feature + the Data sync tab).
+            # The developer role on its own stays strict; see scripts/create_developer.py.
+            demo_dev = ensure_user("DEV001", "Developer (demo)", admin_role)
+            ensure_user("DEV001", "Developer (demo)", db.query(Role).filter_by(code="developer").one())
             blinkit_emp = ensure_user(
                 "EMP001", "Ravi Kumar (Blinkit / North)", employee_role,
                 platform=partners["blinkit"], region=regions["NORTH"],
@@ -245,6 +255,7 @@ def main() -> None:
         print("Seeded (production: no demo users, stores or entries)." if not demo else "Seeded Phase 4.")
         if demo:
             print("  ADMIN001 / Pass@123  (admin)")
+            print("  DEV001   / Pass@123  (demo: admin + developer, so every admin feature plus Data sync)")
             print("  EMP001   / Pass@123  (Blinkit, North region)")
             print("  EMP002   / Pass@123  (Zepto, Karnataka state)")
             print("Login with organization='veekay'.")

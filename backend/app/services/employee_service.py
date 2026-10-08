@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session
 from app.core.roles import ADMIN, CATEGORY_LABELS, MANAGER, PARTNER, PARTNER_PERMISSIONS, staff_category
 from app.core.security import generate_temp_password, hash_password
 from app.models.organization import Organization, OrganizationKind
+from app.models.permission import Permission
 from app.models.role import Role
+from app.models.state_assignment import StateAssignment
+from app.models.user_permission import UserPermission
 from app.models.user import User, UserRole, UserStatus
 from app.repositories.employee_repository import EMPLOYEE_ROLE_CODE, EmployeeRepository
 from app.repositories.region_repository import RegionRepository
@@ -48,6 +51,47 @@ def to_out(db: Session, user: User) -> EmployeeOut:
     )
 
 
+def to_out_many(db: Session, users: list[User]) -> list[EmployeeOut]:
+    """`to_out` for a whole page: roles, states and direct permissions in three queries instead of three per person."""
+    if not users:
+        return []
+    ids = [u.id for u in users]
+    roles: dict[uuid.UUID, list[str]] = {}
+    for uid, code in db.execute(
+        select(UserRole.user_id, Role.code).join(Role, Role.id == UserRole.role_id).where(UserRole.user_id.in_(ids))
+    ):
+        roles.setdefault(uid, []).append(code)
+    states: dict[uuid.UUID, list[str]] = {}
+    for uid, st in db.execute(
+        select(StateAssignment.assigned_user_id, StateAssignment.state)
+        .where(StateAssignment.assigned_user_id.in_(ids))
+        .order_by(StateAssignment.state)
+    ):
+        states.setdefault(uid, []).append(st)
+    direct: dict[uuid.UUID, list[str]] = {}
+    for uid, code in db.execute(
+        select(UserPermission.user_id, Permission.code)
+        .join(Permission, Permission.id == UserPermission.permission_id)
+        .where(UserPermission.user_id.in_(ids))
+    ):
+        direct.setdefault(uid, []).append(code)
+
+    out = []
+    for user in users:
+        r = roles.get(user.id, [])
+        slug = user.platform_organization.slug if user.platform_organization else None
+        category = staff_category(r, slug)
+        out.append(EmployeeOut(
+            id=user.id, employee_code=user.employee_code, full_name=user.full_name, email=user.email, phone=user.phone,
+            status=user.status, is_active=user.is_active, platform_id=user.platform_organization_id, platform_slug=slug,
+            region_id=user.region_id, region_name=user.region.name if user.region else None,
+            states=states.get(user.id, []), roles=r, category=category, category_label=CATEGORY_LABELS[category],
+            admin_level="full" if ADMIN in r else ("custom" if MANAGER in r else None),
+            direct_permissions=sorted(direct.get(user.id, [])),
+        ))
+    return out
+
+
 def list_employees(
     db: Session,
     actor: User,
@@ -63,7 +107,7 @@ def list_employees(
         q=q, region_id=region_id, platform_id=platform_id, category=category,
     )
     return Page(
-        items=[to_out(db, u) for u in users],
+        items=to_out_many(db, users),
         total=total,
         page=params.page,
         page_size=params.page_size,

@@ -10,7 +10,7 @@ export function ForcedPasswordChange() {
       <div className="w-full max-w-md animate-slide-up">
         <div className="mb-6 flex items-center gap-2.5">
           <BrandLogo height={40} />
-          <span className="text-base font-bold text-heading">Veekay Aquatech</span>
+          <span className="text-base font-bold text-heading">Aquatrack</span>
         </div>
         <div className="rounded-xl border border-surface-border bg-surface p-6 shadow-card">
           <h1 className="text-xl font-bold text-heading">Choose your own password</h1>

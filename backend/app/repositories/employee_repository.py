@@ -53,6 +53,7 @@ class EmployeeRepository:
                 User.is_active.is_(True),
                 User.id.in_(self._employee_ids_subquery()),
             )
+            .options(joinedload(User.region))
             .order_by(User.full_name)
         )
         return list(self.db.execute(stmt).scalars().all())

@@ -27,7 +27,8 @@ from app.models.organization import Organization, OrganizationKind
 from app.models.region import Region
 from app.models.state_assignment import StateAssignment
 from app.models.store import Store, StoreStatus
-from app.models.user import User
+from app.models.role import Role
+from app.models.user import User, UserRole
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.region_repository import RegionRepository
 from app.repositories.user_repository import UserRepository
@@ -59,6 +60,14 @@ def is_region_independent(platform_slug: str | None) -> bool:
 
 def is_partner_account(db: Session, user: User) -> bool:
     return PARTNER_ROLE in UserRepository(db).get_role_codes(user.id)
+
+
+def all_live_stores(db: Session, user: User) -> list[Store]:
+    """Every live store in the organisation, on every platform — what an admin (orders.correct) works with."""
+    rows = db.execute(
+        select(Store).where(Store.organization_id == user.organization_id, Store.status == StoreStatus.LIVE.value)
+    ).scalars().all()
+    return _load(db, list(rows))
 
 
 def visible_stores(db: Session, employee: User) -> list[Store]:
@@ -282,3 +291,56 @@ def unassign_state(db: Session, admin: User, assignment_id: uuid.UUID) -> None:
         metadata={"state": state},
     )
     db.commit()
+
+
+def employee_store_scopes(
+    db: Session, partner: Organization, employees: list[User]
+) -> tuple[dict[uuid.UUID, list[uuid.UUID]], list[uuid.UUID]]:
+    """Which live stores each employee of `partner` can see, for ALL of them in three queries (roles, the
+    platform's live stores, its state assignments) instead of three to five queries per employee.
+
+    Same rules as `visible_stores` (partner login: whole platform; employee-model platform: assigned states;
+    region platform: own region, narrowed to assigned states when the platform has partitioned them).
+    Returns ({user_id: [store_id, ...]}, [every live store id of the platform])."""
+    live = db.execute(
+        select(Store.id, Store.state, Store.region_id).where(
+            Store.partner_organization_id == partner.id, Store.status == StoreStatus.LIVE.value
+        )
+    ).all()
+    all_ids = [r[0] for r in live]
+    if not employees:
+        return {}, all_ids
+
+    ids = [e.id for e in employees]
+    roles: dict[uuid.UUID, set[str]] = {}
+    for uid, code in db.execute(
+        select(UserRole.user_id, Role.code).join(Role, Role.id == UserRole.role_id).where(UserRole.user_id.in_(ids))
+    ):
+        roles.setdefault(uid, set()).add(code)
+
+    assignments = db.execute(
+        select(StateAssignment.assigned_user_id, StateAssignment.state).where(
+            StateAssignment.partner_organization_id == partner.id
+        )
+    ).all()
+    platform_states = {_norm(st) for _, st in assignments}
+    states_of: dict[uuid.UUID, set[str]] = {}
+    for uid, st in assignments:
+        states_of.setdefault(uid, set()).add(_norm(st))
+
+    employee_model = is_employee_model(partner.slug)
+    out: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for emp in employees:
+        mine = states_of.get(emp.id, set())
+        if PARTNER_ROLE in roles.get(emp.id, set()):
+            out[emp.id] = list(all_ids)
+        elif employee_model:
+            out[emp.id] = [sid for sid, st, _ in live if _norm(st) in mine] if mine else []
+        elif emp.region_id is None:
+            out[emp.id] = []
+        else:
+            region = [(sid, st) for sid, st, rid in live if rid == emp.region_id]
+            region_states = {_norm(st) for _, st in region if st}
+            partitioned = bool(region_states & platform_states)
+            out[emp.id] = [sid for sid, st in region if not partitioned or _norm(st) in mine]
+    return out, all_ids

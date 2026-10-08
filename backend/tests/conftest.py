@@ -158,6 +158,23 @@ def admin(client):
 
 
 @pytest.fixture()
+def dev(client, db):
+    """A strict developer account (sheet sync / bulk upload only), made the way production makes one."""
+    from scripts.create_developer import make_developer
+
+    code = f"TD{uuid.uuid4().hex[:6].upper()}"
+    pw = "Dev-Pass-2026x"
+    user = make_developer(db, code, "Test Developer", pw)
+    r = login(client, code, pw)
+    assert r.status_code == 200, r.text
+    yield auth(r.json()["access_token"])
+    for model in (RefreshSession, UserRole):
+        db.query(model).filter(model.user_id == user.id).delete()
+    db.query(User).filter(User.id == user.id).delete()
+    db.commit()
+
+
+@pytest.fixture()
 def emp(client):
     """EMP001 — Blinkit employee, North region (sees the North LIVE demo stores)."""
     r = login(client, "EMP001")

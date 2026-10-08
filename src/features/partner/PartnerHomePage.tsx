@@ -118,7 +118,7 @@ export function PartnerHomePage() {
             </span>
             <h2 className="mt-4 text-[1.9rem] font-bold leading-tight tracking-tight">Welcome, {user?.fullName ?? data.contact}</h2>
             <p className="mt-1.5 max-w-xl text-sm text-white/70">
-              Veekay Aquatech's water deliveries to your {data.platform.name} stores — live numbers, vendor contacts and your open issues, in one place.
+              Aquatrack's water deliveries to your {data.platform.name} stores — live numbers, vendor contacts and your open issues, in one place.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

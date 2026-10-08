@@ -1,10 +1,9 @@
 import { distinctOptions } from "@/lib/options";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button } from "@/components/ui/Button";
-import { IconMapPin, IconUpload } from "@/components/ui/icons";
+import { IconMapPin, IconStore } from "@/components/ui/icons";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePermission } from "@/hooks/usePermission";
-import { ImportOrdersModal } from "@/features/orders/ImportOrdersModal";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -15,50 +14,63 @@ import { RegionFilter, SegmentedControl, SelectStorePrompt, StorePicker } from "
 import { useCalendar, useMarkOrder, useMyStores } from "@/features/orders/useOrders";
 import type { MyStore } from "@/types/order";
 
-function Phone({ value }: { value: string | null }) {
-  if (!value) return null;
+function ContactCard({ label, name, phone }: { label: string; name: string | null; phone: string | null }) {
   return (
-    <a href={`tel:${value}`} className="font-medium text-brand-600 hover:text-brand-700">
-      {value}
-    </a>
+    <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-subtle px-3.5 py-3">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+        <p className="truncate text-sm font-semibold text-gray-900">{name ?? "—"}</p>
+        {phone && <p className="text-xs tabular-nums text-gray-500">{phone}</p>}
+      </div>
+      {phone && (
+        <a
+          href={`tel:${phone}`}
+          aria-label={`Call ${name ?? label}`}
+          className="shrink-0 rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-600 transition-colors hover:bg-brand-500 hover:text-white"
+        >
+          Call
+        </a>
+      )}
+    </div>
   );
 }
 
 function StoreSummary({ store }: { store: MyStore }) {
   const place = [store.city, store.state].filter(Boolean).join(", ");
   return (
-    <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="truncate text-lg font-bold text-heading">{store.name}</h3>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
-            <span className="font-medium text-gray-700">{store.externalCode}</span>
-            {place && (
-              <span className="flex items-center gap-1">
-                <IconMapPin className="h-3.5 w-3.5" />
-                {place}
-              </span>
-            )}
-          </p>
+    <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-card">
+      <div className="h-1.5 bg-gradient-to-r from-brand-500 to-aqua-400" />
+      <div className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-aqua-400 text-white shadow-md">
+              <IconStore className="h-6 w-6" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-lg font-extrabold text-heading">{store.name}</h3>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 text-sm text-gray-500">
+                <span className="font-semibold text-gray-700">{store.externalCode}</span>
+                {place && (
+                  <span className="flex items-center gap-1">
+                    <IconMapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                    {place}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {store.partnerName && <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700">{store.partnerName}</span>}
+            {store.regionName && <span className="rounded-full bg-aqua-50 px-2.5 py-1 text-xs font-bold text-aqua-600">{store.regionName}</span>}
+          </div>
         </div>
-        {store.regionName && (
-          <span className="rounded-full bg-aqua-50 px-2.5 py-1 text-xs font-semibold text-aqua-600 ring-1 ring-inset ring-aqua-200">
-            {store.regionName}
-          </span>
+        {(store.pocName || store.vendorName) && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <ContactCard label="Store contact" name={store.pocName} phone={store.pocNumber} />
+            <ContactCard label="Vendor" name={store.vendorName} phone={store.vendorNumber} />
+          </div>
         )}
       </div>
-      {(store.pocName || store.vendorName) && (
-        <dl className="mt-4 grid gap-3 border-t border-surface-border pt-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Store contact</dt>
-            <dd className="mt-0.5 text-gray-900">{store.pocName ?? "—"} <Phone value={store.pocNumber} /></dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Vendor</dt>
-            <dd className="mt-0.5 text-gray-900">{store.vendorName ?? "—"} <Phone value={store.vendorNumber} /></dd>
-          </div>
-        </dl>
-      )}
     </div>
   );
 }
@@ -66,7 +78,7 @@ function StoreSummary({ store }: { store: MyStore }) {
 export function MarkOrdersPage() {
   const { data: stores, isLoading, isError, refetch } = useMyStores();
   const [vendor, setVendor] = useState("");
-  const [pickedPartner, setPartner] = useState("");
+  const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const [region, setRegion] = useState("");
   const [params] = useSearchParams();
   const canMark = usePermission("orders.mark");
@@ -74,9 +86,8 @@ export function MarkOrdersPage() {
   // Someone with a single store has nothing to pick — open it straight away.
   const storeId = pickedId || (stores?.length === 1 ? stores[0].id : "");
   const [period, setPeriod] = useState<{ year?: number; month?: number }>({});
-  const [importing, setImporting] = useState(false);
-  const [view, setView] = useState<"quick" | "store">(params.get("store") || !canMark ? "store" : "quick");
-  const canImport = usePermission("orders.correct");
+  const [savedView, setView] = usePersistentState<"quick" | "store">("orders.view", "quick");
+  const view = params.get("store") || !canMark ? "store" : savedView;
   const mark = useMarkOrder();
   const { data: calendar, isLoading: calLoading, isError: calError, refetch: refetchCal } = useCalendar(
     storeId || null,
@@ -140,7 +151,7 @@ export function MarkOrdersPage() {
           />
         )}
         {partners.length === 1 && (
-          <span className="rounded-full bg-aqua-50 px-3 py-1.5 text-xs font-semibold text-aqua-600 ring-1 ring-inset ring-aqua-200">{partners[0].label}</span>
+          <span className="rounded-full bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-700">{partners[0].label}</span>
         )}
         {regions.length > 1 && <RegionFilter value={region} onChange={(v) => { setRegion(v); setStoreId(""); }} options={regions} className="sm:w-48 [&_label]:sr-only" />}
         {vendors.length > 1 && (
@@ -148,14 +159,7 @@ export function MarkOrdersPage() {
             <Select label="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="All vendors" options={vendors} />
           </div>
         )}
-        {canImport && (
-          <Button variant="secondary" className="ml-auto" onClick={() => setImporting(true)}>
-            <IconUpload className="h-4 w-4" />
-            Import order sheet
-          </Button>
-        )}
       </div>
-      {importing && <ImportOrdersModal onClose={() => setImporting(false)} />}
 
       {isLoading && (
         <div className="grid gap-5 lg:grid-cols-[21rem_1fr]">

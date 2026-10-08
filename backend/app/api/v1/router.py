@@ -6,6 +6,8 @@ from app.api.v1.endpoints import (
     attendance,
     auth,
     cards,
+    cash_adjustments,
+    cash_purchases,
     compliance,
     employees,
     health,
@@ -16,6 +18,7 @@ from app.api.v1.endpoints import (
     permissions,
     regions,
     stores,
+    test_reports,
     tickets,
 )
 
@@ -37,3 +40,6 @@ api_router.include_router(attendance.router)
 api_router.include_router(tickets.router)
 api_router.include_router(partner.router)
 api_router.include_router(integrations.router)
+api_router.include_router(test_reports.router)
+api_router.include_router(cash_purchases.router)
+api_router.include_router(cash_adjustments.router)

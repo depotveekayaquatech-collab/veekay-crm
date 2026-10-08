@@ -1,10 +1,12 @@
 """Compliance cards & bills, and the accountant's due-alerts / search."""
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
+from pydantic import TypeAdapter
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_permissions, get_current_user, require_permission
+from app.core.cached_json import cached_json_response
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
@@ -12,6 +14,8 @@ from app.schemas.compliance import (
     BulkUploadResult, ComplianceStorePage, DocBrief, DownloadRequest, DueBills, SearchPage, SummaryPdfRequest,
 )
 from app.services import compliance_repo_service, compliance_service
+
+_REPO_PAGE = TypeAdapter(ComplianceStorePage)
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -28,6 +32,7 @@ def _require_any(perms: set[str], *codes: str) -> None:
 
 @router.get("/stores", response_model=ComplianceStorePage)
 def stores(
+    request: Request,
     month: str | None = None,
     partner: str | None = None,
     region: uuid.UUID | None = None,
@@ -48,10 +53,20 @@ def stores(
     """The monthly compliance repository: stores (yours, or all for admins) with the card, invoice and
     payment proof, status, KPIs and filter options."""
     _require_any(perms, "compliance.upload", "compliance.manage")
-    return compliance_repo_service.repository(
-        db, user, perms, month_str=month, partner=partner, region=region, city=city, manager=manager,
-        missing=missing, rng=range, status_filter=status, q=q, sort=sort, direction=dir, page=page, page_size=page_size,
-    )
+
+    def build():
+        return compliance_repo_service.repository(
+            db, user, perms, month_str=month, partner=partner, region=region, city=city, manager=manager,
+            missing=missing, rng=range, status_filter=status, q=q, sort=sort, direction=dir, page=page, page_size=page_size,
+        )
+
+    if "compliance.manage" in perms:
+        # Everyone who manages compliance sees the same organisation-wide table, so share one copy per filter set.
+        return cached_json_response(
+            request, ("compliance-repo", user.organization_id, month, partner, region, city, manager, missing, range, status, q, sort, dir, page, page_size),
+            lambda: _REPO_PAGE.dump_json(build()),
+        )
+    return build()
 
 
 @router.post("/bulk", response_model=BulkUploadResult)
@@ -173,6 +188,19 @@ def download(
 @router.post("/{doc_id}/clear", response_model=DocBrief, dependencies=[Depends(require_permission("accounts.clear"))])
 def clear(doc_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DocBrief:
     return compliance_service.clear_bill(db, user, doc_id)
+
+
+@router.get("/{doc_id}/url")
+def file_url(
+    doc_id: uuid.UUID,
+    version: int | None = Query(None, ge=1, description="An earlier version; the current file by default."),
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Same access rules as /file, but returns a short-lived link straight to the stored file, so the
+    API does not carry the download. `url` is null when storage is a local disk — use /file then."""
+    return compliance_service.file_link(db, user, perms, doc_id, version)
 
 
 @router.get("/{doc_id}/file")

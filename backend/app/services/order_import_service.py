@@ -13,6 +13,8 @@ Expected layout ("wide"): one row per store, one column per date.
     one date column is imported; other tabs (employees, logs, ...) are skipped
     and never read beyond their header row.
 
+The same layout can be pulled straight from a Google Sheet (see `sync_platform`), on demand or daily.
+
 Rules follow the normal order rules: counts 0..MAX_BOTTLE_COUNT, no future
 dates, one entry per (store, date). Imported rows are recorded as ADMIN
 entries. Existing entries are kept unless `overwrite` is set.
@@ -158,6 +160,52 @@ def _locate(rows: list[tuple]) -> tuple[int, int, dict[int, date]] | None:
 def import_orders(
     db: Session, actor: User, partner_slug: str, filename: str, content: bytes, *, overwrite: bool = False
 ) -> OrderImportResult:
+    """Import an uploaded CSV / Excel order sheet."""
+    return _import_grids(db, actor, partner_slug, _grids(filename, content), overwrite=overwrite, source="file")
+
+
+def sync_platform(db: Session, actor: User, partner_slug: str, *, overwrite: bool | None = None) -> OrderImportResult:
+    """Pull a platform's order sheet(s) from Google Sheets (same public-CSV route as the store sync)."""
+    from app.services import store_sync_service
+
+    slug = partner_slug.strip().lower()
+    sources = settings.order_sheet_sources().get(slug)
+    if not sources:
+        raise OrderImportError(f"No order sheet is configured for '{slug}'. Set ORDER_SYNC_SHEETS.")
+    grids: list[tuple[str, list[tuple]]] = []
+    for sheet_id, gid in sources:
+        try:
+            text = store_sync_service.fetch_csv_text(sheet_id, gid)
+        except store_sync_service.SyncError as exc:
+            raise OrderImportError(str(exc)) from exc
+        grids.append((f"Sheet {gid}", [tuple(r) for r in csv.reader(io.StringIO(text))]))
+    return _import_grids(
+        db, actor, slug, grids,
+        overwrite=settings.ORDER_SYNC_OVERWRITE if overwrite is None else overwrite, source="sheet",
+    )
+
+
+def sync_all(db: Session, actor: User, *, overwrite: bool | None = None) -> list[OrderImportResult]:
+    out: list[OrderImportResult] = []
+    for slug in settings.order_sheet_sources():
+        try:
+            out.append(sync_platform(db, actor, slug, overwrite=overwrite))
+        except OrderImportError as exc:
+            r = OrderImportResult(platform=slug)
+            r.warnings.append(str(exc))
+            out.append(r)
+    return out
+
+
+def _import_grids(
+    db: Session,
+    actor: User,
+    partner_slug: str,
+    grids: list[tuple[str, list[tuple]]],
+    *,
+    overwrite: bool,
+    source: str,
+) -> OrderImportResult:
     partner_slug = partner_slug.strip().lower()
     partner = db.execute(
         select(Organization).where(
@@ -171,7 +219,7 @@ def import_orders(
 
     # {(outlet_code, date): count}; later sheets override earlier ones for the same cell.
     wanted: dict[tuple[str, date], int] = {}
-    for sheet_name, rows in _grids(filename, content):
+    for sheet_name, rows in grids:
         found = _locate(rows)
         if found is None:
             continue
@@ -239,6 +287,7 @@ def import_orders(
                 result.unchanged += 1
             elif overwrite:
                 entry.bottle_count = n
+                entry.cash_adjustment = 0  # the sheet is the truth when overwriting
                 entry.source = EntrySource.ADMIN.value
                 entry.marked_by_user_id = actor.id
                 result.updated += 1
@@ -268,7 +317,7 @@ def import_orders(
         db, actor=actor, action="order.imported", entity_type="order_entry", entity_id=partner.id,
         metadata={
             "platform": partner_slug, "sheets": result.sheets, "created": result.created,
-            "updated": result.updated, "overwrite": overwrite,
+            "updated": result.updated, "overwrite": overwrite, "source": source,
         },
     )
     db.commit()

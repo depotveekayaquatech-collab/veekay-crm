@@ -29,6 +29,8 @@ export interface SalesReport {
   days: number;
   avgBottlesPerDay: number;
   rows: ReportRow[];
+  /** Breakdown rows before any `limit` trimmed them (e.g. how many stores had orders). */
+  rowCount: number;
   series: ReportPoint[];
 }
 
@@ -69,6 +71,7 @@ export function toReport(w: any): SalesReport {
     totalEntries: w.total_entries,
     days: w.days,
     avgBottlesPerDay: w.avg_bottles_per_day,
+    rowCount: w.row_count ?? w.rows.length,
     rows: w.rows.map((r: any) => ({
       key: r.key,
       label: r.label,

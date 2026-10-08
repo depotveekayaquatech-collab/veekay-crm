@@ -32,6 +32,11 @@ export async function listStores(params: ListParams = {}): Promise<Page<Store>> 
   return mapPage(wire, toStore);
 }
 
+/** Every store in a single request (the server builds and shares it) instead of walking 16 pages. */
+export async function listAllStores(): Promise<Store[]> {
+  return (await apiRequest<StoreWire[]>("/stores/all")).map(toStore);
+}
+
 export async function createStore(input: StoreInput): Promise<Store> {
   return toStore(await apiRequest<StoreWire>("/stores", { method: "POST", body: input }));
 }

@@ -6,6 +6,7 @@ HTTP middleware (pure ASGI, so streaming and large uploads are not buffered):
   BodyLimitMiddleware      — refuses oversized request bodies up front (413)
   SecurityHeadersMiddleware— nosniff, no-framing, HSTS in production, no caching of API responses
   SelectiveGZip            — compresses JSON / text, never the PDFs, ZIPs and images
+  CacheInvalidationMiddleware — after any successful write, drops the shared read cache (see core/cache.py)
 """
 from __future__ import annotations
 
@@ -237,3 +238,34 @@ class SelectiveGZip:
             await self.gzip(scope, receive, send)
         else:
             await self.plain(scope, receive, send)
+
+
+class CacheInvalidationMiddleware:
+    """After a successful write (POST / PUT / PATCH / DELETE answered below 400) invalidate the read cache, so the
+    dashboards never show numbers from before it. Pure ASGI: no per-request overhead on reads, no body buffering."""
+
+    _WRITES = {"POST", "PUT", "PATCH", "DELETE"}
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] not in self._WRITES:
+            await self.app(scope, receive, send)
+            return
+
+        ok = False
+
+        async def watch(message: Message) -> None:
+            nonlocal ok
+            if message["type"] == "http.response.start":
+                ok = message["status"] < 400
+            await send(message)
+
+        await self.app(scope, receive, watch)
+        if ok:
+            from fastapi.concurrency import run_in_threadpool
+
+            from app.core.cache import read_cache
+
+            await run_in_threadpool(read_cache.invalidate)

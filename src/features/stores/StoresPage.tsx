@@ -7,14 +7,13 @@ import { Select } from "@/components/ui/Select";
 import { Table, Td, Th, TableEmpty } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { IconDownload, IconPlus, IconUpload } from "@/components/ui/icons";
-import { ImportStoresModal } from "@/features/stores/ImportStoresModal";
+import { IconDownload, IconPlus } from "@/components/ui/icons";
 import { downloadCsv } from "@/lib/csv";
 import { usePermission } from "@/hooks/usePermission";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { StoreFormModal } from "@/features/stores/StoreFormModal";
 import { useAllStores } from "@/features/stores/useAllStores";
-import { usePartners, useStores, useStoreMutations } from "@/features/stores/useStores";
+import { usePartners, useStores } from "@/features/stores/useStores";
 import type { Store } from "@/types/store";
 
 const STATUS_TABS = [
@@ -30,7 +29,6 @@ export function StoresPage() {
   const [partner, setPartner] = useState("");
   const [storeStatus, setStoreStatus] = useState("LIVE");
   const [editing, setEditing] = useState<Store | null | undefined>(undefined);
-  const [importing, setImporting] = useState(false);
 
   const canManage = usePermission("stores.manage");
   const { data: allRegions = [] } = useAllRegions();
@@ -42,14 +40,11 @@ export function StoresPage() {
     return allRegions.filter((r) => ids.has(r.id));
   }, [allRegions, everyStore, partner]);
   const { data: partners = [] } = usePartners();
-  const { sync } = useStoreMutations();
   const { data, isLoading, isError, refetch } = useStores(page, {
     regionId: regionId || undefined,
     partner: partner || undefined,
     storeStatus: storeStatus || undefined,
   });
-
-  const syncWarnings = sync.data?.flatMap((r) => r.warnings) ?? [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -76,49 +71,14 @@ export function StoresPage() {
               Export CSV
             </Button>
             {canManage && (
-              <>
-                <Button variant="secondary" onClick={() => setImporting(true)}>
-                  <IconUpload className="h-4 w-4" />
-                  Import file
-                </Button>
-                <Button variant="secondary" onClick={() => sync.mutate(undefined)} isLoading={sync.isPending}>
-                  Sync from Sheet
-                </Button>
-                <Button onClick={() => setEditing(null)}>
-                  <IconPlus className="h-4 w-4" />
-                  Add store
-                </Button>
-              </>
+              <Button onClick={() => setEditing(null)}>
+                <IconPlus className="h-4 w-4" />
+                Add store
+              </Button>
             )}
           </div>
         }
       />
-
-      {sync.data && (
-        <div className="rounded-lg border border-surface-border bg-surface p-4 text-sm shadow-card">
-          <p className="font-medium text-gray-900">Last sync</p>
-          <ul className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-gray-600">
-            {sync.data.map((r) => (
-              <li key={r.platform}>
-                <span className="font-medium capitalize">{r.platform}</span>: {r.created} added,{" "}
-                {r.updated} updated, {r.unchanged} unchanged ({r.rowsRead} rows)
-              </li>
-            ))}
-          </ul>
-          {syncWarnings.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-medium text-status-warning">
-                {syncWarnings.length} warning{syncWarnings.length > 1 ? "s" : ""}
-              </summary>
-              <ul className="mt-1 max-h-40 list-disc overflow-auto pl-5 text-xs text-gray-500">
-                {syncWarnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
 
       {/* status = "what's in work" vs the rest */}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -221,7 +181,6 @@ export function StoresPage() {
         </>
       )}
 
-      {importing && <ImportStoresModal onClose={() => setImporting(false)} />}
 
       {editing !== undefined && (
         <StoreFormModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} store={editing ?? null} />

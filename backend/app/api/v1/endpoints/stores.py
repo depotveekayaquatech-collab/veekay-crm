@@ -1,11 +1,13 @@
 """Store routes — thin wrappers over store_service."""
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
+from pydantic import TypeAdapter
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_page_params, require_permission
+from app.core.cached_json import cached_json_response
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
@@ -13,6 +15,7 @@ from app.schemas.store import StoreCreate, StoreOut, StoreSyncResult, StoreUpdat
 from app.services import store_service, store_sync_service
 
 router = APIRouter(prefix="/stores", tags=["stores"])
+_ALL_STORES = TypeAdapter(list[StoreOut])
 
 
 @router.get("", response_model=Page[StoreOut], dependencies=[Depends(require_permission("stores.view"))])
@@ -31,9 +34,19 @@ def list_stores(
     )
 
 
+@router.get("/all", response_model=list[StoreOut], dependencies=[Depends(require_permission("stores.view"))])
+def all_stores(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    """Every store in ONE request (the filter dropdowns and pickers need the full list). Built, serialised and gzipped
+    once, then shared between users until any write happens — instead of the browser walking 16 pages of 100."""
+    return cached_json_response(
+        request, ("stores-all", user.organization_id),
+        lambda: _ALL_STORES.dump_json(store_service.list_stores(db, user, PageParams(page=1, page_size=5000)).items),
+    )
+
+
 @router.post(
     "/sync", response_model=list[StoreSyncResult],
-    dependencies=[Depends(require_permission("stores.manage"))],
+    dependencies=[Depends(require_permission("sheets.sync"))],
 )
 def sync_stores(
     platform: str | None = None,
@@ -58,7 +71,7 @@ def sync_stores(
 
 @router.post(
     "/import", response_model=StoreSyncResult,
-    dependencies=[Depends(require_permission("stores.manage"))],
+    dependencies=[Depends(require_permission("sheets.sync"))],
 )
 async def import_stores(
     platform: str = Form(...),

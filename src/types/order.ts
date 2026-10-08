@@ -129,7 +129,11 @@ export interface DashboardInsights {
   storesByRegion: CoverageRow[];
   storesByState: CoverageRow[];
   attentionStores: AttentionStore[];
-  allStores: AttentionStore[];
+  statusByPlatform: { slug: string; label: string; live: number; pending: number; close: number; total: number }[];
+  /** Every (platform, region, state) that has stores — feeds the linked filter dropdowns. */
+  scopes: { partnerSlug: string; region: string | null; state: string | null }[];
+  dormantLive: number;
+  dormantStores: AttentionStore[];
   lastStoreSync: string | null;
 }
 
@@ -161,7 +165,10 @@ interface InsightsWire {
   stores_by_region: CoverageRow[];
   stores_by_state: CoverageRow[];
   attention_stores: AttentionStoreWire[];
-  all_stores: AttentionStoreWire[];
+  status_by_platform: { slug: string; label: string; live: number; pending: number; close: number; total: number }[];
+  scopes: { partner_slug: string; region: string | null; state: string | null }[];
+  dormant_live: number;
+  dormant_stores: AttentionStoreWire[];
   last_store_sync: string | null;
 }
 
@@ -218,7 +225,10 @@ export function toInsights(w: InsightsWire): DashboardInsights {
     storesByRegion: w.stores_by_region,
     storesByState: w.stores_by_state,
     attentionStores: w.attention_stores.map(mapAttention),
-    allStores: w.all_stores.map(mapAttention),
+    statusByPlatform: w.status_by_platform,
+    scopes: w.scopes.map((x) => ({ partnerSlug: x.partner_slug, region: x.region, state: x.state })),
+    dormantLive: w.dormant_live,
+    dormantStores: w.dormant_stores.map(mapAttention),
     lastStoreSync: w.last_store_sync,
   };
 }

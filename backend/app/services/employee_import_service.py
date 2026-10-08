@@ -33,7 +33,7 @@ from app.repositories.user_repository import UserRepository
 from app.services import activity_service
 from app.services.store_sync_service import MAX_UPLOAD_BYTES, SyncError, _create_region, _parse_csv_text
 
-DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload"]
+DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload", "cash.add"]
 _TRUE = {"true", "yes", "y", "1", "admin"}
 
 

@@ -17,8 +17,8 @@ export default {
         gray: {
           50: "rgb(var(--gray-50) / <alpha-value>)", 100: "rgb(var(--gray-100) / <alpha-value>)", 200: "rgb(var(--gray-200) / <alpha-value>)", 300: "rgb(var(--gray-300) / <alpha-value>)", 400: "rgb(var(--gray-400) / <alpha-value>)", 500: "rgb(var(--gray-500) / <alpha-value>)", 600: "rgb(var(--gray-600) / <alpha-value>)", 700: "rgb(var(--gray-700) / <alpha-value>)", 800: "rgb(var(--gray-800) / <alpha-value>)", 900: "rgb(var(--gray-900) / <alpha-value>)",
         },
-        // Deep navy for the sidebar / dark surfaces (the same in both themes).
-        ink: { 950: "#070c18", 900: "#0b1222", 800: "#111a30", 700: "#1a2542", 600: "#26345a" },
+        // Deep navy (indigo at night) for the sidebar / dark surfaces.
+        ink: { 950: "rgb(var(--ink-950) / <alpha-value>)", 900: "rgb(var(--ink-900) / <alpha-value>)", 800: "rgb(var(--ink-800) / <alpha-value>)", 700: "rgb(var(--ink-700) / <alpha-value>)", 600: "rgb(var(--ink-600) / <alpha-value>)" },
         // Headings: dark navy on light, near-white on dark.
         heading: "rgb(var(--heading) / <alpha-value>)",
         surface: { DEFAULT: "rgb(var(--surface) / <alpha-value>)", subtle: "rgb(var(--surface-subtle) / <alpha-value>)", muted: "rgb(var(--surface-muted) / <alpha-value>)", border: "rgb(var(--surface-border) / <alpha-value>)" },
@@ -48,7 +48,7 @@ export default {
         card: "0 1px 2px rgba(11, 18, 34, 0.04), 0 4px 16px -6px rgba(11, 18, 34, 0.08)",
         md: "0 6px 16px -4px rgba(11, 18, 34, 0.12), 0 2px 6px -2px rgba(11, 18, 34, 0.06)",
         lg: "0 20px 44px -12px rgba(11, 18, 34, 0.28)",
-        glow: "0 8px 22px -6px rgba(47, 111, 237, 0.55)",
+        glow: "0 8px 22px -6px rgb(var(--btn-a) / 0.55)",
         focus: "0 0 0 3px rgba(47, 111, 237, 0.20)",
       },
       keyframes: {

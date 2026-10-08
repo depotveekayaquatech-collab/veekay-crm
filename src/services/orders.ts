@@ -67,3 +67,12 @@ export async function importOrdersFile(platform: string, file: File, overwrite: 
   const wire = await apiRequest<Parameters<typeof toOrderImportResult>[0]>("/orders/import", { method: "POST", body });
   return toOrderImportResult(wire);
 }
+
+/** Pull order counts from the configured Google Sheet(s). Omit `platform` to sync every sheet. */
+export async function syncOrders(platform?: string, overwrite?: boolean): Promise<OrderImportResult[]> {
+  const qs = new URLSearchParams();
+  if (platform) qs.set("platform", platform);
+  if (overwrite !== undefined) qs.set("overwrite", String(overwrite));
+  const wire = await apiRequest<Parameters<typeof toOrderImportResult>[0][]>(`/orders/sync${qs.size ? `?${qs}` : ""}`, { method: "POST" });
+  return wire.map(toOrderImportResult);
+}

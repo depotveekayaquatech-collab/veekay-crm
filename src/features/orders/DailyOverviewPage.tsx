@@ -1,25 +1,37 @@
 import { distinctOptions } from "@/lib/options";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { IconDownload, IconRefresh } from "@/components/ui/icons";
+import { IconCheckCircle, IconClipboard, IconDownload, IconRefresh, IconUsers } from "@/components/ui/icons";
 import { downloadCsv } from "@/lib/csv";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePartners } from "@/features/stores/useStores";
 import { useDailyOverview } from "@/features/orders/useOrders";
-import { Avatar, ProgressBar, RegionFilter, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
+import { Avatar, FilterChip, Panel, ProgressBar, ProgressRing, RegionFilter, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
+
+type Sort = "behind" | "bottles" | "name";
 
 function pctTone(p: number): "success" | "warning" | "danger" {
   return p >= 85 ? "success" : p >= 50 ? "warning" : "danger";
 }
 
+function timeAgo(ms: number, now: number): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 10) return "just now";
+  if (s < 60) return `${s}s ago`;
+  return `${Math.round(s / 60)}m ago`;
+}
+
+const MEDAL = ["from-amber-300 to-amber-500", "from-slate-300 to-slate-400", "from-orange-300 to-orange-500"];
+
 export function DailyOverviewPage() {
   const { data: partners = [] } = usePartners();
-  const [partner, setPartner] = useState("");
+  const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const [dayOffset, setDayOffset] = useState(0);
 
-  const activePartner = partner || partners[0]?.slug || "";
+  const activePartner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
   const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useDailyOverview(activePartner, dayOffset);
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState("");
@@ -28,7 +40,14 @@ export function DailyOverviewPage() {
     [data],
   );
   const [behindOnly, setBehindOnly] = useState(false);
+  const [sort, setSort] = useState<Sort>("behind");
   const [autoRefresh, setAutoRefresh] = useState(false);
+  // Ticks every 15s so "updated 2m ago" stays honest without refetching.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -48,21 +67,28 @@ export function DailyOverviewPage() {
             e.employeeCode.toLowerCase().includes(q) ||
             (e.regionName ?? "").toLowerCase().includes(q)),
       )
-      .sort((a, b) => a.percent - b.percent || a.employeeName.localeCompare(b.employeeName));
-  }, [data, query, behindOnly, region]);
+      .sort((a, b) =>
+        sort === "bottles"
+          ? b.bottles - a.bottles || a.employeeName.localeCompare(b.employeeName)
+          : sort === "name"
+            ? a.employeeName.localeCompare(b.employeeName)
+            : a.percent - b.percent || a.employeeName.localeCompare(b.employeeName),
+      );
+  }, [data, query, behindOnly, region, sort]);
 
+  const scoped = useMemo(() => (data?.employees ?? []).filter((e) => !region || e.regionName === region), [data, region]);
   const totals = useMemo(() => {
-    const emps = (data?.employees ?? []).filter((e) => !region || e.regionName === region);
-    const stores = emps.reduce((s, e) => s + e.totalStores, 0);
-    const done = emps.reduce((s, e) => s + e.entriesDone, 0);
+    const stores = scoped.reduce((s, e) => s + e.totalStores, 0);
+    const done = scoped.reduce((s, e) => s + e.entriesDone, 0);
     return {
-      bottles: emps.reduce((s, e) => s + e.bottles, 0),
+      bottles: scoped.reduce((s, e) => s + e.bottles, 0),
       done,
       stores,
       percent: stores ? Math.round((done / stores) * 100) : 0,
-      behind: emps.filter((e) => e.percent < 50).length,
+      behind: scoped.filter((e) => e.percent < 50).length,
     };
-  }, [data, region]);
+  }, [scoped]);
+  const top = useMemo(() => [...scoped].filter((e) => e.bottles > 0).sort((a, b) => b.bottles - a.bottles).slice(0, 3), [scoped]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -92,73 +118,119 @@ export function DailyOverviewPage() {
 
       {isLoading && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
+          <Skeleton className="h-44 !rounded-2xl" />
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 !rounded-2xl" />)}
           </div>
-          <Skeleton className="h-64" />
+          <Skeleton className="h-64 !rounded-2xl" />
         </>
       )}
       {isError && <ErrorState message="Couldn't load the overview." onRetry={() => refetch()} />}
 
       {data && (
         <>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <p className="text-sm text-gray-500">
-              <span className="font-semibold text-gray-800">{data.partnerLabel}</span> · {data.dateLabel} ({data.date})
-              {dataUpdatedAt ? ` · updated ${new Date(dataUpdatedAt).toLocaleTimeString()}` : ""}
-            </p>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-600">
-                <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-brand-500" />
-                Auto-refresh (1 min)
-              </label>
-              <Button size="sm" variant="secondary" onClick={() => void refetch()} isLoading={isFetching}>
-                <IconRefresh className="h-3.5 w-3.5" />
-                Refresh
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!rows.length}
-                onClick={() =>
-                  downloadCsv(
-                    `daily-overview-${data.partnerSlug}-${data.date}.csv`,
-                    ["Employee code", "Employee", "Region", "Stores", "Entries done", "Bottles", "Completion %"],
-                    rows.map((e) => [e.employeeCode, e.employeeName, e.regionName, e.totalStores, e.entriesDone, e.bottles, e.percent]),
-                  )
-                }
-              >
-                <IconDownload className="h-3.5 w-3.5" />
-                Export CSV
-              </Button>
+          <section className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-4 shadow-card sm:p-6">
+            <span aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-gradient-to-br from-brand-500/15 to-aqua-400/10 blur-2xl" />
+            <div className="relative flex flex-wrap items-center gap-x-8 gap-y-5">
+              <ProgressRing percent={totals.percent} size={128} sublabel="complete" />
+              <div className="min-w-[14rem] flex-1">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">{data.partnerLabel}</p>
+                <h3 className="mt-0.5 text-xl font-extrabold text-heading">{data.dateLabel}</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {totals.done} of {totals.stores} stores marked by {scoped.length} employees
+                  {dataUpdatedAt ? ` · updated ${timeAgo(dataUpdatedAt, now)}` : ""}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-full border border-surface-border px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-gray-300">
+                    <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-brand-500" />
+                    Live (refresh every minute)
+                  </label>
+                  <Button size="sm" variant="secondary" onClick={() => void refetch()} isLoading={isFetching}>
+                    <IconRefresh className="h-3.5 w-3.5" aria-hidden="true" />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!rows.length}
+                    onClick={() =>
+                      downloadCsv(
+                        `daily-overview-${data.partnerSlug}-${data.date}.csv`,
+                        ["Employee code", "Employee", "Region", "Stores", "Entries done", "Bottles", "Completion %"],
+                        rows.map((e) => [e.employeeCode, e.employeeName, e.regionName, e.totalStores, e.entriesDone, e.bottles, e.percent]),
+                      )
+                    }
+                  >
+                    <IconDownload className="h-3.5 w-3.5" aria-hidden="true" />
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Bottles marked" value={totals.bottles.toLocaleString()} tone="brand" />
-            <StatCard label="Entries done" value={`${totals.done} / ${totals.stores}`} tone="aqua" />
-            <StatCard label="Completion" value={`${totals.percent}%`} tone="success">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard label="Bottles marked" value={totals.bottles} tone="brand" icon={IconClipboard} />
+            <StatCard label="Entries done" value={`${totals.done} / ${totals.stores}`} tone="aqua" icon={IconCheckCircle}>
               <ProgressBar percent={totals.percent} className="mt-3" />
             </StatCard>
             <StatCard
               label="Behind schedule"
               value={totals.behind}
               hint={totals.behind > 0 ? "employees under 50%" : "everyone is on track"}
-              tone="warning"
-              valueClassName={totals.behind > 0 ? "text-status-warning" : "text-status-success"}
+              tone={totals.behind > 0 ? "warning" : "success"}
+              icon={IconUsers}
             />
           </div>
 
-          <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
-            <div className="flex flex-wrap items-center gap-3 border-b border-surface-border px-4 py-3.5 sm:px-5">
-              <h3 className="text-sm font-bold text-heading">Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span></h3>
-              <div className="ml-auto flex flex-wrap items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
-                  <input type="checkbox" checked={behindOnly} onChange={(e) => setBehindOnly(e.target.checked)} className="accent-brand-500" />
-                  Behind only (&lt; 50%)
-                </label>
-                <SearchBox value={query} onChange={setQuery} placeholder="Search employee, code or region" className="w-full sm:w-72" />
+          {top.length > 0 && (
+            <Panel title="Top performers" subtitle="Most bottles marked so far">
+              <ol className="grid gap-3 sm:grid-cols-3">
+                {top.map((e, i) => (
+                  <li key={e.employeeId} className="flex items-center gap-3 rounded-xl bg-surface-subtle p-3.5">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-extrabold text-white shadow ${MEDAL[i]}`} aria-label={`Rank ${i + 1}`}>
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-gray-900">{e.employeeName}</p>
+                      <p className="truncate text-xs text-gray-500">{e.regionName ?? e.employeeCode}</p>
+                    </div>
+                    <p className="text-right text-lg font-extrabold tabular-nums text-heading">
+                      {e.bottles}
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">bottles</span>
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </Panel>
+          )}
+
+          <Panel
+            flush
+            title={
+              <>
+                Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span>
+              </>
+            }
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <FilterChip active={behindOnly} onClick={() => setBehindOnly((v) => !v)} count={totals.behind}>Behind only</FilterChip>
+                <SearchBox hotkey value={query} onChange={setQuery} placeholder="Search employee, code or region" className="w-full sm:w-64" />
               </div>
+            }
+          >
+            <div className="flex items-center gap-2 border-b border-surface-border px-4 py-2.5 sm:px-5">
+              <span className="text-xs font-semibold text-gray-500">Sort</span>
+              <SegmentedControl
+                label="Sort employees"
+                value={sort}
+                onChange={setSort}
+                options={[
+                  { value: "behind", label: "Behind first" },
+                  { value: "bottles", label: "Most bottles" },
+                  { value: "name", label: "A–Z" },
+                ]}
+              />
             </div>
             <div className="stacked-table overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
@@ -180,7 +252,7 @@ export function DailyOverviewPage() {
                         <div className="flex items-center gap-3">
                           <Avatar name={e.employeeName} />
                           <div className="min-w-0">
-                            <div className="truncate font-medium text-gray-900">{e.employeeName}</div>
+                            <div className="truncate font-semibold text-gray-900">{e.employeeName}</div>
                             <div className="text-xs text-gray-500">
                               {e.employeeCode}{e.regionName ? ` · ${e.regionName}` : ""}
                             </div>
@@ -191,7 +263,7 @@ export function DailyOverviewPage() {
                       <td className="px-4 py-3 tabular-nums" data-label="Stores">
                         {e.entriesDone} <span className="text-gray-400">/ {e.totalStores}</span>
                       </td>
-                      <td className="px-4 py-3 font-semibold tabular-nums" data-label="Bottles">{e.bottles}</td>
+                      <td className="px-4 py-3 font-bold tabular-nums" data-label="Bottles">{e.bottles}</td>
                       <td className="px-4 py-3" data-label="Progress">
                         <div className="flex items-center gap-3">
                           <ProgressBar percent={e.percent} className="min-w-[6rem] flex-1" />
@@ -203,43 +275,34 @@ export function DailyOverviewPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </Panel>
 
-          <section className="overflow-hidden rounded-xl border border-surface-border bg-surface shadow-card">
-            <div className="border-b border-surface-border px-4 py-3.5 sm:px-5">
-              <h3 className="text-sm font-bold text-heading">Recent submissions</h3>
-            </div>
-            <div className="stacked-table max-h-96 overflow-auto">
-              <table className="w-full min-w-[600px] text-sm">
-                <thead className="sticky top-0 bg-surface-subtle">
-                  <tr className="border-b border-surface-border text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-5 py-2.5">When</th>
-                    <th className="px-4 py-2.5">Employee</th>
-                    <th className="px-4 py-2.5">Store</th>
-                    <th className="px-4 py-2.5">Order date</th>
-                    <th className="px-4 py-2.5 text-right">Bottles</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recentSubmissions.length === 0 && (
-                    <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">No submissions yet.</td></tr>
-                  )}
-                  {data.recentSubmissions.map((s) => (
-                    <tr key={s.id} className="border-b border-surface-border last:border-0">
-                      <td className="px-5 py-2.5 text-gray-500" data-label="When">{new Date(s.submittedAt).toLocaleString()}</td>
-                      <td className="px-4 py-2.5" data-label="Employee">
-                        {s.employeeName ?? "—"}
-                        {s.source === "admin" && <span className="ml-2"><Badge tone="warning">admin</Badge></span>}
-                      </td>
-                      <td className="px-4 py-2.5" data-label="Store">{s.storeName} <span className="text-gray-400">{s.storeCode}</span></td>
-                      <td className="px-4 py-2.5" data-label="Order date">{s.orderDate}</td>
-                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums" data-label="Bottles">{s.bottleCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <Panel flush title="Recent submissions" subtitle="Latest entries as they come in">
+            {data.recentSubmissions.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-gray-500">No submissions yet.</p>
+            ) : (
+              <ul className="max-h-96 divide-y divide-surface-border overflow-auto">
+                {data.recentSubmissions.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 sm:px-5">
+                    <Avatar name={s.employeeName ?? "?"} />
+                    <div className="min-w-0 flex-1 basis-48">
+                      <p className="truncate text-sm font-semibold text-gray-900">
+                        {s.storeName} <span className="font-normal text-gray-400">{s.storeCode}</span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {s.employeeName ?? "—"} · for {s.orderDate} · {new Date(s.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {s.source === "admin" && <span className="ml-2 align-middle"><Badge tone="warning">admin</Badge></span>}
+                      </p>
+                    </div>
+                    <p className="text-lg font-extrabold tabular-nums text-heading">
+                      {s.bottleCount}
+                      <span className="ml-1 text-xs font-semibold text-gray-400">btl</span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
         </>
       )}
     </div>

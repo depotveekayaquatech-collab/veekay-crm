@@ -136,6 +136,22 @@ class AttentionStore(BaseModel):
     region_name: str | None
 
 
+class StatusByPlatform(BaseModel):
+    slug: str
+    label: str
+    live: int
+    pending: int
+    close: int
+    total: int
+
+
+class ScopeRow(BaseModel):
+    """One (platform, region, state) combination that has stores — feeds the dashboard's linked filter dropdowns."""
+    partner_slug: str
+    region: str | None
+    state: str | None
+
+
 class DashboardInsights(BaseModel):
     trend: list[TrendPoint]
     store_status: dict[str, int]  # {LIVE: n, PENDING: n, CLOSE: n}
@@ -147,7 +163,10 @@ class DashboardInsights(BaseModel):
     stores_by_region: list[CoverageRow]
     stores_by_state: list[CoverageRow]
     attention_stores: list[AttentionStore]
-    all_stores: list[AttentionStore]
+    status_by_platform: list[StatusByPlatform]
+    scopes: list[ScopeRow]
+    dormant_live: int = 0   # live stores with no order in the last 30 days
+    dormant_stores: list[AttentionStore] = []   # the first 24 of them, for the dashboard panel
     last_store_sync: datetime | None = None
 
 

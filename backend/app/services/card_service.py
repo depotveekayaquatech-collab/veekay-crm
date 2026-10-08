@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.models.order_entry import OrderEntry
 from app.models.organization import Organization
+from app.models.region import Region
 from app.models.state_assignment import StateAssignment
 from app.models.store import Store, StoreStatus
 from app.models.user import User
@@ -202,6 +203,18 @@ def _store_digits(s: Store) -> str:
 
 def list_regions(db: Session, user: User, *, is_admin: bool, partner: str | None) -> list[dict]:
     """Regions that have live stores on the chosen platform — the Region dropdown follows the Platform dropdown."""
+    if is_admin:
+        # Straight from the database: no need to load ~1,300 store objects to list a handful of regions.
+        stmt = (
+            select(Region.id, Region.name)
+            .select_from(Store)
+            .join(Region, Region.id == Store.region_id)
+            .where(Store.organization_id == user.organization_id, Store.status == StoreStatus.LIVE.value)
+            .group_by(Region.id, Region.name)
+        )
+        if partner:
+            stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == partner)
+        return sorted(({"id": i, "name": n} for i, n in db.execute(stmt).all()), key=lambda r: r["name"].lower())
     seen = {s.region.id: s.region.name for s in _stores(db, user, is_admin=is_admin, partner=partner) if s.region}
     return sorted(({"id": i, "name": n} for i, n in seen.items()), key=lambda r: r["name"].lower())
 

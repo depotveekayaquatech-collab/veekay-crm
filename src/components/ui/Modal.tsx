@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { IconClose } from "@/components/ui/icons";
 
 interface ModalProps {
@@ -13,6 +13,16 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, description, children, footer, size = "md" }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Move focus into the dialog on open (unless a field already took it) and hand it back on close.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    if (!dialogRef.current?.contains(document.activeElement)) dialogRef.current?.focus();
+    return () => previous?.focus?.();
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -32,6 +42,8 @@ export function Modal({ open, onClose, title, description, children, footer, siz
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 animate-fade-in bg-ink-950/50 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -49,11 +61,11 @@ export function Modal({ open, onClose, title, description, children, footer, siz
             aria-label="Close"
             className="-mr-1 -mt-1 rounded-md p-1.5 text-gray-400 hover:bg-surface-subtle hover:text-gray-700"
           >
-            <IconClose className="h-5 w-5" />
+            <IconClose className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
 
         {footer && (
           <div className="flex justify-end gap-2 border-t border-surface-border px-5 py-3.5">{footer}</div>

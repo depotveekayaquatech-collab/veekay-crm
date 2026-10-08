@@ -5,7 +5,7 @@ type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-[0_1px_2px_rgba(11,18,34,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:from-brand-500 hover:to-brand-700 hover:shadow-glow active:translate-y-px disabled:from-brand-300 disabled:to-brand-300 disabled:shadow-none",
+    "bg-gradient-to-b from-[rgb(var(--btn-a))] to-[rgb(var(--btn-b))] text-white shadow-[0_1px_2px_rgba(11,18,34,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:to-[rgb(var(--btn-c))] hover:shadow-glow active:translate-y-px disabled:opacity-50 disabled:shadow-none",
   secondary:
     "bg-surface text-gray-800 border border-surface-border shadow-sm hover:border-gray-300 hover:bg-surface-subtle active:bg-surface-muted disabled:text-gray-400",
   danger:
@@ -38,7 +38,7 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex select-none items-center justify-center whitespace-nowrap rounded-lg font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
+      className={`inline-flex select-none items-center justify-center whitespace-nowrap rounded-lg font-semibold transition-[color,background-color,border-color,box-shadow,transform,filter] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
         fullWidth ? "w-full" : ""
       } ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
       disabled={disabled || isLoading}
@@ -46,7 +46,7 @@ export function Button({
       {...rest}
     >
       {isLoading && (
-        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
       )}
       {children}
     </button>
