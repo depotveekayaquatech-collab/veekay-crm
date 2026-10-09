@@ -97,6 +97,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Data sync", to: "/data-sync", icon: IconRefresh, permission: "sheets.sync" },
       { label: "Cash purchase", to: "/developer/cash", icon: IconWallet, permission: "cash.adjust" },
+      { label: "Cards from sheet", to: "/developer/card-sheet", icon: IconCard, permission: "cards.sheet" },
     ],
   },
   {

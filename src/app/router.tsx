@@ -28,6 +28,7 @@ const InventoryPage = lazy(() => import("@/features/inventory/InventoryPage").th
 const PartnerHomePage = lazy(() => import("@/features/partner/PartnerHomePage").then((m) => ({ default: m.PartnerHomePage })));
 const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliveryReport").then((m) => ({ default: m.PartnerDeliveryReport })));
 const BottlesPage = lazy(() => import("@/features/bottles/BottlesPage").then((m) => ({ default: m.BottlesPage })));
+const CardSheetPage = lazy(() => import("@/features/cardsheet/CardSheetPage").then((m) => ({ default: m.CardSheetPage })));
 const TicketsPage = lazy(() => import("@/features/tickets/TicketsPage").then((m) => ({ default: m.TicketsPage })));
 const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m) => ({ default: m.PendingPage })));
 const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
@@ -98,6 +99,7 @@ export function AppRoutes() {
         <Route path="/compliance" element={<Require permission="compliance.upload"><CompliancePage /></Require>} />
         <Route path="/cash" element={<RequireAny permissions={["cash.view", "cash.add"]}><CashPurchasesPage /></RequireAny>} />
         <Route path="/data-sync" element={<Require permission="sheets.sync"><DataSyncPage /></Require>} />
+        <Route path="/developer/card-sheet" element={<Require permission="cards.sheet"><CardSheetPage /></Require>} />
         <Route path="/developer/cash" element={<Require permission="cash.adjust"><CashToolsPage /></Require>} />
         <Route path="/accounts" element={<Require permission="accounts.view"><AccountsPage /></Require>} />
         <Route path="/inventory" element={<Require permission="orders.view"><InventoryPage /></Require>} />

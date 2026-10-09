@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     bottles,
     cards,
     cash_adjustments,
+    card_sheet,
     cash_purchases,
     external_accounts,
     compliance,
@@ -46,4 +47,5 @@ api_router.include_router(test_reports.router)
 api_router.include_router(cash_purchases.router)
 api_router.include_router(cash_adjustments.router)
 api_router.include_router(bottles.router)
+api_router.include_router(card_sheet.router)
 api_router.include_router(external_accounts.router)

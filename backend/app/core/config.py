@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     # Bottle QR tracking. BOTTLE_API_KEY lets a partner's / third-party scanner system push scans and read bottle data
     # (header X-Integration-Key); empty = that API is switched off. A bottle scanned IN to a store and not scanned OUT
     # within BOTTLE_LOST_AFTER_DAYS is reported as overdue (possibly lost).
+    # Access code for the developer-only "Cards from sheet" tool (checked on the server, rate-limited). Change it in production.
+    CARD_SHEET_CODE: str = Field(default="2580")
     BOTTLE_API_KEY: str = Field(default="")
     BOTTLE_LOST_AFTER_DAYS: int = Field(default=30)
     ATTENDANCE_WORK_START: str = Field(default="10:00")        # HH:MM local time; checking in later than start + grace is "late"

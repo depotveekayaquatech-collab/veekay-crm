@@ -9,6 +9,7 @@ interface Filters {
   partner?: string;
   state?: string;
   storeStatus?: string;
+  search?: string;
 }
 
 export function useStores(page: number, filters: Filters) {

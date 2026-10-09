@@ -79,12 +79,7 @@ export function LoginsPanel() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-3xl rounded-xl border border-surface-border bg-surface-subtle px-4 py-3 text-sm text-gray-700">
-        Logins prepared for the mobile app. These people are not part of your team and can't sign in to this CRM.<br />
-        <b>Vendors:</b> name@supplier.com, password <span className="font-mono">123456</span> &nbsp;·&nbsp; <b>POCs:</b> name@blinkit.com, password <span className="font-mono">name@123</span>.
-        Everyone must choose their own password at first login. The downloaded list shows the starting password of accounts that haven&apos;t changed it yet.
-        </p>
+      <div className="flex justify-end">
         <Button variant="secondary" onClick={download} isLoading={downloading}>Download list</Button>
       </div>
 

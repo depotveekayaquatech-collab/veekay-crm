@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { SearchBox } from "@/features/orders/ui";
+import { useDebounced } from "@/hooks/useDebounced";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +31,8 @@ export function StoresPage() {
   const [partner, setPartner] = useState("");
   const [storeStatus, setStoreStatus] = useState("LIVE");
   const [editing, setEditing] = useState<Store | null | undefined>(undefined);
+  const [q, setQ] = useState("");
+  const search = useDebounced(q.trim());
 
   const canManage = usePermission("stores.manage");
   const { data: allRegions = [] } = useAllRegions();
@@ -44,6 +48,7 @@ export function StoresPage() {
     regionId: regionId || undefined,
     partner: partner || undefined,
     storeStatus: storeStatus || undefined,
+    search: search || undefined,
   });
 
   return (
@@ -100,6 +105,17 @@ export function StoresPage() {
         ))}
       </div>
 
+      <SearchBox
+        hotkey
+        className="sm:max-w-xl"
+        value={q}
+        onChange={(v) => {
+          setQ(v);
+          setPage(1);
+        }}
+        placeholder="Search store name, outlet ID, city, state, vendor or POC"
+      />
+
       <div className="grid gap-3 sm:max-w-lg sm:grid-cols-2">
         <Select
           label="Partner"
@@ -144,7 +160,20 @@ export function StoresPage() {
             </thead>
             <tbody>
               {data.items.length === 0 && (
-                <TableEmpty colSpan={canManage ? 8 : 7}>No stores match these filters.</TableEmpty>
+                <TableEmpty colSpan={canManage ? 8 : 7}>
+                  No stores match{search ? ` “${search}”` : " these filters"}.
+                  {search && storeStatus && (
+                    <button
+                      className="ml-2 font-medium text-brand-600 hover:text-brand-700"
+                      onClick={() => {
+                        setStoreStatus("");
+                        setPage(1);
+                      }}
+                    >
+                      Search all statuses
+                    </button>
+                  )}
+                </TableEmpty>
               )}
               {data.items.map((store) => (
                 <tr key={store.id}>

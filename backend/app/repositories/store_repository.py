@@ -56,6 +56,10 @@ class StoreRepository:
                     Store.external_code.ilike(like, escape="\\"),
                     Store.city.ilike(like, escape="\\"),
                     Store.state.ilike(like, escape="\\"),
+                    Store.vendor_name.ilike(like, escape="\\"),
+                    Store.vendor_number.ilike(like, escape="\\"),
+                    Store.poc_name.ilike(like, escape="\\"),
+                    Store.poc_number.ilike(like, escape="\\"),
                 )
             )
         if region_id is not None:

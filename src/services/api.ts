@@ -175,8 +175,9 @@ export async function apiBlob(
   path: string,
   options: { method?: "GET" | "POST"; body?: unknown; isRetry?: boolean } = {},
 ): Promise<Blob> {
+  const isForm = options.body instanceof FormData;
   const headers: Record<string, string> = { ...AUTH_MODE };
-  if (options.body) headers["Content-Type"] = "application/json";
+  if (options.body && !isForm) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   let res: Response;
@@ -185,7 +186,7 @@ export async function apiBlob(
       method: options.method ?? "GET",
       credentials: "include",
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: options.body ? (isForm ? (options.body as FormData) : JSON.stringify(options.body)) : undefined,
     });
   } catch {
     const message = "Unable to connect. Please check your connection and try again.";
