@@ -43,7 +43,7 @@ export function MonthlyView() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Month
           <input type="month" className={field} value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} />
         </label>

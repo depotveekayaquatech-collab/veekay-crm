@@ -26,7 +26,7 @@ export function SegmentedControl<T extends string>({
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-[color,background-color,box-shadow] ${
+          className={`whitespace-nowrap rounded-lg px-3.5 py-[5px] text-sm font-semibold transition-[color,background-color,box-shadow] ${
             value === o.value
               ? "bg-surface text-brand-700 shadow-sm ring-1 ring-surface-border"
               : "text-gray-500 hover:text-gray-800"
@@ -101,7 +101,7 @@ export function SearchBox({
         aria-label={placeholder}
         autoComplete="off"
         spellCheck={false}
-        className="h-10 w-full rounded-xl border border-surface-border bg-surface pl-9 pr-9 text-sm shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+        className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-9 text-sm shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
       />
       {value ? (
         <button type="button" onClick={() => onChange("")} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 hover:bg-surface-muted hover:text-gray-700">

@@ -74,7 +74,7 @@ export function LeavePanel() {
             Half day
           </label>
         )}
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-gray-700">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Reason
           <textarea
             value={reason}

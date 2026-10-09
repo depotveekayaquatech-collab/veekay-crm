@@ -200,7 +200,7 @@ function Mini({ label, value, hint }: { label: string; value: ReactNode; hint?: 
   );
 }
 
-const FIELD = "h-10 rounded-xl border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
+const FIELD = "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 export function TrendCard({ insights }: { insights?: DashboardInsights }) {
   const today = daysAgo(0);
@@ -296,11 +296,11 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
       <div className="mb-4 flex flex-wrap items-end gap-2.5">
         {preset === "custom" && (
           <>
-            <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex flex-col gap-1 text-[13px] font-semibold text-gray-700">
               From
               <input type="date" value={from} max={to || today} onChange={(e) => setFrom(e.target.value)} className={FIELD} />
             </label>
-            <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex flex-col gap-1 text-[13px] font-semibold text-gray-700">
               To
               <input type="date" value={to} min={from} max={today} onChange={(e) => setTo(e.target.value)} className={FIELD} />
             </label>
@@ -370,7 +370,7 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
             <div className="mt-5 rounded-2xl border border-surface-border bg-surface-subtle/60 p-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <label htmlFor="trend-day" className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                  <label htmlFor="trend-day" className="text-[13px] font-semibold text-gray-700">
                     Check a day
                   </label>
                   <div className="mt-1 flex items-center gap-2">

@@ -139,7 +139,7 @@ export function TeamPage() {
                       {e.category === "admin" && !isFullAdmin ? (
                         <span className="text-xs text-gray-400">Managed by admins</span>
                       ) : (
-                      <div className="flex justify-end gap-3 text-sm font-medium">
+                      <div className="flex items-center justify-end gap-3 whitespace-nowrap text-sm font-medium">
                         {canCreate && (
                           <button className="text-brand-600 hover:text-brand-700" onClick={() => (e.category === "partner" ? setPartnerEditing(e) : e.category === "admin" ? setAdminEditing(e) : setEditing(e))}>
                             Edit

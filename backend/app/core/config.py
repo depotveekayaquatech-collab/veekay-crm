@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     OFFICE_DEFAULT_RADIUS_M: int = Field(default=100)
     # Shared secret for tickets pushed in from outside (e.g. a Google Apps Script). Empty = that endpoint is switched off.
     TICKET_WEBHOOK_KEY: str = Field(default="")
+    # Bottle QR tracking. BOTTLE_API_KEY lets a partner's / third-party scanner system push scans and read bottle data
+    # (header X-Integration-Key); empty = that API is switched off. A bottle scanned IN to a store and not scanned OUT
+    # within BOTTLE_LOST_AFTER_DAYS is reported as overdue (possibly lost).
+    BOTTLE_API_KEY: str = Field(default="")
+    BOTTLE_LOST_AFTER_DAYS: int = Field(default=30)
     ATTENDANCE_WORK_START: str = Field(default="10:00")        # HH:MM local time; checking in later than start + grace is "late"
     ATTENDANCE_GRACE_MINUTES: int = Field(default=15)
 

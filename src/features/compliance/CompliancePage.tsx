@@ -35,7 +35,7 @@ const EMPTY: Omit<RepoFilters, "month"> = {
 
 const select =
   "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
-const label = "flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500";
+const label = "flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700";
 
 const STATUS_TONE: Record<ComplianceStatus, "danger" | "warning" | "success"> = { PENDING: "danger", PARTIAL: "warning", COMPLETE: "success" };
 
@@ -204,7 +204,7 @@ export function CompliancePage() {
 
       {/* filters */}
       <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className={label}>
             Month
             <SelectField className={select} value={month.slice(5)} onChange={(e) => set({ month: `${year}-${e.target.value}` })}>

@@ -22,7 +22,7 @@ export function Select({ label, error, options, placeholder, searchable, id, cla
   const selectId = id ?? label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={selectId} className="text-sm font-medium text-gray-700">
+      <label htmlFor={selectId} className="text-[13px] font-semibold text-gray-700">
         {label}
       </label>
       <Dropdown

@@ -79,7 +79,7 @@ export function PartnerDeliveryReport() {
 
         <div className="mt-6 flex flex-col gap-4">
           <div>
-            <p className="mb-1.5 text-sm font-medium text-gray-700">Period</p>
+            <p className="mb-1.5 text-[13px] font-semibold text-gray-700">Period</p>
             <SegmentedControl
               label="Period"
               value={preset}

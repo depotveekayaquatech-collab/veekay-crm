@@ -156,7 +156,7 @@ export function CardsPage() {
       />
 
       <section className="flex flex-wrap items-end gap-4 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
-        <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Cards
           <SelectField className={`${field} min-w-[16rem]`} value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">Blank — no month on the card</option>
@@ -166,7 +166,7 @@ export function CardsPage() {
           </SelectField>
         </label>
         {isAdmin && (
-          <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             Platform
             <SelectField
               className={field}
@@ -184,7 +184,7 @@ export function CardsPage() {
             </SelectField>
           </label>
         )}
-        <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Region
           <SelectField
             className="min-w-[12rem]"

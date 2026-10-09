@@ -36,7 +36,7 @@ function ReviewModal({ leave, approve, onClose }: { leave: Leave; approve: boole
         </>
       }
     >
-      <label className="flex flex-col gap-1.5 text-sm font-medium text-gray-700">
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
         Note to the employee <span className="font-normal text-gray-400">(optional)</span>
         <textarea
           value={note}

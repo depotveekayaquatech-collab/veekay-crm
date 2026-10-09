@@ -67,7 +67,7 @@ export function DailyView() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Date
           <input type="date" className={field} value={date} max={daysAgo(0)} onChange={(e) => e.target.value && setDate(e.target.value)} />
         </label>

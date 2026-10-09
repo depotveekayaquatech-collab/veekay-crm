@@ -15,8 +15,12 @@ from app.models.ticket import Ticket, TicketComment
 from app.models.test_report import TestReport
 from app.models.cash_purchase import CashPurchase
 from app.models.cash_adjustment import CashAdjustment, CashSyncRecord, CashSyncRun
+from app.models.bottle import Bottle, BottleBatch, BottleScan
 
 __all__ = [
+    "Bottle",
+    "BottleBatch",
+    "BottleScan",
     "CashPurchase",
     "CashAdjustment",
     "CashSyncRecord",

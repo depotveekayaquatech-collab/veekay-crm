@@ -180,7 +180,7 @@ export function TestReportsTab() {
                       options={states.map((s) => ({ value: s.state, label: s.state }))}
                     />
                     <div className="flex flex-col gap-1.5">
-                      <label htmlFor="tr-period" className="text-sm font-medium text-gray-700">
+                      <label htmlFor="tr-period" className="text-[13px] font-semibold text-gray-700">
                         6-month period starts in
                       </label>
                       <input
@@ -190,7 +190,7 @@ export function TestReportsTab() {
                         min={monthValue(-24)}
                         max={monthValue(1)}
                         onChange={(e) => setPeriod(e.target.value)}
-                        className="h-11 rounded-lg border border-surface-border bg-surface px-3.5 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                        className="h-10 rounded-lg border border-surface-border bg-surface px-3.5 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                       />
                       {end && (
                         <p className="text-xs text-gray-500">

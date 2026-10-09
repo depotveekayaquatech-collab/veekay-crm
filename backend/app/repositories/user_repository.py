@@ -36,11 +36,12 @@ class UserRepository:
     def get_permission_codes(self, user_id: uuid.UUID) -> set[str]:
         """Union of role-granted permissions and direct per-user grants. The full Admin role always means
         *every* permission that exists, so a permission added later never locks an admin out."""
-        if "admin" in self.get_role_codes(user_id):
-            everything = set(self.db.execute(select(Permission.code)).scalars().all())
-            codes = everything - RESERVED_PERMISSIONS
-            # an account that is (also) a developer keeps its developer permissions
-            return codes | self._role_permission_codes(user_id) & RESERVED_PERMISSIONS
+        roles = self.get_role_codes(user_id)
+        if "developer" in roles:
+            # The developer holds EVERY permission that exists, including the reserved ones nobody else can have.
+            return set(self.db.execute(select(Permission.code)).scalars().all())
+        if "admin" in roles:
+            return set(self.db.execute(select(Permission.code)).scalars().all()) - RESERVED_PERMISSIONS
         from_roles = (
             select(Permission.code)
             .join(RolePermission, RolePermission.permission_id == Permission.id)

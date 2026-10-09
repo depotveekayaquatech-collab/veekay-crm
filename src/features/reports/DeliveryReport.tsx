@@ -125,15 +125,15 @@ function DailyMatrix() {
     <div className="flex flex-col gap-6">
       <Section title="Report filters" subtitle="Changing the date range regenerates the daily columns (up to 62 days).">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             Date from
             <input type="date" className={input} value={draft.from} max={draft.to} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
           </label>
-          <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             Date to
             <input type="date" className={input} value={draft.to} min={draft.from} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
           </label>
-          <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             Channel
             <SelectField className={input} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value })}>
               <option value="">All channels</option>
@@ -142,11 +142,11 @@ function DailyMatrix() {
               ))}
             </SelectField>
           </label>
-          <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             State
             <input className={input} value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })} placeholder="All states" />
           </label>
-          <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             City
             <input className={input} value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} placeholder="All cities" />
           </label>

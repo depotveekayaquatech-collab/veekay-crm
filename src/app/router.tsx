@@ -27,6 +27,7 @@ const AccountsPage = lazy(() => import("@/features/accounts/AccountsPage").then(
 const InventoryPage = lazy(() => import("@/features/inventory/InventoryPage").then((m) => ({ default: m.InventoryPage })));
 const PartnerHomePage = lazy(() => import("@/features/partner/PartnerHomePage").then((m) => ({ default: m.PartnerHomePage })));
 const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliveryReport").then((m) => ({ default: m.PartnerDeliveryReport })));
+const BottlesPage = lazy(() => import("@/features/bottles/BottlesPage").then((m) => ({ default: m.BottlesPage })));
 const TicketsPage = lazy(() => import("@/features/tickets/TicketsPage").then((m) => ({ default: m.TicketsPage })));
 const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m) => ({ default: m.PendingPage })));
 const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
@@ -57,8 +58,6 @@ function RequireAny({ permissions, children }: { permissions: string[]; children
 /** "/" — the dashboard for staff; a partner login (Blinkit / Zepto) gets its own portal home. */
 function HomeRoute() {
   const { user } = useAuth();
-  // A developer account has no business pages at all, only the sheet tools.
-  if (user?.roles.includes("developer") && !user.roles.includes("admin")) return <Navigate to="/data-sync" replace />;
   return user?.roles.includes("partner") ? <PartnerHomePage /> : <DashboardPage />;
 }
 
@@ -85,6 +84,7 @@ export function AppRoutes() {
         <Route path="/" element={<HomeRoute />} />
         <Route path="/delivery-reports" element={<Require permission="reports.delivery"><PartnerDeliveryReport /></Require>} />
         <Route path="/tickets" element={<RequireAny permissions={["tickets.view", "tickets.manage"]}><TicketsPage /></RequireAny>} />
+        <Route path="/bottles" element={<RequireAny permissions={["bottles.view", "bottles.scan", "bottles.manage", "bottles.delete"]}><BottlesPage /></RequireAny>} />
         <Route path="/orders" element={<OrdersLayout />}>
           <Route index element={<OrdersIndex><MarkOrdersPage /></OrdersIndex>} />
           <Route path="overview" element={<Require permission="orders.overview"><DailyOverviewPage /></Require>} />

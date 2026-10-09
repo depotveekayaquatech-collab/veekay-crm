@@ -102,8 +102,8 @@ function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-surface-border bg-surface shadow-card ${className}`}>
-      <header className="flex items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
+    <section className={`min-w-0 rounded-xl border border-surface-border bg-surface shadow-card ${className}`}>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border/80 px-5 py-4">
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
         {action}
       </header>

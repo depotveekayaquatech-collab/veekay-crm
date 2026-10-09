@@ -64,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
         anyPermission: ["orders.view", "orders.mark", "orders.overview", "orders.correct"],
         prefix: true,
       },
+      { label: "Bottle QR", to: "/bottles", icon: IconBox, anyPermission: ["bottles.view", "bottles.scan", "bottles.manage", "bottles.delete"], excludeRole: "partner" },
       { label: "Tickets", to: "/tickets", icon: IconTicket, anyPermission: ["tickets.view", "tickets.manage"] },
     ],
   },
@@ -109,8 +110,8 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[]) => {
-  // A developer who is also an admin (the demo login) is an admin first: the developer-only trimming doesn't apply.
-  const roles = allRoles.includes("admin") ? allRoles.filter((r) => r !== "developer") : allRoles;
+  // A developer holds every permission, so they see everything an admin does: no developer-only trimming.
+  const roles = allRoles.filter((r) => r !== "developer");
   return (
     !(item.excludeRole && [item.excludeRole].flat().some((r) => roles.includes(r))) &&
     !(item.requireRole && !roles.includes(item.requireRole)) &&

@@ -20,9 +20,9 @@ CATEGORY_LABELS = {
 # Display order.
 CATEGORY_ORDER = ["admin", "accounts", "partner", "blinkit", "zepto", "other"]
 
-# Permissions that only the developer role can hold. Admins never get them (not even a "full" admin), they can't be
+# Permissions that only the developer role can hold (the developer holds every permission, these included). Admins never get them (not even a "full" admin), they can't be
 # granted per person, and the permission catalogue doesn't list them.
-RESERVED_PERMISSIONS = frozenset({"sheets.sync", "cash.adjust"})
+RESERVED_PERMISSIONS = frozenset({"sheets.sync", "cash.adjust", "bottles.delete"})
 
 # The only permissions a partner account may ever hold — enforced server-side whatever the UI sends.
 PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create", "reports.delivery"]

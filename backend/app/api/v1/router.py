@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     assignments,
     attendance,
     auth,
+    bottles,
     cards,
     cash_adjustments,
     cash_purchases,
@@ -43,3 +44,4 @@ api_router.include_router(integrations.router)
 api_router.include_router(test_reports.router)
 api_router.include_router(cash_purchases.router)
 api_router.include_router(cash_adjustments.router)
+api_router.include_router(bottles.router)

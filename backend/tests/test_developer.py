@@ -3,6 +3,7 @@ import io
 
 import pytest
 
+from app.core.roles import RESERVED_PERMISSIONS
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.user import User, UserRole
@@ -18,9 +19,10 @@ SHEET_CALLS = [
 ]
 
 
-def test_developer_holds_only_the_sheet_permission(client, dev, db):
+def test_developer_holds_every_permission(client, dev, db):
     me = client.get(f"{API}/auth/me", headers=dev).json()
-    assert me["permissions"] == ["cash.adjust", "sheets.sync"] and me["roles"] == ["developer"] and me["is_admin"] is False
+    assert RESERVED_PERMISSIONS <= set(me["permissions"]) and "stores.manage" in me["permissions"] and "orders.overview" in me["permissions"]
+    assert me["roles"] == ["developer"] and me["is_admin"] is False
 
 
 def test_admin_does_not_get_the_sheet_permission(client, admin):
@@ -35,10 +37,16 @@ def test_sheet_features_are_developer_only(client, admin, emp, dev, method, url,
     assert client.request(method, url, headers=dev, **kw).status_code != 403   # allowed in (any 4xx here is about the data)
 
 
-def test_developer_has_no_admin_rights(client, dev):
-    for url in (f"{API}/stores", f"{API}/employees", f"{API}/orders/daily-overview", f"{API}/activity", f"{API}/cash-purchases"):
-        assert client.get(url, headers=dev).status_code == 403, url
-    assert client.get(f"{API}/partners", headers=dev).status_code == 200      # platform names for the sheet pickers
+def test_developer_can_reach_every_admin_area(client, dev, db):
+    for url in (f"{API}/stores", f"{API}/employees", f"{API}/activity", f"{API}/cash-purchases", f"{API}/partners"):
+        assert client.get(url, headers=dev).status_code == 200, url
+    all_codes = {c for (c,) in db.query(Permission.code)}
+    assert set(client.get(f"{API}/auth/me", headers=dev).json()["permissions"]) == all_codes
+
+
+def test_admin_gets_everything_except_the_reserved_permissions(client, admin, db):
+    all_codes = {c for (c,) in db.query(Permission.code)}
+    assert set(client.get(f"{API}/auth/me", headers=admin).json()["permissions"]) == all_codes - RESERVED_PERMISSIONS
 
 
 def test_no_one_can_grant_the_sheet_permission(client, admin, emp, make_user, db):
@@ -85,7 +93,7 @@ def test_create_developer_script_makes_the_account(db):
     try:
         roles = [r for (r,) in db.query(Role.code).join(UserRole, UserRole.role_id == Role.id).filter(UserRole.user_id == u.id)]
         assert roles == ["developer"]
-        assert UserRepository(db).get_permission_codes(u.id) == {"sheets.sync", "cash.adjust"}
+        assert UserRepository(db).get_permission_codes(u.id) == {c for (c,) in db.query(Permission.code)}
     finally:
         db.query(UserRole).filter_by(user_id=u.id).delete()
         db.query(User).filter_by(id=u.id).delete()

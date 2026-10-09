@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.organization import Organization, OrganizationKind
-from app.services import ticket_service
+from app.schemas.bottle import BottleDetail, BottleList, ExternalScan, ScanResult
+from app.services import bottle_service, ticket_service
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
@@ -61,3 +62,52 @@ def intake_ticket(
     )
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return {"created": created, "id": ticket.id, "number": ticket.number, "ticket": f"TK-{ticket.number:04d}", "category": ticket.category, "priority": ticket.priority}
+
+
+# ---- bottle QR tracking: for a partner's / third-party scanner system ----------------------------------------------
+
+def _check_bottle_key(key: str | None) -> None:
+    configured = settings.BOTTLE_API_KEY
+    if not configured:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Bottle tracking API is not switched on (BOTTLE_API_KEY is not set).")
+    if not key or not hmac.compare_digest(key.encode(), configured.encode()):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid integration key.")
+
+
+def _internal_org_id(db: Session):
+    org = db.execute(select(Organization).where(Organization.kind == OrganizationKind.INTERNAL.value)).scalars().first()
+    if org is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Organization is not set up.")
+    return org.id
+
+
+@router.post("/bottles/scan", response_model=ScanResult)
+def bottle_scan(payload: ExternalScan, x_integration_key: str | None = Header(default=None), db: Session = Depends(get_db)) -> ScanResult:
+    """Push one IN / OUT scan. Send `scan_id` so a retry never double-counts. Header `X-Integration-Key` = BOTTLE_API_KEY."""
+    _check_bottle_key(x_integration_key)
+    org_id = _internal_org_id(db)
+    store = bottle_service.find_store(db, org_id, code=payload.store_code, platform=payload.platform) if payload.store_code else None
+    return bottle_service.scan(
+        db, org_id, serial=payload.serial, direction=payload.direction, store=store, scanned_at=payload.scanned_at,
+        scan_id=payload.scan_id, source="api", scanned_by=payload.scanned_by,
+    )
+
+
+@router.get("/bottles/overdue", response_model=BottleList)
+def bottle_overdue(
+    days: int | None = None, page: int = 1, page_size: int = 100,
+    x_integration_key: str | None = Header(default=None), db: Session = Depends(get_db),
+) -> BottleList:
+    """Bottles scanned IN with no OUT for more than `days` (default BOTTLE_LOST_AFTER_DAYS), oldest first."""
+    _check_bottle_key(x_integration_key)
+    return bottle_service.search(
+        db, _internal_org_id(db), state="OVERDUE", overdue_days=max(days, 0) if days is not None else None,
+        page=max(page, 1), page_size=min(max(page_size, 1), 500),
+    )
+
+
+@router.get("/bottles/{serial}", response_model=BottleDetail)
+def bottle_detail(serial: str, x_integration_key: str | None = Header(default=None), db: Session = Depends(get_db)) -> BottleDetail:
+    """One bottle's current state and full scan history."""
+    _check_bottle_key(x_integration_key)
+    return bottle_service.detail(db, _internal_org_id(db), serial)

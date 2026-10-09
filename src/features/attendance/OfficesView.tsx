@@ -136,19 +136,19 @@ export function OfficesView() {
         <form onSubmit={submit} className="rounded-xl border border-surface-border bg-surface p-5 shadow-card">
           <h3 className="text-sm font-bold text-gray-900">Add an office</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500 lg:col-span-2">
+            <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700 lg:col-span-2">
               Name
               <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Head office" />
             </label>
-            <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
               Latitude
               <input className={field} value={lat} onChange={(e) => setLat(e.target.value)} placeholder="12.971600" inputMode="decimal" />
             </label>
-            <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
               Longitude
               <input className={field} value={lng} onChange={(e) => setLng(e.target.value)} placeholder="77.594600" inputMode="decimal" />
             </label>
-            <label className="flex flex-col gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
               Radius (metres)
               <input className={field} type="number" min={10} max={5000} value={radius} onChange={(e) => setRadius(e.target.value)} />
             </label>
