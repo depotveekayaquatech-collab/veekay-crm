@@ -25,8 +25,35 @@ from app.schemas.employee import EmployeeCreate, EmployeeOut, EmployeeUpdate
 from app.services import activity_service, session_service
 
 
+def _scope_maps(db: Session, users: list[User]) -> tuple[dict, dict, dict, dict, dict]:
+    """({user_id: [RegionRef]}, {user_id: [excluded states]}, {user_id: [excluded cities]}) for many users at once."""
+    from app.models.employee_scope import EmployeeExclusion, EmployeeRegion, ExclusionKind
+    from app.models.region import Region
+    from app.schemas.employee import RegionRef
+
+    ids = [u.id for u in users]
+    names = {rid: n for rid, n in db.execute(select(Region.id, Region.name))}
+    regions: dict[uuid.UUID, list[uuid.UUID]] = {u.id: ([u.region_id] if u.region_id else []) for u in users}
+    for uid, rid in db.execute(select(EmployeeRegion.user_id, EmployeeRegion.region_id).where(EmployeeRegion.user_id.in_(ids))):
+        if rid not in regions[uid]:
+            regions[uid].append(rid)
+    ex_s: dict[uuid.UUID, list[str]] = {}
+    ex_c: dict[uuid.UUID, list[str]] = {}
+    in_s: dict[uuid.UUID, list[str]] = {}
+    in_c: dict[uuid.UUID, list[str]] = {}
+    for uid, kind, mode, label in db.execute(
+        select(EmployeeExclusion.user_id, EmployeeExclusion.kind, EmployeeExclusion.mode, EmployeeExclusion.label)
+        .where(EmployeeExclusion.user_id.in_(ids)).order_by(EmployeeExclusion.label)
+    ):
+        bucket = (ex_s if kind == ExclusionKind.STATE else ex_c) if mode == "skip" else (in_s if kind == ExclusionKind.STATE else in_c)
+        bucket.setdefault(uid, []).append(label)
+    refs = {uid: [RegionRef(id=r, name=names.get(r, "")) for r in rids if r in names] for uid, rids in regions.items()}
+    return refs, ex_s, ex_c, in_s, in_c
+
+
 def to_out(db: Session, user: User) -> EmployeeOut:
     erepo = EmployeeRepository(db)
+    regions, ex_s, ex_c, in_s, in_c = _scope_maps(db, [user])
     urepo = UserRepository(db)
     roles = erepo.role_codes(user.id)
     category = staff_category(roles, user.platform_organization.slug if user.platform_organization else None)
@@ -42,6 +69,8 @@ def to_out(db: Session, user: User) -> EmployeeOut:
         platform_slug=user.platform_organization.slug if user.platform_organization else None,
         region_id=user.region_id,
         region_name=user.region.name if user.region else None,
+        regions=regions[user.id], excluded_states=ex_s.get(user.id, []), excluded_cities=ex_c.get(user.id, []),
+        included_states=in_s.get(user.id, []), included_cities=in_c.get(user.id, []),
         states=erepo.states_for(user.id),
         roles=roles,
         category=category,
@@ -76,6 +105,7 @@ def to_out_many(db: Session, users: list[User]) -> list[EmployeeOut]:
     ):
         direct.setdefault(uid, []).append(code)
 
+    regions, ex_s, ex_c, in_s, in_c = _scope_maps(db, users)
     out = []
     for user in users:
         r = roles.get(user.id, [])
@@ -85,6 +115,8 @@ def to_out_many(db: Session, users: list[User]) -> list[EmployeeOut]:
             id=user.id, employee_code=user.employee_code, full_name=user.full_name, email=user.email, phone=user.phone,
             status=user.status, is_active=user.is_active, platform_id=user.platform_organization_id, platform_slug=slug,
             region_id=user.region_id, region_name=user.region.name if user.region else None,
+            regions=regions[user.id], excluded_states=ex_s.get(user.id, []), excluded_cities=ex_c.get(user.id, []),
+            included_states=in_s.get(user.id, []), included_cities=in_c.get(user.id, []),
             states=states.get(user.id, []), roles=r, category=category, category_label=CATEGORY_LABELS[category],
             admin_level="full" if ADMIN in r else ("custom" if MANAGER in r else None),
             direct_permissions=sorted(direct.get(user.id, [])),

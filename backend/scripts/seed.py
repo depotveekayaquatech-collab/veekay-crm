@@ -71,6 +71,7 @@ PERMISSIONS = [
     ("bottles.scan", "Scan bottle QR codes in and out of stores"),
     ("bottles.manage", "Generate bottle QR codes, replace damaged ones and retire bottles"),
     ("bottles.delete", "Permanently delete bottle QR codes so they can never be used again (developer only)"),
+    ("logins.view", "View and export the vendor / POC logins prepared for the mobile app"),
     ("tickets.view", "View tickets for your stores"),
     ("tickets.create", "Raise tickets"),
     ("tickets.manage", "Manage every ticket: assign, change status, see all regions and insights"),

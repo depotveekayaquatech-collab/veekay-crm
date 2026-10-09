@@ -9,6 +9,7 @@ import {
   setAdminAccess,
   setEmployeePermissions,
   setEmployeeScope,
+  type ScopeInput,
   unassignState,
   updateEmployee,
 } from "@/services/employees";
@@ -64,8 +65,7 @@ export function useTeamMutations() {
       onSuccess: () => done("Permissions saved."),
     }),
     setScope: useMutation({
-      mutationFn: ({ id, platformId, regionId }: { id: string; platformId: string | null; regionId: string | null }) =>
-        setEmployeeScope(id, platformId, regionId),
+      mutationFn: ({ id, ...scope }: { id: string } & ScopeInput) => setEmployeeScope(id, scope),
       onSuccess: () => done("Scope saved."),
     }),
     assignState: useMutation({

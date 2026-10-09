@@ -15,6 +15,7 @@ import { EmployeeAccessModal } from "@/features/team/EmployeeAccessModal";
 import { AdminAccountModal } from "@/features/team/AdminAccountModal";
 import { useAuth } from "@/features/auth/useAuth";
 import { PartnerAccountModal } from "@/features/team/PartnerAccountModal";
+import { LoginsPanel } from "@/features/logins/LoginsPage";
 import { StateBoardPanel } from "@/features/team/StateBoardPanel";
 import { useEmployees, useTeamMutations } from "@/features/team/useTeam";
 import type { Employee } from "@/types/employee";
@@ -34,6 +35,8 @@ export function TeamPage() {
   const canCreate = usePermission("employees.create");
   const canAssign = usePermission("assignments.manage");
   const canDeactivate = usePermission("employees.deactivate");
+  const canLogins = usePermission("logins.view");
+  const [view, setView] = useState<"team" | "logins">("team");
   const { deactivate } = useTeamMutations();
   const [category, setCategory] = useState("");
   const { data, isLoading, isError, refetch } = useEmployees(page, q, category);
@@ -44,7 +47,7 @@ export function TeamPage() {
         title="Users & access"
         subtitle="Admins, staff and Blinkit / Zepto partner logins — their scope, and what each person can see."
         action={
-          canCreate && (
+          canCreate && view === "team" && (
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setImporting(true)}>
                 <IconUpload className="h-4 w-4" /> Import employees
@@ -77,20 +80,35 @@ export function TeamPage() {
           <button
             key={id}
             role="tab"
-            aria-selected={category === id}
+            aria-selected={view === "team" && category === id}
             onClick={() => {
+              setView("team");
               setCategory(id);
               setPage(1);
             }}
             className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
-              category === id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+              view === "team" && category === id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
             }`}
           >
             {label}
           </button>
         ))}
+        {canLogins && (
+          <button
+            role="tab"
+            aria-selected={view === "logins"}
+            onClick={() => setView("logins")}
+            className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
+              view === "logins" ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+            }`}
+          >
+            Vendor &amp; POC logins
+          </button>
+        )}
       </div>
 
+      {view === "logins" && <LoginsPanel />}
+      {view === "team" && (<>
       <Input
         label="Search"
         value={q}
@@ -129,7 +147,19 @@ export function TeamPage() {
                     </Badge>
                   </Td>
                   <Td>{e.platformSlug ?? "—"}</Td>
-                  <Td>{e.category === "partner" ? "All stores on platform" : e.category === "admin" ? "Whole company" : (e.regionName ?? (e.states.length ? e.states.join(", ") : "—"))}</Td>
+                  <Td>{e.category === "partner" ? "All stores on platform" : e.category === "admin" ? "Whole company" : (e.regions.length ? (
+                    <span>
+                      {e.regions.map((r) => r.name).join(", ")}
+                      {(e.includedStates.length > 0 || e.includedCities.length > 0) && (
+                        <span className="block text-xs text-status-success">plus {[...e.includedStates, ...e.includedCities].join(", ")}</span>
+                      )}
+                      {(e.excludedStates.length > 0 || e.excludedCities.length > 0) && (
+                        <span className="block text-xs text-status-danger">except {[...e.excludedStates, ...e.excludedCities].join(", ")}</span>
+                      )}
+                    </span>
+                  ) : e.includedStates.length > 0 || e.includedCities.length > 0 ? (
+                    <span className="text-status-success">{[...e.includedStates, ...e.includedCities].join(", ")}</span>
+                  ) : (e.states.length ? e.states.join(", ") : "—"))}</Td>
                   <Td>{e.adminLevel === "full" ? "Full access" : e.directPermissions.length}</Td>
                   <Td>
                     <Badge tone={e.isActive ? "success" : "neutral"}>{e.isActive ? "Active" : "Deactivated"}</Badge>
@@ -171,6 +201,7 @@ export function TeamPage() {
       )}
 
       {canAssign && <StateBoardPanel />}
+      </>)}
 
       {editing !== undefined && (
         <EmployeeAccessModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} employee={editing ?? null} />

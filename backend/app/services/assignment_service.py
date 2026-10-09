@@ -18,12 +18,13 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.roles import PARTNER as PARTNER_ROLE
 from app.models.organization import Organization, OrganizationKind
+from app.models.employee_scope import EmployeeExclusion, EmployeeRegion, ExclusionKind, ScopeMode
 from app.models.region import Region
 from app.models.state_assignment import StateAssignment
 from app.models.store import Store, StoreStatus
@@ -52,6 +53,46 @@ def is_employee_model(platform_slug: str | None) -> bool:
 
 def is_region_independent(platform_slug: str | None) -> bool:
     return _norm(platform_slug) in {s.lower() for s in settings.REGION_INDEPENDENT_PLATFORM_SLUGS}
+
+
+# --------------------------------------------------------------------------
+# multi-region scope + exclusions
+# --------------------------------------------------------------------------
+
+def employee_region_ids(db: Session, employee: User) -> set[uuid.UUID]:
+    """Every region the employee covers: the ones ticked for them, plus their main region."""
+    ids = set(db.execute(select(EmployeeRegion.region_id).where(EmployeeRegion.user_id == employee.id)).scalars().all())
+    if employee.region_id:
+        ids.add(employee.region_id)
+    return ids
+
+
+def employee_exclusions(db: Session, user_id: uuid.UUID) -> tuple[set[str], set[str]]:
+    """(skipped states, skipped cities), lower-cased."""
+    states: set[str] = set()
+    cities: set[str] = set()
+    for kind, value in db.execute(
+        select(EmployeeExclusion.kind, EmployeeExclusion.value).where(EmployeeExclusion.user_id == user_id, EmployeeExclusion.mode == ScopeMode.SKIP)
+    ):
+        (states if kind == ExclusionKind.STATE else cities).add(value)
+    return states, cities
+
+
+def employee_additions(db: Session, user_id: uuid.UUID) -> tuple[set[str], set[str]]:
+    """(added states, added cities), lower-cased: given on top of the regions, or on their own."""
+    states: set[str] = set()
+    cities: set[str] = set()
+    for kind, value in db.execute(
+        select(EmployeeExclusion.kind, EmployeeExclusion.value).where(EmployeeExclusion.user_id == user_id, EmployeeExclusion.mode == ScopeMode.ADD)
+    ):
+        (states if kind == ExclusionKind.STATE else cities).add(value)
+    return states, cities
+
+
+def _drop_excluded(stores: list[Store], ex_states: set[str], ex_cities: set[str]) -> list[Store]:
+    if not ex_states and not ex_cities:
+        return stores
+    return [s for s in stores if _norm(s.state) not in ex_states and _norm(s.city) not in ex_cities]
 
 
 # --------------------------------------------------------------------------
@@ -98,22 +139,31 @@ def visible_stores(db: Session, employee: User) -> list[Store]:
         Store.status == StoreStatus.LIVE.value,
     )
 
-    if is_employee_model(slug):
-        if not my_states:
-            return []
-        rows = db.execute(live.where(func.lower(Store.state).in_(my_states))).scalars().all()
-        return _load(db, rows)
+    ex_states, ex_cities = employee_exclusions(db, employee.id)
+    add_states, add_cities = employee_additions(db, employee.id)
+    added = (
+        list(db.execute(live.where(or_(func.lower(Store.state).in_(add_states), func.lower(Store.city).in_(add_cities)))).scalars().all())
+        if (add_states or add_cities) else []
+    )
 
-    # region-model
-    if employee.region_id is None:
-        return []
-    region_stores = db.execute(live.where(Store.region_id == employee.region_id)).scalars().all()
+    if is_employee_model(slug):
+        rows = list(db.execute(live.where(func.lower(Store.state).in_(my_states))).scalars().all()) if my_states else []
+        merged = {s.id: s for s in rows + added}
+        return _load(db, _drop_excluded(list(merged.values()), ex_states, ex_cities))
+
+    # region-model: every region the employee covers; a region where states are handed out one by one ("partitioned")
+    # only gives the employee the states assigned to them; then the excluded states / cities are taken out.
+    region_ids = employee_region_ids(db, employee)
+    region_stores = list(db.execute(live.where(Store.region_id.in_(region_ids))).scalars().all()) if region_ids else []
     assigned_states_in_platform = {_norm(a.state) for a in assignments}
-    region_states = {_norm(s.state) for s in region_stores if s.state}
-    partitioned = bool(region_states & assigned_states_in_platform)
-    if not partitioned:
-        return _load(db, region_stores)
-    return _load(db, [s for s in region_stores if _norm(s.state) in my_states])
+    states_by_region: dict[uuid.UUID, set[str]] = {}
+    for st in region_stores:
+        if st.state:
+            states_by_region.setdefault(st.region_id, set()).add(_norm(st.state))
+    partitioned = {rid for rid, sts in states_by_region.items() if sts & assigned_states_in_platform}
+    kept = [st for st in region_stores if st.region_id not in partitioned or _norm(st.state) in my_states]
+    merged = {s.id: s for s in kept + added}          # places added by hand are given whatever the region partition says
+    return _load(db, _drop_excluded(list(merged.values()), ex_states, ex_cities))
 
 
 def _load(db: Session, stores: list[Store]) -> list[Store]:
@@ -146,19 +196,73 @@ def set_scope(
     *,
     platform_id: uuid.UUID | None,
     region_id: uuid.UUID | None,
+    region_ids: list[uuid.UUID] | None = None,
+    excluded_states: list[str] | None = None,
+    excluded_cities: list[str] | None = None,
+    included_states: list[str] | None = None,
+    included_cities: list[str] | None = None,
 ) -> None:
+    """Platform + regions + places. `region_ids` (several regions) wins over `region_id`. Skipped / added states and
+    cities left as None stay as they are, [] clears them. Skipping always wins over adding."""
     if platform_id is not None:
         _platform(db, platform_id)
-    if region_id is not None and RegionRepository(db).get(admin.organization_id, region_id) is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid region.")
+    wanted = list(dict.fromkeys(region_ids if region_ids is not None else ([region_id] if region_id else [])))
+    for rid in wanted:
+        if RegionRepository(db).get(admin.organization_id, rid) is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid region.")
+    if is_partner_account(db, employee):
+        wanted = []
     employee.platform_organization_id = platform_id
-    employee.region_id = None if is_partner_account(db, employee) else region_id
+    employee.region_id = wanted[0] if wanted else None
+    db.query(EmployeeRegion).filter(EmployeeRegion.user_id == employee.id).delete()
+    for rid in wanted:
+        db.add(EmployeeRegion(user_id=employee.id, region_id=rid))
+
+    for mode, states_in, cities_in in (
+        (ScopeMode.SKIP, excluded_states, excluded_cities),
+        (ScopeMode.ADD, included_states, included_cities),
+    ):
+        for kind, values in ((ExclusionKind.STATE, states_in), (ExclusionKind.CITY, cities_in)):
+            if values is None:
+                continue                                   # left out = unchanged
+            db.query(EmployeeExclusion).filter(
+                EmployeeExclusion.user_id == employee.id, EmployeeExclusion.mode == mode, EmployeeExclusion.kind == kind
+            ).delete(synchronize_session=False)
+            seen: set[str] = set()
+            for raw in values:
+                label = " ".join((raw or "").split())
+                if label and _norm(label) not in seen:
+                    seen.add(_norm(label))
+                    db.add(EmployeeExclusion(user_id=employee.id, mode=mode, kind=kind, value=_norm(label), label=label))
     activity_service.record(
         db, actor=admin, action="employee.scope_set", entity_type="employee", entity_id=employee.id,
         metadata={"platform_id": str(platform_id) if platform_id else None,
-                  "region_id": str(region_id) if region_id else None},
+                  "region_ids": [str(r) for r in wanted],
+                  "excluded_states": excluded_states, "excluded_cities": excluded_cities,
+                  "included_states": included_states, "included_cities": included_cities},
     )
     db.commit()
+
+
+def locations(db: Session, admin: User, partner_id: uuid.UUID, region_ids: list[uuid.UUID]) -> dict:
+    """The states and cities inside the chosen regions of a platform: what can be excluded."""
+    _platform(db, partner_id)
+    stmt = select(Store.state, Store.city).where(
+        Store.organization_id == admin.organization_id, Store.partner_organization_id == partner_id,
+    )
+    if region_ids:
+        stmt = stmt.where(Store.region_id.in_(region_ids))
+    states: dict[str, str] = {}
+    cities: dict[str, dict] = {}
+    for state, city in db.execute(stmt.distinct()).all():
+        if state and state.strip():
+            states.setdefault(_norm(state), state.strip())
+        if city and city.strip():
+            cities.setdefault(_norm(city), {"city": city.strip(), "state": (state or "").strip()})
+    return {
+        "states": sorted(states.values()),
+        "cities": sorted(cities.values(), key=lambda c: (c["city"].lower(), c["state"].lower())),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -251,11 +355,12 @@ def assign_state(db: Session, admin: User, partner_id: uuid.UUID, state: str, em
     if not is_region_independent(platform.slug):
         region_map = _state_region_map(db, admin.organization_id, partner_id)
         state_region = region_map.get(_norm(state))
-        emp_region = employee.region.name if employee.region else None
-        if state_region and emp_region and state_region != emp_region:
+        emp_region_ids = employee_region_ids(db, employee)
+        emp_regions = {n for (n,) in db.execute(select(Region.name).where(Region.id.in_(emp_region_ids))).all()} if emp_region_ids else set()
+        if state_region and emp_regions and state_region not in emp_regions:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"'{state}' is in {state_region}, but this employee is in {emp_region}.",
+                f"'{state}' is in {state_region}, but this employee covers {', '.join(sorted(emp_regions))}.",
             )
 
     existing = db.execute(
@@ -303,7 +408,7 @@ def employee_store_scopes(
     region platform: own region, narrowed to assigned states when the platform has partitioned them).
     Returns ({user_id: [store_id, ...]}, [every live store id of the platform])."""
     live = db.execute(
-        select(Store.id, Store.state, Store.region_id).where(
+        select(Store.id, Store.state, Store.region_id, Store.city).where(
             Store.partner_organization_id == partner.id, Store.status == StoreStatus.LIVE.value
         )
     ).all()
@@ -328,19 +433,44 @@ def employee_store_scopes(
     for uid, st in assignments:
         states_of.setdefault(uid, set()).add(_norm(st))
 
+    regions_of: dict[uuid.UUID, set[uuid.UUID]] = {e.id: ({e.region_id} if e.region_id else set()) for e in employees}
+    for uid, rid in db.execute(select(EmployeeRegion.user_id, EmployeeRegion.region_id).where(EmployeeRegion.user_id.in_(ids))):
+        regions_of[uid].add(rid)
+    ex_states_of: dict[uuid.UUID, set[str]] = {}
+    ex_cities_of: dict[uuid.UUID, set[str]] = {}
+    add_states_of: dict[uuid.UUID, set[str]] = {}
+    add_cities_of: dict[uuid.UUID, set[str]] = {}
+    for uid, kind, mode, value in db.execute(
+        select(EmployeeExclusion.user_id, EmployeeExclusion.kind, EmployeeExclusion.mode, EmployeeExclusion.value).where(EmployeeExclusion.user_id.in_(ids))
+    ):
+        if mode == ScopeMode.SKIP:
+            (ex_states_of if kind == ExclusionKind.STATE else ex_cities_of).setdefault(uid, set()).add(value)
+        else:
+            (add_states_of if kind == ExclusionKind.STATE else add_cities_of).setdefault(uid, set()).add(value)
+
     employee_model = is_employee_model(partner.slug)
     out: dict[uuid.UUID, list[uuid.UUID]] = {}
     for emp in employees:
         mine = states_of.get(emp.id, set())
+        ex_s, ex_c = ex_states_of.get(emp.id, set()), ex_cities_of.get(emp.id, set())
         if PARTNER_ROLE in roles.get(emp.id, set()):
             out[emp.id] = list(all_ids)
-        elif employee_model:
-            out[emp.id] = [sid for sid, st, _ in live if _norm(st) in mine] if mine else []
-        elif emp.region_id is None:
-            out[emp.id] = []
+            continue
+        if employee_model:
+            pool = [(sid, st, ct) for sid, st, _, ct in live if _norm(st) in mine] if mine else []
+            region = []
         else:
-            region = [(sid, st) for sid, st, rid in live if rid == emp.region_id]
-            region_states = {_norm(st) for _, st in region if st}
-            partitioned = bool(region_states & platform_states)
-            out[emp.id] = [sid for sid, st in region if not partitioned or _norm(st) in mine]
+            my_regions = regions_of.get(emp.id, set())
+            region = [(sid, st, ct, rid) for sid, st, rid, ct in live if rid in my_regions]
+            states_by_region: dict[uuid.UUID, set[str]] = {}
+            for _, st, _, rid in region:
+                if st:
+                    states_by_region.setdefault(rid, set()).add(_norm(st))
+            partitioned = {rid for rid, sts in states_by_region.items() if sts & platform_states}
+            pool = [(sid, st, ct) for sid, st, ct, rid in region if rid not in partitioned or _norm(st) in mine]
+        add_s, add_c = add_states_of.get(emp.id, set()), add_cities_of.get(emp.id, set())
+        if add_s or add_c:       # places added by hand come on top, whatever the region partition says
+            have = {sid for sid, _, _ in pool}
+            pool += [(sid, st, ct) for sid, st, _, ct in live if sid not in have and (_norm(st) in add_s or _norm(ct) in add_c)]
+        out[emp.id] = [sid for sid, st, ct in pool if _norm(st) not in ex_s and _norm(ct) not in ex_c]
     return out, all_ids

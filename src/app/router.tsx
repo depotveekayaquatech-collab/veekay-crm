@@ -85,6 +85,7 @@ export function AppRoutes() {
         <Route path="/delivery-reports" element={<Require permission="reports.delivery"><PartnerDeliveryReport /></Require>} />
         <Route path="/tickets" element={<RequireAny permissions={["tickets.view", "tickets.manage"]}><TicketsPage /></RequireAny>} />
         <Route path="/bottles" element={<RequireAny permissions={["bottles.view", "bottles.scan", "bottles.manage", "bottles.delete"]}><BottlesPage /></RequireAny>} />
+        <Route path="/logins" element={<Navigate to="/team" replace />} />
         <Route path="/orders" element={<OrdersLayout />}>
           <Route index element={<OrdersIndex><MarkOrdersPage /></OrdersIndex>} />
           <Route path="overview" element={<Require permission="orders.overview"><DailyOverviewPage /></Require>} />

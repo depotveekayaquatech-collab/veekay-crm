@@ -49,17 +49,41 @@ export async function setEmployeePermissions(id: string, codes: string[]): Promi
   );
 }
 
-export async function setEmployeeScope(
-  id: string,
-  platformId: string | null,
-  regionId: string | null,
-): Promise<Employee> {
+export interface ScopeInput {
+  platformId: string | null;
+  /** The main region (kept for single-region callers). */
+  regionId?: string | null;
+  /** Several regions; wins over regionId. */
+  regionIds?: string[];
+  /** States / cities to take out of what the employee sees. Leave out to keep them as they are. */
+  excludedStates?: string[];
+  excludedCities?: string[];
+  /** States / cities given IN ADDITION to the regions (or on their own). */
+  includedStates?: string[];
+  includedCities?: string[];
+}
+
+export async function setEmployeeScope(id: string, scope: ScopeInput): Promise<Employee> {
   return toEmployee(
     await apiRequest<EmployeeWire>(`/assignments/scope/${id}`, {
       method: "PUT",
-      body: { platform_id: platformId, region_id: regionId },
+      body: {
+        platform_id: scope.platformId,
+        region_id: scope.regionId ?? null,
+        region_ids: scope.regionIds,
+        excluded_states: scope.excludedStates,
+        excluded_cities: scope.excludedCities,
+        included_states: scope.includedStates,
+        included_cities: scope.includedCities,
+      },
     }),
   );
+}
+
+export function getLocations(partnerSlug: string, regionIds: string[]): Promise<{ states: string[]; cities: { city: string; state: string }[] }> {
+  const qs = new URLSearchParams({ partner: partnerSlug });
+  regionIds.forEach((r) => qs.append("region_ids", r));
+  return apiRequest(`/assignments/locations?${qs}`);
 }
 
 export function listPermissionGroups(): Promise<PermissionGroup[]> {

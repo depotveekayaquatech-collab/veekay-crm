@@ -103,7 +103,9 @@ class EmployeeRepository:
                 )
             )
         if region_id is not None:
-            base = base.where(User.region_id == region_id)
+            from app.models.employee_scope import EmployeeRegion
+
+            base = base.where(or_(User.region_id == region_id, User.id.in_(select(EmployeeRegion.user_id).where(EmployeeRegion.region_id == region_id))))
         if platform_id is not None:
             base = base.where(User.platform_organization_id == platform_id)
 

@@ -16,8 +16,14 @@ from app.models.test_report import TestReport
 from app.models.cash_purchase import CashPurchase
 from app.models.cash_adjustment import CashAdjustment, CashSyncRecord, CashSyncRun
 from app.models.bottle import Bottle, BottleBatch, BottleScan
+from app.models.external_account import ExternalAccount, ExternalAccountStore
+from app.models.employee_scope import EmployeeExclusion, EmployeeRegion
 
 __all__ = [
+    "EmployeeExclusion",
+    "EmployeeRegion",
+    "ExternalAccount",
+    "ExternalAccountStore",
     "Bottle",
     "BottleBatch",
     "BottleScan",

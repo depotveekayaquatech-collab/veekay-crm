@@ -1,7 +1,7 @@
 """State-assignment + employee-scope routes."""
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -60,6 +60,22 @@ def unassign_state(
     assignment_service.unassign_state(db, user, assignment_id)
 
 
+@router.get(
+    "/locations", dependencies=[Depends(require_permission("assignments.manage"))],
+)
+def locations(
+    partner: str,
+    region_ids: list[uuid.UUID] = Query(default=[]),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """The states and cities inside the chosen regions of a platform: what an employee can be told to skip."""
+    org = db.execute(select(Organization).where(Organization.slug == partner)).scalar_one_or_none()
+    if org is None or org.kind != OrganizationKind.PARTNER.value:
+        return {"states": [], "cities": []}
+    return assignment_service.locations(db, user, org.id, region_ids)
+
+
 @router.put(
     "/scope/{employee_id}", response_model=EmployeeOut,
     dependencies=[Depends(require_permission("assignments.manage"))],
@@ -72,6 +88,8 @@ def set_scope(
 ) -> EmployeeOut:
     employee = employee_service.require_employee(db, user, employee_id)
     assignment_service.set_scope(
-        db, user, employee, platform_id=payload.platform_id, region_id=payload.region_id
+        db, user, employee, platform_id=payload.platform_id, region_id=payload.region_id, region_ids=payload.region_ids,
+        excluded_states=payload.excluded_states, excluded_cities=payload.excluded_cities,
+        included_states=payload.included_states, included_cities=payload.included_cities,
     )
     return employee_service.get_employee(db, user, employee_id)

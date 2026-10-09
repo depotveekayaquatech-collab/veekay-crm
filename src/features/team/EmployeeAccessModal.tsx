@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
+import { ScopePicker } from "@/features/team/ScopePicker";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { useAllStores } from "@/features/stores/useAllStores";
 import { usePartners } from "@/features/stores/useStores";
@@ -28,7 +29,11 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState(employee?.email ?? "");
   const [platformId, setPlatformId] = useState(employee?.platformId ?? "");
-  const [regionId, setRegionId] = useState(employee?.regionId ?? "");
+  const [regionIds, setRegionIds] = useState<string[]>(employee?.regions.map((r) => r.id) ?? []);
+  const [excludedStates, setExcludedStates] = useState<string[]>(employee?.excludedStates ?? []);
+  const [excludedCities, setExcludedCities] = useState<string[]>(employee?.excludedCities ?? []);
+  const [includedStates, setIncludedStates] = useState<string[]>(employee?.includedStates ?? []);
+  const [includedCities, setIncludedCities] = useState<string[]>(employee?.includedCities ?? []);
   const [perms, setPerms] = useState<Set<string>>(
     // New employees start with ticket access for their own region; everything else stays opt-in.
     new Set(employee?.directPermissions ?? ["tickets.view", "tickets.create"]),
@@ -44,7 +49,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
   const regionsFor = (slug: string) => {
     if (!slug) return regions;
     const ids = new Set(stores.filter((s) => s.partnerSlug === slug && s.regionId).map((s) => s.regionId));
-    const scoped = regions.filter((r) => ids.has(r.id) || r.id === employee?.regionId);
+    const scoped = regions.filter((r) => ids.has(r.id) || employee?.regions.some((x) => x.id === r.id));
     return scoped.length ? scoped : regions;
   };
   const regionOptions = useMemo(() => regionsFor(platformSlug), [regions, stores, platformSlug]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -62,21 +67,29 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
     e.preventDefault();
     setError(null);
     try {
-      const region = isEmployeeModel ? null : regionId || null;
+      const picked = isEmployeeModel ? [] : regionIds;
+      const skipS = isEmployeeModel ? [] : excludedStates;
+      const skipC = isEmployeeModel ? [] : excludedCities;
+      const addS = isEmployeeModel ? [] : includedStates;
+      const addC = isEmployeeModel ? [] : includedCities;
       if (employee) {
         await update.mutateAsync({ id: employee.id, input: { full_name: name, email: email || null } });
-        await setScope.mutateAsync({ id: employee.id, platformId: platformId || null, regionId: region });
+        await setScope.mutateAsync({ id: employee.id, platformId: platformId || null, regionIds: picked, excludedStates: skipS, excludedCities: skipC, includedStates: addS, includedCities: addC });
         await setPermissions.mutateAsync({ id: employee.id, codes: [...perms] });
       } else {
-        await create.mutateAsync({
+        const created = await create.mutateAsync({
           employee_code: code,
           full_name: name,
           password,
           email: email || null,
           platform_id: platformId || null,
-          region_id: region,
+          region_id: picked[0] ?? null,
           permission_codes: [...perms],
         });
+        // Several regions or skipped places are saved right after the account exists.
+        if (picked.length > 1 || skipS.length || skipC.length || addS.length || addC.length) {
+          await setScope.mutateAsync({ id: created.id, platformId: platformId || null, regionIds: picked, excludedStates: skipS, excludedCities: skipC, includedStates: addS, includedCities: addC });
+        }
       }
       onClose();
     } catch (err) {
@@ -132,21 +145,32 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
               setPlatformId(id);
               // A region that doesn't belong to the newly chosen platform is cleared.
               const slug = partners.find((p) => p.id === id)?.slug ?? "";
-              if (!regionsFor(slug).some((r) => r.id === regionId)) setRegionId("");
+              const allowed = new Set(regionsFor(slug).map((r) => r.id));
+              setRegionIds((ids) => ids.filter((r) => allowed.has(r)));
             }}
             placeholder="None"
             options={partners.map((p) => ({ value: p.id, label: p.name }))}
           />
-          {!isEmployeeModel && (
-            <Select
-              label="Region"
-              value={regionId}
-              onChange={(e) => setRegionId(e.target.value)}
-              placeholder="None"
-              options={regionOptions.map((r) => ({ value: r.id, label: r.name }))}
-            />
-          )}
         </div>
+        {!isEmployeeModel && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[13px] font-semibold text-gray-700">Regions</p>
+            <ScopePicker
+              platformSlug={platformSlug}
+              regionOptions={regionOptions.map((r) => ({ id: r.id, name: r.name }))}
+              regionIds={regionIds}
+              onRegionIds={setRegionIds}
+              excludedStates={excludedStates}
+              onExcludedStates={setExcludedStates}
+              excludedCities={excludedCities}
+              onExcludedCities={setExcludedCities}
+              includedStates={includedStates}
+              onIncludedStates={setIncludedStates}
+              includedCities={includedCities}
+              onIncludedCities={setIncludedCities}
+            />
+          </div>
+        )}
         {isEmployeeModel && (
           <p className="rounded-md bg-surface-subtle px-3 py-2 text-xs text-gray-500">
             {platformSlug} employees are scoped by <strong>state</strong> — assign states on the

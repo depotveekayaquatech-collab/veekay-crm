@@ -30,6 +30,19 @@ class EmployeeUpdate(BaseModel):
 class EmployeeScope(BaseModel):
     platform_id: uuid.UUID | None = None
     region_id: uuid.UUID | None = None
+    # Several regions for one person (wins over region_id). Leave out to keep region_id behaviour.
+    region_ids: list[uuid.UUID] | None = None
+    # States / cities taken OUT of what the employee sees. Leave out = unchanged, [] = clear.
+    excluded_states: list[str] | None = Field(default=None, max_length=200)
+    excluded_cities: list[str] | None = Field(default=None, max_length=500)
+    # Specific states / cities given IN ADDITION to the regions (or on their own). Skipping always wins.
+    included_states: list[str] | None = Field(default=None, max_length=200)
+    included_cities: list[str] | None = Field(default=None, max_length=500)
+
+
+class RegionRef(BaseModel):
+    id: uuid.UUID
+    name: str
 
 
 class AdminAccess(BaseModel):
@@ -52,6 +65,11 @@ class EmployeeOut(BaseModel):
     platform_slug: str | None = None
     region_id: uuid.UUID | None
     region_name: str | None = None
+    regions: list[RegionRef] = []            # every region covered (the main one first)
+    excluded_states: list[str] = []
+    excluded_cities: list[str] = []
+    included_states: list[str] = []
+    included_cities: list[str] = []
     states: list[str] = []
     roles: list[str] = []
     category: str = "other"        # admin | accounts | blinkit | zepto | other

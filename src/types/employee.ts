@@ -10,6 +10,13 @@ export interface Employee {
   platformSlug: string | null;
   regionId: string | null;
   regionName: string | null;
+  /** Every region covered (the main one first). */
+  regions: { id: string; name: string }[];
+  excludedStates: string[];
+  excludedCities: string[];
+  /** Specific states / cities given on top of the regions (or on their own). */
+  includedStates: string[];
+  includedCities: string[];
   states: string[];
   roles: string[];
   category: "admin" | "accounts" | "partner" | "blinkit" | "zepto" | "other";
@@ -31,6 +38,11 @@ export interface EmployeeWire {
   platform_slug: string | null;
   region_id: string | null;
   region_name: string | null;
+  regions?: { id: string; name: string }[];
+  excluded_states?: string[];
+  excluded_cities?: string[];
+  included_states?: string[];
+  included_cities?: string[];
   states: string[];
   roles: string[];
   category?: "admin" | "accounts" | "partner" | "blinkit" | "zepto" | "other";
@@ -52,6 +64,11 @@ export function toEmployee(w: EmployeeWire): Employee {
     platformSlug: w.platform_slug,
     regionId: w.region_id,
     regionName: w.region_name,
+    regions: w.regions ?? (w.region_id && w.region_name ? [{ id: w.region_id, name: w.region_name }] : []),
+    excludedStates: w.excluded_states ?? [],
+    excludedCities: w.excluded_cities ?? [],
+    includedStates: w.included_states ?? [],
+    includedCities: w.included_cities ?? [],
     states: w.states,
     roles: w.roles,
     category: w.category ?? "other",
