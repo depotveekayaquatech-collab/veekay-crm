@@ -5,12 +5,13 @@ type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-b from-[rgb(var(--btn-a))] to-[rgb(var(--btn-b))] text-white shadow-[0_1px_2px_rgba(11,18,34,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:to-[rgb(var(--btn-c))] hover:shadow-glow active:translate-y-px disabled:opacity-50 disabled:shadow-none",
+    "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 hover:from-brand-500 hover:via-brand-500 hover:to-aqua-500 text-white shadow-sm hover:shadow-glow active:scale-[0.98] border border-white/15 disabled:opacity-50 disabled:shadow-none",
   secondary:
-    "bg-surface text-gray-800 border border-surface-border shadow-sm hover:border-gray-300 hover:bg-surface-subtle active:bg-surface-muted disabled:text-gray-400",
+    "bg-surface text-gray-800 border border-surface-border shadow-xs hover:border-gray-400 hover:bg-surface-subtle active:scale-[0.98] disabled:opacity-50 disabled:text-gray-400",
   danger:
-    "bg-status-danger text-white shadow-sm hover:brightness-95 active:brightness-90 disabled:opacity-50",
-  ghost: "bg-transparent text-gray-600 hover:bg-surface-subtle hover:text-gray-900 active:bg-surface-muted",
+    "bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white shadow-xs active:scale-[0.98] border border-rose-400/20 disabled:opacity-50",
+  ghost:
+    "bg-transparent text-gray-700 hover:bg-surface-subtle hover:text-gray-900 active:scale-[0.98]",
 };
 
 const sizeClasses: Record<Size, string> = {

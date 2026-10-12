@@ -17,6 +17,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, case, false, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.external_activity import TicketAttachment
 from app.models.store import Store
 from app.models.ticket import (
     ACTIVE_STATUSES,
@@ -30,6 +31,7 @@ from app.models.user import User
 from app.repositories.employee_repository import EmployeeRepository
 from app.schemas.common import Page, PageParams
 from app.schemas.ticket import (
+    AttachmentOut,
     Assignee,
     Bucket,
     CategoryCount,
@@ -44,7 +46,7 @@ from app.schemas.ticket import (
     TicketUpdate,
     TrendPoint,
 )
-from app.services import activity_service, assignment_service
+from app.services import activity_service, assignment_service, external_notify, staff_notify
 
 ADMIN, PARTNER, STAFF = "admin", "partner", "staff"
 
@@ -246,12 +248,16 @@ def _detail(db: Session, user: User, kind: str, t: Ticket) -> TicketDetail:
     now = _now()
     base = _out(t, kind, 0, now)
     comments = [
-        CommentOut(id=c.id, author_name=c.author.full_name if c.author else None, body=c.body, event=c.event, created_at=c.created_at)
+        CommentOut(id=c.id, author_name=c.author.full_name if c.author else c.author_label, body=c.body, event=c.event, created_at=c.created_at)
         for c in t.comments
     ]
     return TicketDetail(
         **{**base.model_dump(), "comments_count": sum(1 for c in comments if not c.event)},
         comments=comments,
+        attachments=[
+            AttachmentOut(id=a.id, comment_id=a.comment_id, file_name=a.file_name, content_type=a.content_type, size_bytes=a.size_bytes)
+            for a in db.execute(select(TicketAttachment).where(TicketAttachment.ticket_id == t.id).order_by(TicketAttachment.created_at)).scalars()
+        ],
         assignees=_assignees(db, user, t) if kind == ADMIN else [],
     )
 
@@ -282,6 +288,11 @@ def create_ticket(db: Session, user: User, kind: str, payload: TicketCreate) -> 
         db, actor=user, action="ticket.created", entity_type="ticket", entity_id=ticket.id,
         metadata={"number": ticket.number, "store": store.name, "category": ticket.category, "priority": ticket.priority},
     )
+    if ticket.assigned_to_user_id:
+        staff_notify.notify_users(
+            db, [ticket.assigned_to_user_id], kind="ticket", ref_id=ticket.id, skip=user.id,
+            title=f"Ticket #{ticket.number} assigned to you", body=ticket.title,
+        )
     db.commit()
     return get_ticket(db, user, kind, ticket.id)
 
@@ -306,6 +317,10 @@ def update_ticket(db: Session, user: User, kind: str, ticket_id: uuid.UUID, payl
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't move this ticket to that status.")
         _event(db, t, user, f"Status: {t.status.replace('_', ' ').title()} → {payload.status.replace('_', ' ').title()}")
         t.status = payload.status
+        external_notify.notify_store(
+            db, t.store_id, kind="ticket", ref_id=t.id, title=f"Ticket #{t.number} is now {payload.status.replace('_', ' ').title()}",
+            body=t.title,
+        )
         if payload.status in (TicketStatus.RESOLVED.value, TicketStatus.CLOSED.value):
             t.resolved_at = t.resolved_at or now
         else:
@@ -325,6 +340,10 @@ def update_ticket(db: Session, user: User, kind: str, ticket_id: uuid.UUID, payl
             t.assigned_to_user_id = _check_assignee(db, user, payload.assigned_to_id)
             who = db.get(User, t.assigned_to_user_id)
             _event(db, t, user, f"Assigned to {who.full_name if who else 'someone'}")
+            staff_notify.notify_users(
+                db, [t.assigned_to_user_id], kind="ticket", ref_id=t.id, skip=user.id,
+                title=f"Ticket #{t.number} assigned to you", body=t.title,
+            )
     elif payload.priority or payload.assigned_to_id or payload.unassign:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an admin can change priority or assignment.")
 
@@ -341,6 +360,7 @@ def add_comment(db: Session, user: User, kind: str, ticket_id: uuid.UUID, body: 
     t = _load(db, user, kind, ticket_id)
     db.add(TicketComment(ticket_id=t.id, author_user_id=user.id, body=body.strip()))
     t.updated_at = _now()
+    external_notify.notify_store(db, t.store_id, kind="ticket", ref_id=t.id, title=f"New reply on ticket #{t.number}", body=body.strip())
     db.commit()
     db.expire_all()
     return get_ticket(db, user, kind, ticket_id)

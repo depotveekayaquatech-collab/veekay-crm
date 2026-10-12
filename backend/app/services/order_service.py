@@ -36,7 +36,10 @@ from app.schemas.order import (
     DashboardInsights,
     EmployeeOverviewRow,
     LeaderRow,
+    MarkManyRequest,
+    MarkManyResult,
     MarkRequest,
+    MarkResultItem,
     MyStore,
     OrderCalendar,
     PlatformSummary,
@@ -187,9 +190,15 @@ def mark(db: Session, employee: User, payload: MarkRequest, *, is_admin: bool = 
         raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
 
     _check_order_date(payload.order_date)
+    _write_employee_entry(db, employee, store, payload.order_date, count)
+    db.commit()
+    return get_calendar(db, employee, store.id, payload.order_date.year, payload.order_date.month, is_admin=False)
 
+
+def _write_employee_entry(db: Session, employee: User, store: Store, order_date: date, count: int) -> None:
+    """One employee entry for one store and date (does not commit). 409 if the date is already marked."""
     repo = OrderEntryRepository(db)
-    existing = repo.get(store.id, payload.order_date)
+    existing = repo.get(store.id, order_date)
     if existing is not None and existing.cash_adjustment != existing.bottle_count:
         raise HTTPException(status.HTTP_409_CONFLICT, "This date is already marked and cannot be changed. Ask an admin to correct it.")
     if existing is not None:
@@ -202,17 +211,54 @@ def mark(db: Session, employee: User, payload: MarkRequest, *, is_admin: bool = 
         repo.add(OrderEntry(
             organization_id=employee.organization_id,
             store_id=store.id,
-            order_date=payload.order_date,
+            order_date=order_date,
             bottle_count=count,
             source=EntrySource.EMPLOYEE.value,
             marked_by_user_id=employee.id,
         ))
     activity_service.record(
         db, actor=employee, action="order.marked", entity_type="order_entry", entity_id=store.id,
-        metadata={**_store_meta(store), "order_date": payload.order_date.isoformat(), "bottle_count": count},
+        metadata={**_store_meta(store), "order_date": order_date.isoformat(), "bottle_count": count},
     )
-    db.commit()
-    return get_calendar(db, employee, store.id, payload.order_date.year, payload.order_date.month, is_admin=False)
+
+
+def mark_many(db: Session, employee: User, payload: MarkManyRequest, *, is_admin: bool = False) -> MarkManyResult:
+    """Marks several dates of one store. The store is checked once (a wrong store fails the whole request); every date
+    is then checked and saved on its own, so one bad date (already marked, future, other month) never blocks the rest."""
+    days = [e.order_date for e in payload.entries]
+    if len(set(days)) != len(days):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A date appears more than once.")
+    results: list[MarkResultItem] = []
+    if is_admin:
+        for e in payload.entries:
+            try:
+                admin_set_entry(db, employee, AdminEntryRequest(store_id=payload.store_id, order_date=e.order_date, bottle_count=e.bottle_count))
+                results.append(MarkResultItem(order_date=e.order_date, ok=True))
+            except HTTPException as exc:
+                db.rollback()
+                results.append(MarkResultItem(order_date=e.order_date, ok=False, error=str(exc.detail)))
+    else:
+        store = {s.id: s for s in assignment_service.visible_stores(db, employee)}.get(payload.store_id)
+        if store is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
+        if store.status != StoreStatus.LIVE.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
+        for e in sorted(payload.entries, key=lambda x: x.order_date):
+            try:
+                if not (settings.MIN_BOTTLE_COUNT <= e.bottle_count <= settings.MAX_BOTTLE_COUNT):
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        f"Bottle count must be a whole number from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.",
+                    )
+                _check_order_date(e.order_date)
+                with db.begin_nested():
+                    _write_employee_entry(db, employee, store, e.order_date, e.bottle_count)
+                results.append(MarkResultItem(order_date=e.order_date, ok=True))
+            except HTTPException as exc:
+                results.append(MarkResultItem(order_date=e.order_date, ok=False, error=str(exc.detail)))
+        db.commit()
+    saved = sum(1 for r in results if r.ok)
+    return MarkManyResult(saved=saved, failed=len(results) - saved, results=results)
 
 
 def admin_set_entry(db: Session, admin: User, payload: AdminEntryRequest) -> OrderCalendar:

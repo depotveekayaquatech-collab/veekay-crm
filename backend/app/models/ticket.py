@@ -100,6 +100,8 @@ class TicketComment(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     body: Mapped[str] = mapped_column(Text)
     # A status change recorded as a line in the thread ("Status: OPEN → IN_PROGRESS"); empty for normal comments.
     event: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Who wrote it when there is no staff user behind it (a vendor / POC from the app): "Name (Vendor)".
+    author_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     ticket: Mapped["Ticket"] = relationship(back_populates="comments")
     author: Mapped["User | None"] = relationship()

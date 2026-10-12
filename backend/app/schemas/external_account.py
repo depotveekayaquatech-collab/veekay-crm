@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExternalAccountOut(BaseModel):
@@ -38,3 +38,18 @@ class StoreRef(BaseModel):
 class ExternalAccountDetail(BaseModel):
     account: ExternalAccountOut
     stores: list[StoreRef]
+
+
+class ExternalLoginRequest(BaseModel):
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., max_length=128)
+
+
+class ExternalMe(BaseModel):
+    id: uuid.UUID
+    kind: str
+    email: str
+    full_name: str
+    phone: str | None
+    platforms: list[str]
+    store_count: int

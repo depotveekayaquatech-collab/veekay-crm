@@ -108,8 +108,27 @@ def parse_card_month(value: str | None) -> date | None:
 # signing / public count
 # --------------------------------------------------------------------------
 
+def _candidate_secrets() -> list[bytes]:
+    """All valid secrets for verifying QR signatures:
+    1. Active QR_SIGNING_SECRET (or comma-separated list of active & previous secrets for rotation)
+    2. Fallback to JWT_SECRET_KEY so cards printed before setting QR_SIGNING_SECRET or during key migrations continue to work forever.
+    """
+    candidates: list[bytes] = []
+    if settings.QR_SIGNING_SECRET:
+        for s in settings.QR_SIGNING_SECRET.split(","):
+            s_clean = s.strip()
+            if s_clean:
+                candidates.append(hashlib.sha256(b"qr|" + s_clean.encode()).digest())
+    if settings.JWT_SECRET_KEY:
+        jwt_bytes = hashlib.sha256(b"qr|" + settings.JWT_SECRET_KEY.strip().encode()).digest()
+        if jwt_bytes not in candidates:
+            candidates.append(jwt_bytes)
+    return candidates or [hashlib.sha256(b"qr|default").digest()]
+
+
 def _secret() -> bytes:
-    return hashlib.sha256(b"qr|" + (settings.QR_SIGNING_SECRET or settings.JWT_SECRET_KEY).encode()).digest()
+    """The primary active secret used for signing newly printed cards."""
+    return _candidate_secrets()[0]
 
 
 def sign_store(store_id: uuid.UUID | str) -> str:
@@ -117,11 +136,20 @@ def sign_store(store_id: uuid.UUID | str) -> str:
 
 
 def verify_signature(store_id: uuid.UUID | str, sig: str) -> bool:
-    return hmac.compare_digest(sign_store(store_id), (sig or "").lower())
+    sig_clean = (sig or "").strip().lower()
+    if not sig_clean or len(sig_clean) != 32:
+        return False
+    # Check against all valid secrets (primary, rotated secrets, and legacy fallback)
+    for secret in _candidate_secrets():
+        expected = hmac.new(secret, f"count:{store_id}".encode(), hashlib.sha256).hexdigest()[:32]
+        if hmac.compare_digest(expected, sig_clean):
+            return True
+    return False
 
 
 def qr_url(store_id: uuid.UUID) -> str:
-    return f"{settings.PUBLIC_APP_URL.rstrip('/')}/count?s={store_id}&sig={sign_store(store_id)}"
+    base = settings.PUBLIC_APP_URL.strip().rstrip("/")
+    return f"{base}/count?s={store_id}&sig={sign_store(store_id)}"
 
 
 def _month_total(db: Session, store_id: uuid.UUID, start: date, end: date) -> int:

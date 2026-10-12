@@ -227,10 +227,11 @@ def _brief(doc: ComplianceDocument, today: date, uploader: str | None = None) ->
 
 
 def save_document(
-    db: Session, user: User, store: Store, month: date, kind: str, data: bytes, ext: str, n_files: int = 1,
+    db: Session, user: User | None, store: Store, month: date, kind: str, data: bytes, ext: str, n_files: int = 1,
 ) -> tuple[ComplianceDocument, bool]:
     """Store `data` as the next version of the (store, month, kind) document. Flushes, never commits, and never
-    deletes: the previous file stays in storage. Returns (document, replaced_an_earlier_file)."""
+    deletes: the previous file stays in storage. Returns (document, replaced_an_earlier_file).
+    `user` is None for a vendor / POC upload from the app (the uploader column is then left empty)."""
     doc = db.execute(
         select(ComplianceDocument).where(
             ComplianceDocument.store_id == store.id, ComplianceDocument.month == month, ComplianceDocument.kind == kind
@@ -242,11 +243,11 @@ def save_document(
     fields = dict(
         file_key=key, file_name=f"{store.external_code}_{kind}_{month:%Y-%m}.{ext}", content_type=_CONTENT_TYPES[ext],
         size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), storage_backend=settings.STORAGE_BACKEND,
-        uploaded_by_user_id=user.id,
+        uploaded_by_user_id=user.id if user else None,
     )
     if doc is None:
         doc = ComplianceDocument(
-            organization_id=user.organization_id, store_id=store.id, month=month, kind=kind, **fields,
+            organization_id=store.organization_id, store_id=store.id, month=month, kind=kind, **fields,
             due_date=bill_due_date(month) if kind == DocKind.BILL.value else None,
             status=BillStatus.PENDING.value if kind == DocKind.BILL.value else None,
         )

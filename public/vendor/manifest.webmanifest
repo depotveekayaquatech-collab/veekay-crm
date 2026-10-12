@@ -1,0 +1,15 @@
+{
+  "name": "Veekay Vendor App",
+  "short_name": "Veekay",
+  "description": "Orders, tickets, documents and delivery confirmations for Veekay vendors and store POCs.",
+  "start_url": "/vendor/",
+  "scope": "/vendor/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#2f6fed",
+  "icons": [
+    { "src": "/vendor/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/vendor/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

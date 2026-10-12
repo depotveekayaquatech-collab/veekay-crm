@@ -16,7 +16,8 @@ from app.models.test_report import TestReport
 from app.models.cash_purchase import CashPurchase
 from app.models.cash_adjustment import CashAdjustment, CashSyncRecord, CashSyncRun
 from app.models.bottle import Bottle, BottleBatch, BottleScan
-from app.models.external_account import ExternalAccount, ExternalAccountStore
+from app.models.external_account import ExternalAccount, ExternalAccountStore, ExternalSession
+from app.models.external_activity import BillReminder, DeliveryConfirmation, ExternalDevice, ExternalNotification, StaffDevice, StaffNotification, TicketAttachment
 from app.models.employee_scope import EmployeeExclusion, EmployeeRegion
 
 __all__ = [
@@ -24,6 +25,14 @@ __all__ = [
     "EmployeeRegion",
     "ExternalAccount",
     "ExternalAccountStore",
+    "ExternalSession",
+    "DeliveryConfirmation",
+    "ExternalDevice",
+    "BillReminder",
+    "StaffDevice",
+    "StaffNotification",
+    "ExternalNotification",
+    "TicketAttachment",
     "Bottle",
     "BottleBatch",
     "BottleScan",

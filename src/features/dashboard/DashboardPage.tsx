@@ -35,11 +35,27 @@ import {
 
 type Tone = "brand" | "success" | "warning" | "info";
 
-const toneFill: Record<Tone, string> = {
-  brand: "stat-brand",
-  success: "stat-success",
-  warning: "stat-warning",
-  info: "stat-aqua",
+const toneAccent: Record<Tone, { top: string; iconBg: string; iconColor: string }> = {
+  brand: {
+    top: "from-brand-600 via-brand-500 to-aqua-400",
+    iconBg: "bg-brand-500/10 dark:bg-brand-500/15 ring-1 ring-brand-500/20",
+    iconColor: "text-brand-600 dark:text-brand-400",
+  },
+  success: {
+    top: "from-emerald-600 via-emerald-500 to-teal-400",
+    iconBg: "bg-emerald-500/10 dark:bg-emerald-500/15 ring-1 ring-emerald-500/20",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+  },
+  warning: {
+    top: "from-amber-600 via-amber-500 to-orange-400",
+    iconBg: "bg-amber-500/10 dark:bg-amber-500/15 ring-1 ring-amber-500/20",
+    iconColor: "text-amber-600 dark:text-amber-400",
+  },
+  info: {
+    top: "from-sky-600 via-sky-500 to-blue-400",
+    iconBg: "bg-sky-500/10 dark:bg-sky-500/15 ring-1 ring-sky-500/20",
+    iconColor: "text-sky-600 dark:text-sky-400",
+  },
 };
 
 function StatCard({
@@ -57,22 +73,28 @@ function StatCard({
   tone?: Tone;
   loading?: boolean;
 }) {
+  const t = toneAccent[tone];
   return (
-    <div
-      className={`${toneFill[tone]} relative overflow-hidden rounded-2xl p-5 text-white shadow-md transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-lg`}
-    >
-      <span aria-hidden="true" className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
+    <div className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover">
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${t.top}`}
+      />
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">{label}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
           {loading ? (
-            <Skeleton className="mt-2 h-8 w-16 !bg-white/25" />
+            <Skeleton className="mt-2.5 h-8 w-20" />
           ) : (
-            <p className="mt-1.5 text-[2rem] font-bold leading-none tabular-nums">{typeof value === "number" ? <AnimatedNumber value={value} /> : value}</p>
+            <p className="mt-2 text-[2.2rem] font-extrabold leading-none tracking-tight text-heading tabular-nums">
+              {typeof value === "number" ? <AnimatedNumber value={value} /> : value}
+            </p>
           )}
-          {hint && !loading && <p className="mt-1.5 text-xs text-white/80">{hint}</p>}
+          {hint && !loading && (
+            <p className="mt-2 text-xs font-medium text-gray-500">{hint}</p>
+          )}
         </div>
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.iconBg} ${t.iconColor} shadow-xs transition-transform duration-200 group-hover:scale-105`}>
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
       </div>

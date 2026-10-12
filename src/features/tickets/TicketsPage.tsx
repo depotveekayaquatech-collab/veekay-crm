@@ -51,50 +51,97 @@ function List({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-end gap-3">
-        <SegmentedControl
-          label="Status"
-          value={filters.status}
-          onChange={(v) => set({ status: v })}
-          options={[
-            { value: "active", label: "Active" },
-            { value: "done", label: "Resolved" },
-            { value: "", label: "All" },
-          ]}
-        />
-        {isAdmin && partners.length > 0 && (
-          <SegmentedControl
-            label="Platform"
-            value={filters.partner}
-            onChange={(v) => set({ partner: v, regionId: "" })}
-            options={[{ value: "", label: "All platforms" }, ...partners.map((p) => ({ value: p.slug, label: p.name }))]}
-          />
-        )}
-        {isAdmin && regions.length > 1 && <RegionFilter value={filters.regionId} onChange={(v) => set({ regionId: v })} options={regions} className="sm:w-48 [&_label]:sr-only" />}
-        <div className="w-full sm:w-44 [&_label]:sr-only">
-          <Select label="Category" value={filters.category} onChange={(e) => set({ category: e.target.value })} placeholder="All categories" options={CATEGORIES} />
-        </div>
-        <div className="w-full sm:w-40 [&_label]:sr-only">
-          <Select label="Priority" value={filters.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="All priorities" options={PRIORITIES} />
-        </div>
-        <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search ticket, store, city or vendor" className="w-full sm:ml-auto sm:w-72" />
-      </div>
+      <div className="flex flex-col gap-3.5 rounded-2xl border border-surface-border bg-surface p-4 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl
+              label="Status"
+              value={filters.status}
+              onChange={(v) => set({ status: v })}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "done", label: "Resolved" },
+                { value: "", label: "All" },
+              ]}
+            />
+            {isAdmin && partners.length > 0 && (
+              <SegmentedControl
+                label="Platform"
+                value={filters.partner}
+                onChange={(v) => set({ partner: v, regionId: "" })}
+                options={[{ value: "", label: "All platforms" }, ...partners.map((p) => ({ value: p.slug, label: p.name }))]}
+              />
+            )}
+          </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-        <label className="flex cursor-pointer items-center gap-2">
-          <input type="checkbox" checked={filters.overdue} onChange={(e) => set({ overdue: e.target.checked })} className="accent-brand-500" />
-          Overdue only
-        </label>
-        <label className="flex cursor-pointer items-center gap-2">
-          <input type="checkbox" checked={filters.mine} onChange={(e) => set({ mine: e.target.checked })} className="accent-brand-500" />
-          Raised by or assigned to me
-        </label>
-        {filtered && (
-          <button className="text-sm font-semibold text-brand-600 hover:text-brand-700" onClick={() => set({ ...EMPTY, status: filters.status })}>
-            Clear filters
-          </button>
-        )}
-        <span className="ml-auto text-xs text-gray-400">{isFetching ? "Updating…" : data ? `${data.total} ticket${data.total === 1 ? "" : "s"}` : ""}</span>
+          <SearchBox
+            value={filters.q}
+            onChange={(v) => set({ q: v })}
+            placeholder="Search ticket, store, city…"
+            className="w-full sm:w-72"
+          />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="[&_label]:sr-only">
+            <Select
+              label="Category"
+              value={filters.category}
+              onChange={(e) => set({ category: e.target.value })}
+              placeholder="All categories"
+              options={CATEGORIES}
+            />
+          </div>
+          <div className="[&_label]:sr-only">
+            <Select
+              label="Priority"
+              value={filters.priority}
+              onChange={(e) => set({ priority: e.target.value })}
+              placeholder="All priorities"
+              options={PRIORITIES}
+            />
+          </div>
+          {isAdmin && regions.length > 1 && (
+            <RegionFilter
+              value={filters.regionId}
+              onChange={(v) => set({ regionId: v })}
+              options={regions}
+              className="[&_label]:sr-only"
+            />
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 border-t border-surface-border/60 pt-3 text-sm text-gray-600">
+          <label className="flex cursor-pointer select-none items-center gap-2">
+            <input
+              type="checkbox"
+              checked={filters.overdue}
+              onChange={(e) => set({ overdue: e.target.checked })}
+              className="accent-brand-500 rounded"
+            />
+            <span>Overdue only</span>
+          </label>
+          <label className="flex cursor-pointer select-none items-center gap-2">
+            <input
+              type="checkbox"
+              checked={filters.mine}
+              onChange={(e) => set({ mine: e.target.checked })}
+              className="accent-brand-500 rounded"
+            />
+            <span>Raised by or assigned to me</span>
+          </label>
+          {filtered && (
+            <button
+              className="text-xs font-semibold text-brand-600 hover:text-brand-700"
+              onClick={() => set({ ...EMPTY, status: filters.status })}
+            >
+              Clear filters
+            </button>
+          )}
+          <span className="ml-auto text-xs font-medium text-gray-500">
+            {isFetching ? "Updating…" : data ? `${data.total} ticket${data.total === 1 ? "" : "s"}` : ""}
+          </span>
+        </div>
       </div>
 
       {isLoading && <Skeleton className="h-72" />}
@@ -127,34 +174,39 @@ function List({ isAdmin }: { isAdmin: boolean }) {
                     <tr
                       key={t.id}
                       onClick={() => setOpenId(t.id)}
-                      className={`cursor-pointer border-b border-surface-border transition-colors last:border-0 hover:bg-surface-subtle ${t.isOverdue ? "bg-status-danger-soft/30" : ""}`}
+                      className={`cursor-pointer border-b border-surface-border transition-colors last:border-0 hover:bg-surface-subtle/80 ${t.isOverdue ? "bg-status-danger-soft/20" : ""}`}
                     >
-                      <td className="px-5 py-3" data-label="Ticket">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-400">{TICKET_CODE(t.number)}{t.source === "google" && <Badge tone="info">Google</Badge>}</div>
-                        <div className="max-w-[18rem] truncate font-medium text-gray-900">{t.title}</div>
-                        {t.commentsCount > 0 && <div className="text-xs text-gray-400">{t.commentsCount} comment{t.commentsCount === 1 ? "" : "s"}</div>}
+                      <td className="px-5 py-3.5" data-label="Ticket">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <code className="rounded-md border border-brand-500/20 bg-brand-500/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-brand-600">
+                            {TICKET_CODE(t.number)}
+                          </code>
+                          {t.source === "google" && <Badge tone="info">Google</Badge>}
+                        </div>
+                        <div className="max-w-[18rem] truncate font-semibold text-heading">{t.title}</div>
+                        {t.commentsCount > 0 && <div className="text-xs text-gray-400 mt-0.5">{t.commentsCount} comment{t.commentsCount === 1 ? "" : "s"}</div>}
                       </td>
-                      <td className="px-4 py-3" data-label="Store">
-                        <div className="font-medium text-gray-900">{t.store.name}</div>
-                        <div className="text-xs text-gray-500">{[t.store.regionName, t.store.state, t.store.platformName].filter(Boolean).join(" · ")}</div>
+                      <td className="px-4 py-3.5" data-label="Store">
+                        <div className="font-semibold text-heading">{t.store.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{[t.store.regionName, t.store.state, t.store.platformName].filter(Boolean).join(" · ")}</div>
                       </td>
-                      <td className="px-4 py-3" data-label="Issue">
+                      <td className="px-4 py-3.5" data-label="Issue">
                         <div className="flex flex-wrap gap-1.5">
                           <CategoryBadge category={t.category} />
                           <PriorityBadge priority={t.priority} />
                         </div>
                       </td>
-                      <td className="px-4 py-3" data-label="Status">
+                      <td className="px-4 py-3.5" data-label="Status">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <StatusBadge status={t.status} />
-                          {t.isOverdue && <Badge tone="danger">Overdue</Badge>}
+                          {t.isOverdue && <Badge dot tone="danger">Overdue</Badge>}
                         </div>
                       </td>
-                      <td className="px-4 py-3" data-label="Age / deadline">
-                        <div className="text-gray-700">{timeAgo(t.createdAt)}</div>
-                        {due && <div className={`text-xs ${due.late ? "font-semibold text-status-danger" : "text-gray-500"}`}>{due.text}</div>}
+                      <td className="px-4 py-3.5" data-label="Age / deadline">
+                        <div className="text-gray-700 font-medium">{timeAgo(t.createdAt)}</div>
+                        {due && <div className={`text-xs mt-0.5 ${due.late ? "font-semibold text-status-danger" : "text-gray-500"}`}>{due.text}</div>}
                       </td>
-                      <td className="px-4 py-3 text-gray-700" data-label="Assigned">{t.assignedToName ?? <span className="text-gray-400">—</span>}</td>
+                      <td className="px-4 py-3.5 text-gray-700 font-medium" data-label="Assigned">{t.assignedToName ?? <span className="text-gray-400">—</span>}</td>
                     </tr>
                   );
                 })}

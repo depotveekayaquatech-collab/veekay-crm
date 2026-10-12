@@ -63,8 +63,17 @@ class CommentOut(BaseModel):
     created_at: datetime
 
 
+class AttachmentOut(BaseModel):
+    id: uuid.UUID
+    comment_id: uuid.UUID | None = None
+    file_name: str
+    content_type: str
+    size_bytes: int
+
+
 class TicketDetail(TicketOut):
     comments: list[CommentOut] = []
+    attachments: list[AttachmentOut] = []
     assignees: list[Assignee] = []
 
 

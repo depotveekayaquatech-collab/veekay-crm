@@ -11,6 +11,7 @@ import { listSessions, revokeSession } from "@/services/auth";
 import { describeDevice, timeAgo } from "@/lib/device";
 import { useTheme } from "@/lib/theme";
 import { pushToast } from "@/lib/toast";
+import { IconMoon, IconSun } from "@/components/ui/icons";
 
 function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -44,12 +45,12 @@ function ThemeSwitch() {
         }`}
       >
         <span
-          className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[11px] shadow transition-transform ${
-            dark ? "translate-x-6" : "translate-x-1"
+          className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white shadow transition-transform ${
+            dark ? "translate-x-6 text-slate-900" : "translate-x-1 text-amber-500"
           }`}
           aria-hidden="true"
         >
-          {dark ? "🌙" : "☀️"}
+          {dark ? <IconMoon className="h-3 w-3" /> : <IconSun className="h-3 w-3" />}
         </span>
       </button>
     </div>

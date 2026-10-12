@@ -37,8 +37,59 @@ def _system_actor(db) -> User | None:
     ).scalars().first()
 
 
+def execute_sync(db, actor: User, source: str) -> dict:
+    """One full sync: stores first, then order counts (so a store added by the sheet can get its counts in the same run).
+    Used by the daily 10:00 job (source="scheduled") and by "Sync now" (source="manual"). Records when it ran."""
+    from app.services import activity_service, order_import_service, store_sync_service
+
+    out: dict = {"stores": [], "orders": []}
+    if settings.sheet_sources():
+        out["stores"] = [r.as_dict() for r in store_sync_service.sync_all(db, actor)]
+    if settings.ORDER_SYNC_ENABLED and settings.order_sheet_sources():
+        out["orders"] = [o.as_dict() for o in order_import_service.sync_all(db, actor)]
+    warnings = sum(len(x.get("warnings", [])) for x in out["stores"] + out["orders"])
+    # Bill-due reminders to vendors and POCs ride on the same daily run. A failure here never undoes the sync.
+    reminders = 0
+    try:
+        from app.services import reminder_service
+
+        reminders = reminder_service.send_bill_reminders(db)["reminders"]
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        log.exception("bill reminders failed")
+    activity_service.record(
+        db, actor=actor, action="sheet_sync.run", entity_type="sync", entity_id="sheets",
+        metadata={"source": source, "stores": len(out["stores"]), "orders": len(out["orders"]), "warnings": warnings, "reminders": reminders},
+    )
+    db.commit()
+    return out
+
+
+def try_lock(conn) -> bool:
+    return bool(conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": _SYNC_LOCK_KEY}).scalar())
+
+
+def unlock(conn) -> None:
+    conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _SYNC_LOCK_KEY})
+
+
+def next_run_at():
+    """The next scheduled daily run, as a timezone-aware datetime (None when the job is switched off)."""
+    from datetime import datetime, timedelta
+
+    if not settings.STORE_SYNC_ENABLED:
+        return None
+    try:
+        tz = ZoneInfo(settings.STORE_SYNC_TIMEZONE)
+    except Exception:  # noqa: BLE001
+        tz = ZoneInfo("UTC")
+    now = datetime.now(tz)
+    run = now.replace(hour=settings.STORE_SYNC_HOUR, minute=settings.STORE_SYNC_MINUTE, second=0, microsecond=0)
+    return run if run > now else run + timedelta(days=1)
+
+
 def run_daily_store_sync() -> None:
-    from app.services import order_import_service, store_sync_service
+    from app.services import order_import_service, store_sync_service  # noqa: F401
 
     db = SessionLocal()
     # Session-level locks belong to one connection, so hold a dedicated one (the ORM session commits and
@@ -55,20 +106,13 @@ def run_daily_store_sync() -> None:
         if actor is None:
             log.warning("store sync skipped: no admin user to attribute it to")
             return
-        if settings.sheet_sources():
-            for r in store_sync_service.sync_all(db, actor):
+        result = execute_sync(db, actor, "scheduled")
+        for kind in ("stores", "orders"):
+            for x in result[kind]:
                 log.info(
-                    "store sync [%s]: +%d new, %d updated, %d unchanged (%d rows)%s",
-                    r.platform, r.created, r.updated, r.unchanged, r.rows_read,
-                    f" — {len(r.warnings)} warnings" if r.warnings else "",
-                )
-        # Orders after stores, so a store added by the sheet above can receive its counts in the same run.
-        if settings.ORDER_SYNC_ENABLED and settings.order_sheet_sources():
-            for o in order_import_service.sync_all(db, actor):
-                log.info(
-                    "order sync [%s]: +%d new, %d updated, %d unchanged (%d rows)%s",
-                    o.platform, o.created, o.updated, o.unchanged, o.rows_read,
-                    f" — {len(o.warnings)} warnings" if o.warnings else "",
+                    "%s sync [%s]: +%d new, %d updated, %d unchanged (%d rows)%s",
+                    kind[:-1], x.get("platform"), x.get("created", 0), x.get("updated", 0), x.get("unchanged", 0), x.get("rows_read", 0),
+                    f" — {len(x['warnings'])} warnings" if x.get("warnings") else "",
                 )
     except Exception:  # noqa: BLE001 — a scheduled job must never crash the worker
         log.exception("daily store sync failed")
@@ -87,10 +131,10 @@ def start() -> None:
     global _scheduler
     if _scheduler is not None:
         return
-    has_sheets = bool(settings.sheet_sources()) or (settings.ORDER_SYNC_ENABLED and bool(settings.order_sheet_sources()))
-    if not (settings.STORE_SYNC_ENABLED and has_sheets):
-        log.info("sheet sync scheduler not started (disabled or no sheets configured)")
+    if not settings.STORE_SYNC_ENABLED:
+        log.info("daily sync scheduler not started (disabled)")
         return
+    # Started even with no sheets configured: the daily run also sends the bill-due reminders.
 
     try:
         tz = ZoneInfo(settings.STORE_SYNC_TIMEZONE)

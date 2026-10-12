@@ -58,127 +58,124 @@
     color-scheme: light;
   }
   html.dark {
-    --gray-50: 20 25 49;
-    --gray-100: 28 34 66;
-    --gray-200: 40 47 86;
-    --gray-300: 74 82 128;
-    --gray-400: 112 122 160;
-    --gray-500: 154 163 196;
-    --gray-600: 182 190 216;
-    --gray-700: 208 214 232;
-    --gray-800: 228 232 244;
-    --gray-900: 244 246 252;
-    --brand-50: 38 28 74;
-    --brand-100: 52 38 104;
-    --brand-200: 80 56 150;
-    --brand-300: 205 150 248;
-    --brand-400: 186 110 244;
-    --brand-500: 152 92 238;
-    --brand-600: 200 160 250;
-    --brand-700: 222 192 253;
-    --brand-800: 236 216 254;
-    --brand-900: 246 236 255;
-    --aqua-50: 14 44 62;
-    --aqua-100: 16 62 84;
-    --aqua-200: 120 226 232;
-    --aqua-300: 70 214 222;
-    --aqua-400: 34 196 206;
-    --aqua-500: 20 170 186;
-    --aqua-600: 90 218 226;
-    --aqua-700: 140 232 238;
-    --surface: 24 29 56;
-    --surface-subtle: 15 19 40;
-    --surface-muted: 33 39 74;
-    --surface-border: 44 52 94;
-    --heading: 246 247 253;
-    --success: 45 212 170;
-    --success-soft: 16 58 56;
-    --warning: 245 180 80;
-    --warning-soft: 64 46 22;
-    --danger: 255 107 138;
-    --danger-soft: 70 26 48;
-    --info: 98 210 235;
-    --info-soft: 20 52 76;
-    --neutral: 154 163 196;
-    --ink-950: 9 12 30;
-    --ink-900: 14 18 42;
-    --ink-800: 20 25 56;
-    --ink-700: 28 35 74;
-    --ink-600: 42 52 100;
-    --btn-a: 200 100 240;
-    --btn-b: 132 92 240;
-    --btn-c: 108 74 214;
+    --gray-50: 17 24 39;
+    --gray-100: 24 33 54;
+    --gray-200: 42 55 84;
+    --gray-300: 160 174 200;
+    --gray-400: 188 200 220;
+    --gray-500: 209 218 233;
+    --gray-600: 226 232 242;
+    --gray-700: 241 245 250;
+    --gray-800: 248 250 252;
+    --gray-900: 255 255 255;
+    --brand-50: 15 32 67;
+    --brand-100: 22 47 100;
+    --brand-200: 30 68 145;
+    --brand-300: 59 130 246;
+    --brand-400: 96 165 250;
+    --brand-500: 37 99 235;
+    --brand-600: 96 165 250;
+    --brand-700: 147 197 253;
+    --brand-800: 191 219 254;
+    --brand-900: 239 246 255;
+    --aqua-50: 12 38 54;
+    --aqua-100: 14 55 78;
+    --aqua-200: 20 88 122;
+    --aqua-300: 34 211 238;
+    --aqua-400: 56 189 248;
+    --aqua-500: 14 165 233;
+    --aqua-600: 56 189 248;
+    --aqua-700: 125 211 252;
+    --surface: 17 24 39;
+    --surface-subtle: 11 15 26;
+    --surface-muted: 27 38 62;
+    --surface-border: 37 51 80;
+    --heading: 255 255 255;
+    --success: 52 211 153;
+    --success-soft: 6 78 59;
+    --warning: 251 191 36;
+    --warning-soft: 120 53 15;
+    --danger: 248 113 113;
+    --danger-soft: 127 29 29;
+    --info: 56 189 248;
+    --info-soft: 12 74 110;
+    --neutral: 160 174 200;
+    --ink-950: 7 10 18;
+    --ink-900: 11 15 26;
+    --ink-800: 17 24 39;
+    --ink-700: 26 37 62;
+    --ink-600: 38 52 86;
+    --btn-a: 37 99 235;
+    --btn-b: 29 78 216;
+    --btn-c: 30 64 175;
     color-scheme: dark;
   }
 
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    /* Root size drives every rem-based Tailwind size + spacing token, so
-       one bump here scales the whole UI up proportionally. */
-    font-size: 17px;
+    font-size: 15.5px;
   }
 
   @media (max-width: 640px) {
     html {
-      font-size: 16px;
+      font-size: 15px;
     }
   }
 
   body {
     background-color: rgb(var(--surface-subtle));
-    background-image: radial-gradient(1000px 420px at 100% -10%, rgba(47,111,237,0.07), transparent 60%),
-      radial-gradient(800px 380px at 0% -12%, rgba(42,169,189,0.08), transparent 60%);
+    background-image: radial-gradient(1100px 480px at 100% -10%, rgba(37,99,235,0.06), transparent 60%),
+      radial-gradient(900px 420px at 0% -12%, rgba(14,165,233,0.06), transparent 60%);
     background-attachment: fixed;
     color: rgb(var(--gray-900));
-    letter-spacing: -0.005em;
+    letter-spacing: -0.01em;
     font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Consistent, visible keyboard focus everywhere — never rely on the
-     browser default outline, which is invisible on some controls. */
+  /* Consistent, visible keyboard focus everywhere */
   :focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px rgb(var(--surface-subtle)), 0 0 0 4px rgb(var(--brand-500));
   }
 
   html.dark body {
-    background-image: radial-gradient(1000px 460px at 100% -10%, rgba(176,98,240,0.14), transparent 60%),
-      radial-gradient(800px 420px at 0% -12%, rgba(34,196,206,0.12), transparent 60%);
+    background-image: radial-gradient(1100px 500px at 100% -10%, rgba(37,99,235,0.12), transparent 60%),
+      radial-gradient(900px 450px at 0% -12%, rgba(14,165,233,0.10), transparent 60%);
   }
 
   ::selection {
-    background-color: #dde7ff;
-    color: #1a336a;
+    background-color: #dbeafe;
+    color: #1e3a8a;
   }
 
-  /* Quieter scrollbars so dense tables/lists don't feel noisy. */
+  /* Sleek, unobtrusive scrollbars */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #c9cedc transparent;
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
   }
   *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   *::-webkit-scrollbar-thumb {
-    background-color: #c9cedc;
+    background-color: rgba(148, 163, 184, 0.35);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background-color: #98a0b5;
+    background-color: rgba(148, 163, 184, 0.6);
     background-clip: content-box;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-surface-border bg-surface shadow-card;
+    @apply rounded-xl border border-surface-border bg-surface shadow-card transition-all duration-200;
   }
   .tile {
     position: relative;
@@ -189,25 +186,26 @@
     position: absolute;
     inset: 0 0 auto 0;
     height: 3px;
-    background: var(--tile, #2f6fed);
+    background: var(--tile, #2563eb);
   }
-  .tile-brand { --tile: linear-gradient(90deg, #2f6fed, #5b88f6); }
-  html.dark .tile-brand { --tile: linear-gradient(90deg, #c864f0, #845cf0); }
-  html.dark .tile-aqua { --tile: linear-gradient(90deg, #19c3b8, #4a7cf0); }
-  html.dark .tile-success { --tile: linear-gradient(90deg, #12b886, #2dd4aa); }
-  html.dark .tile-warning { --tile: linear-gradient(90deg, #f2a03d, #e8683f); }
-  /* Filled KPI cards: white text on a diagonal gradient. */
-  .stat-brand { background-image: linear-gradient(135deg, #2f6fed, #5b88f6); }
-  .stat-aqua { background-image: linear-gradient(135deg, #0e8ea4, #2aa9bd); }
-  .stat-success { background-image: linear-gradient(135deg, #0f7b57, #2f9f78); }
-  .stat-warning { background-image: linear-gradient(135deg, #c9821a, #e0a032); }
-  html.dark .stat-brand { background-image: linear-gradient(135deg, #c864f0, #845cf0); }
-  html.dark .stat-aqua { background-image: linear-gradient(135deg, #19c3b8, #4a7cf0); }
-  html.dark .stat-success { background-image: linear-gradient(135deg, #12b886, #0f8f6c); }
-  html.dark .stat-warning { background-image: linear-gradient(135deg, #f2a03d, #e8683f); }
-  .tile-aqua { --tile: linear-gradient(90deg, #0e8ea4, #2aa9bd); }
-  .tile-success { --tile: linear-gradient(90deg, #0f7b57, #34a77e); }
-  .tile-warning { --tile: linear-gradient(90deg, #d99a2b, #ebb952); }
+  .tile-brand { --tile: linear-gradient(90deg, #2563eb, #38bdf8); }
+  .tile-aqua { --tile: linear-gradient(90deg, #0284c7, #38bdf8); }
+  .tile-success { --tile: linear-gradient(90deg, #059669, #34d399); }
+  .tile-warning { --tile: linear-gradient(90deg, #d97706, #fbbf24); }
+  html.dark .tile-brand { --tile: linear-gradient(90deg, #3b82f6, #38bdf8); }
+  html.dark .tile-aqua { --tile: linear-gradient(90deg, #0284c7, #38bdf8); }
+  html.dark .tile-success { --tile: linear-gradient(90deg, #10b981, #34d399); }
+  html.dark .tile-warning { --tile: linear-gradient(90deg, #f59e0b, #fbbf24); }
+
+  /* Filled KPI cards: modern executive gradient cards */
+  .stat-brand { background-image: linear-gradient(135deg, #1d4ed8, #2563eb); }
+  .stat-aqua { background-image: linear-gradient(135deg, #0369a1, #0284c7); }
+  .stat-success { background-image: linear-gradient(135deg, #047857, #059669); }
+  .stat-warning { background-image: linear-gradient(135deg, #b45309, #d97706); }
+  html.dark .stat-brand { background-image: linear-gradient(135deg, #1e3a8a, #1d4ed8); }
+  html.dark .stat-aqua { background-image: linear-gradient(135deg, #0c4a6e, #0369a1); }
+  html.dark .stat-success { background-image: linear-gradient(135deg, #064e3b, #047857); }
+  html.dark .stat-warning { background-image: linear-gradient(135deg, #78350f, #b45309); }
   h1, h2, h3 {
     letter-spacing: -0.02em;
     text-wrap: balance;

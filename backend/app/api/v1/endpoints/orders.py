@@ -17,6 +17,8 @@ from app.schemas.order import (
     AdminEntryRequest,
     DailyOverview,
     DashboardInsights,
+    MarkManyRequest,
+    MarkManyResult,
     MarkRequest,
     MyStore,
     OrderCalendar,
@@ -87,6 +89,20 @@ def mark(
     db: Session = Depends(get_db),
 ) -> OrderCalendar:
     return order_service.mark(db, user, payload, is_admin=_is_admin(perms))
+
+
+@router.post(
+    "/mark-many", response_model=MarkManyResult,
+    dependencies=[Depends(require_permission("orders.mark"))],
+)
+def mark_many(
+    payload: MarkManyRequest,
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MarkManyResult:
+    """Several dates of one store with a count each, in one request. Each date is checked on its own (see the per-date results)."""
+    return order_service.mark_many(db, user, payload, is_admin=_is_admin(perms))
 
 
 @router.patch(

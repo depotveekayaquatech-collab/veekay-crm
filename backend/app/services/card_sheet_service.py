@@ -189,14 +189,23 @@ def _year_for(day: int, month: int, today: date) -> int | None:
     return None
 
 
-def _header_date(raw: object, today: date) -> date | None:
-    """A column header that is a date: '1-Oct', '01-Oct-2026', 'Oct 1', '2026-10-01', '1/10', an Excel date ..."""
+def _header_date(raw: object, today: date, month: date | None = None) -> date | None:
+    """A column header that is a date: '1-Oct', '01-Oct-2026', 'Oct 1', '2026-10-01', '1/10', an Excel date ...
+    With a chosen `month`, a bare day number ('1', 'Day 2', '3rd') is a day of that month, and a header that names
+    the chosen month without a year ('4-Oct') takes the chosen month's year."""
     text = str(raw or "").strip()
     if not text:
         return None
     full = _parse_date(text)
     if full:
         return full
+    if month is not None:
+        bare = re.match(r"^(?:day\s*)?(\d{1,2})(?:st|nd|rd|th)?$", text, re.IGNORECASE)
+        if bare:
+            try:
+                return date(month.year, month.month, int(bare.group(1)))
+            except ValueError:
+                return None
     m = re.match(r"^(\d{1,2})[\s\-/.]*([A-Za-z]{3,9})\.?(?:[\s\-/.,]*(\d{2,4}))?$", text)
     day = mon = year = None
     if m:
@@ -211,7 +220,12 @@ def _header_date(raw: object, today: date) -> date | None:
                 day, mon, year = int(m.group(1)), int(m.group(2)), None
     if not (day and mon and 1 <= day <= 31 and 1 <= mon <= 12):
         return None
-    y = (2000 + int(year) if year and len(year) == 2 else int(year)) if year else _year_for(day, mon, today)
+    if year:
+        y = 2000 + int(year) if len(year) == 2 else int(year)
+    elif month is not None and mon == month.month:
+        y = month.year
+    else:
+        y = _year_for(day, mon, today)
     try:
         return date(y, mon, day) if y else None
     except ValueError:
@@ -229,7 +243,21 @@ class _Layout:
     count_col: int | None
 
 
-def _find_layout(grid: list[list[str]], today: date) -> _Layout | None:
+def _content_store_col(grid: list[list[str]], header_row: int, skip: set[int], known: set[str]) -> int | None:
+    """No column is called 'Outlet ID' / 'Outlet Name'? Find the column whose cells are mostly known stores."""
+    sample = [row for row in grid[header_row + 1: header_row + 81] if any(c.strip() for c in row)]
+    best, best_hits = None, 0
+    for i in range(max((len(r) for r in sample), default=0)):
+        if i in skip:
+            continue
+        cells = [r[i].strip() for r in sample if i < len(r) and r[i].strip()]
+        hits = sum(1 for c in cells if _alnum(c) in known)
+        if hits >= 2 and hits >= 0.3 * len(cells) and hits > best_hits:
+            best, best_hits = i, hits
+    return best
+
+
+def _find_layout(grid: list[list[str]], today: date, month: date | None = None, known: set[str] | None = None) -> _Layout | None:
     """Looks for the header row in the first 25 rows (sheets often have a title or blank rows above it)."""
     for r, row in enumerate(grid[:25]):
         heads = [_norm_header(c) for c in row]
@@ -240,11 +268,16 @@ def _find_layout(grid: list[list[str]], today: date) -> _Layout | None:
                     return heads.index(alias)
             return None
 
+        days = [(i, d) for i, c in enumerate(row) if (d := _header_date(c, today, month)) is not None]
+        date_col, count_col = find("date"), find("count")
         code, name = find("code"), find("name")
         if code is None and name is None:
-            continue
-        days = [(i, d) for i, c in enumerate(row) if (d := _header_date(c, today)) is not None]
-        date_col, count_col = find("date"), find("count")
+            # Anything that identifies the store will do: look at what the columns hold.
+            if known and (days or (date_col is not None and count_col is not None)):
+                skip = {i for i, _ in days} | {c for c in (date_col, count_col) if c is not None}
+                code = _content_store_col(grid, r, skip, known)
+            if code is None:
+                continue
         if len(days) >= 1 and not (date_col is not None and count_col is not None and len(days) < 3):
             return _Layout(r, code, name, find("platform"), days, None, None)
         if date_col is not None and count_col is not None:
@@ -252,30 +285,53 @@ def _find_layout(grid: list[list[str]], today: date) -> _Layout | None:
     return None
 
 
-def parse_sheet(db: Session, user: User, filename: str, content: bytes) -> Parsed:
-    today = date.today()
-    layout, grid = None, []
-    for g in _grids(filename, content):
-        layout = _find_layout(g, today)
-        if layout:
-            grid = g
-            break
-    if layout is None:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Couldn't find the header row. It needs a store column (Outlet ID or Outlet Name) and either one column per "
-            "day (like 1-Oct, 2-Oct ...) or a date column plus a filled-bottles column.",
-        )
+def _alnum(text: str) -> str:
+    """Letters and digits only, lower case: 'SS Bhopal - Kotra (ES12)' and 'ss bhopal kotra es12' are the same."""
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
 
+
+def parse_month(value: str | None) -> date | None:
+    """'2026-10' -> 2026-10-01; empty -> None (use whatever months the sheet has)."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    m = re.fullmatch(r"(\d{4})-(0[1-9]|1[0-2])", text)
+    if not m:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Month must look like 2026-10.")
+    return date(int(m.group(1)), int(m.group(2)), 1)
+
+
+def parse_sheet(db: Session, user: User, filename: str, content: bytes, month: date | None = None) -> Parsed:
+    """`month`: only that month's entries are read; day-number columns ('1', '2' ...) are days of it. None = every date in the sheet."""
+    today = date.today()
     stores = db.execute(
         select(Store).options(joinedload(Store.region), joinedload(Store.partner_organization))
         .where(Store.organization_id == user.organization_id)
     ).unique().scalars().all()
     by_code: dict[str, list[Store]] = defaultdict(list)
     by_name: dict[str, list[Store]] = defaultdict(list)
+    by_key: dict[str, list[Store]] = defaultdict(list)            # code or name with only letters and digits
     for st in stores:
         by_code[st.external_code.strip().lower()].append(st)
         by_name[" ".join(st.name.lower().split())].append(st)
+        for k in {_alnum(st.external_code), _alnum(st.name)}:
+            if k:
+                by_key[k].append(st)
+    known = set(by_key)
+
+    layout, grid = None, []
+    for g in _grids(filename, content):
+        layout = _find_layout(g, today, month, known)
+        if layout:
+            grid = g
+            break
+    if layout is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Couldn't find the header row. It needs a column that identifies the store (Outlet ID, Outlet Name or similar) "
+            "and either one column per day (like 1-Oct, 2-Oct ... or 1, 2, 3 with a month chosen) or a date column plus a "
+            "filled-bottles column.",
+        )
 
     def at(row: list[str], i: int | None) -> str:
         return row[i].strip() if i is not None and i < len(row) else ""
@@ -293,8 +349,28 @@ def parse_sheet(db: Session, user: User, filename: str, content: bytes) -> Parse
     cards: dict[tuple[uuid.UUID, date], SheetCard] = {}
     unmatched: list[dict] = []
     warnings: list[str] = []
-    dup_dates = ignored_cells = rows_read = 0
+    dup_dates = ignored_cells = rows_read = outside_month = 0
     seen_months: set[date] = set()
+    day_cols = {i for i, _ in layout.wide_days} | {c for c in (layout.date_col, layout.count_col) if c is not None}
+
+    def find_stores(row: list[str], code: str, name_raw: str) -> list[Store]:
+        """Whatever identifies the store: Outlet ID, then name, then the same with punctuation / spacing ignored,
+        and finally any other cell of the row that is a known store code or name."""
+        for found in (
+            by_code.get(code.lower(), []) if code else [],
+            by_name.get(" ".join(name_raw.lower().split()), []) if name_raw else [],
+            by_key.get(_alnum(code), []) if code else [],
+            by_key.get(_alnum(name_raw), []) if name_raw else [],
+        ):
+            if found:
+                return found
+        hits: dict[uuid.UUID, Store] = {}
+        for i, cell in enumerate(row):
+            if i in day_cols or i == layout.code or i == layout.name or len(cell.strip()) < 3:
+                continue
+            for st in by_key.get(_alnum(cell), []):
+                hits[st.id] = st
+        return list(hits.values())
 
     for n, row in enumerate(grid[layout.header_row + 1:], start=layout.header_row + 2):
         if not any(c.strip() for c in row):
@@ -302,15 +378,12 @@ def parse_sheet(db: Session, user: User, filename: str, content: bytes) -> Parse
         code, name_raw = at(row, layout.code), at(row, layout.name)
         if _norm_header(code) in ("total", "grandtotal") or _norm_header(name_raw) in ("total", "grandtotal"):
             continue                                                  # a totals line at the bottom of a sheet
-        if not code and not name_raw:
-            continue
-        rows_read += 1
-        label = code or name_raw
         plat = at(row, layout.platform).lower()
-
-        matches = by_code.get(code.lower(), []) if code else []
-        if not matches and name_raw:
-            matches = by_name.get(" ".join(name_raw.lower().split()), [])
+        matches = find_stores(row, code, name_raw)
+        if not matches and not code and not name_raw and not any(c.strip() for i, c in enumerate(row) if i in day_cols):
+            continue                                                  # a note or stray cell: no store, no numbers
+        rows_read += 1
+        label = code or name_raw or next((c.strip() for i, c in enumerate(row) if i not in day_cols and c.strip()), f"row {n}")
         if plat:
             matches = [m for m in matches if m.partner_organization and m.partner_organization.slug.lower() == plat]
         if not matches:
@@ -324,7 +397,8 @@ def parse_sheet(db: Session, user: User, filename: str, content: bytes) -> Parse
         if layout.wide_days:
             cells = [(d, at(row, i)) for i, d in layout.wide_days]
         else:
-            d = _parse_date(at(row, layout.date_col))
+            raw_date = at(row, layout.date_col)
+            d = _parse_date(raw_date) or (_header_date(raw_date, today, month) if month else None)
             if d is None:
                 unmatched.append({"row": n, "store": label, "reason": "The date isn't readable."})
                 continue
@@ -336,13 +410,20 @@ def parse_sheet(db: Session, user: User, filename: str, content: bytes) -> Parse
             if count < 0:
                 ignored_cells += 1
                 continue
-            month = date(d.year, d.month, 1)
-            seen_months.add(month)
-            card = cards.setdefault((store.id, month), SheetCard(store, month))
+            if month is not None and (d.year, d.month) != (month.year, month.month):
+                outside_month += 1
+                continue
+            card_month = date(d.year, d.month, 1)
+            seen_months.add(card_month)
+            card = cards.setdefault((store.id, card_month), SheetCard(store, card_month))
             if d in card.entries:
                 dup_dates += 1
             card.entries[d] = card.entries.get(d, 0) + count
 
+    if month is not None and outside_month:
+        warnings.append(f"{outside_month} value(s) belong to other months and were ignored; only {card_service.month_label(month)} is used.")
+    if month is not None and not cards and rows_read:
+        warnings.append(f"Nothing in the sheet falls in {card_service.month_label(month)}. Check the month you chose.")
     if dup_dates:
         warnings.append(f"{dup_dates} store/date value(s) appeared more than once; their counts were added together.")
     if ignored_cells:

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_permissions, get_current_user, require_permission
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.services import card_service
@@ -43,6 +44,8 @@ class VendorsOut(BaseModel):
     vendors: list[VendorOut]
     regions: list[RegionOut] = []
     months: list[MonthOption]
+    public_app_url: str = Field(default="")
+    is_public_app_url_production_ready: bool = Field(default=True)
 
 
 class ZipRequest(BaseModel):
@@ -78,10 +81,17 @@ def vendors(
     db: Session = Depends(get_db),
 ) -> VendorsOut:
     """Vendors (with store counts) among the stores you can print cards for, and the months a card can be filled for."""
+    is_prod_ready = not (
+        "localhost" in settings.PUBLIC_APP_URL
+        or "127.0.0.1" in settings.PUBLIC_APP_URL
+        or not settings.PUBLIC_APP_URL.startswith("https://")
+    )
     return VendorsOut(
         vendors=[VendorOut(**v) for v in card_service.list_vendors(db, user, is_admin=_is_admin(perms), partner=partner, region=region, q=q)],
         regions=[RegionOut(**r) for r in card_service.list_regions(db, user, is_admin=_is_admin(perms), partner=partner)],
         months=[MonthOption(**m) for m in card_service.available_months()],
+        public_app_url=settings.PUBLIC_APP_URL,
+        is_public_app_url_production_ready=is_prod_ready,
     )
 
 

@@ -12,7 +12,7 @@ const STATUS: Record<DayStatus, { label: string; tone: "success" | "info" | "war
 
 export function StatusBadge({ status }: { status: DayStatus }) {
   const s = STATUS[status];
-  return <Badge tone={s.tone}>{s.label}</Badge>;
+  return <Badge dot tone={s.tone}>{s.label}</Badge>;
 }
 
 function km(m: number): string {
@@ -75,11 +75,13 @@ export function CategoryChips({
     <button
       key={id}
       onClick={() => onChange(id)}
-      className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-        value === id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+        value === id
+          ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs"
+          : "bg-surface text-gray-700 ring-1 ring-surface-border hover:bg-surface-subtle hover:text-gray-900"
       }`}
     >
-      {label} <span className={value === id ? "text-white/70" : "text-gray-400"}>{n}</span>
+      {label} <span className={value === id ? "ml-1 font-mono text-[11px] text-white/90" : "ml-1 font-mono text-[11px] text-gray-500"}>{n}</span>
     </button>
   );
   return (

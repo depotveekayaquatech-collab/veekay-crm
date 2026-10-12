@@ -33,6 +33,8 @@ _DUMMY_HASH = pwd_context.hash("not-a-real-password")
 class TokenType(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
+    EXT_ACCESS = "ext_access"      # vendor / POC app tokens: a different type, so they never work on CRM routes (and vice versa)
+    EXT_REFRESH = "ext_refresh"
 
 
 def hash_password(plain_password: str) -> str:
@@ -117,6 +119,18 @@ def create_access_token(user_id: uuid.UUID, family_id: uuid.UUID) -> str:
 def create_refresh_token(user_id: uuid.UUID, family_id: uuid.UUID, jti: uuid.UUID) -> str:
     return _create_token(
         user_id, TokenType.REFRESH, timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS), family=family_id, jti=jti
+    )
+
+
+def create_external_access_token(account_id: uuid.UUID, family_id: uuid.UUID) -> str:
+    return _create_token(
+        account_id, TokenType.EXT_ACCESS, timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), family=family_id
+    )
+
+
+def create_external_refresh_token(account_id: uuid.UUID, family_id: uuid.UUID, jti: uuid.UUID) -> str:
+    return _create_token(
+        account_id, TokenType.EXT_REFRESH, timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS), family=family_id, jti=jti
     )
 
 

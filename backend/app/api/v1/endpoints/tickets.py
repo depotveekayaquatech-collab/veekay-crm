@@ -1,11 +1,13 @@
 """Ticket routes — thin wrappers over ticket_service."""
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_permissions, get_current_user, get_page_params
+from app.core import storage
 from app.db.session import get_db
+from app.models.external_activity import TicketAttachment
 from app.models.user import User
 from app.schemas.common import Page, PageParams
 from app.schemas.ticket import (
@@ -112,3 +114,23 @@ def add_comment(
 ) -> TicketDetail:
     kind = _kind(perms, user, db, need=("tickets.view", "tickets.manage"))
     return ticket_service.add_comment(db, user, kind, ticket_id, payload.body)
+
+
+@router.get("/{ticket_id}/attachments/{attachment_id}")
+def attachment(
+    ticket_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """A photo on a ticket the caller is allowed to open (same access rule as the ticket itself)."""
+    kind = _kind(perms, user, db, need=("tickets.view", "tickets.manage"))
+    ticket_service.get_ticket(db, user, kind, ticket_id)  # 403/404 exactly as for the ticket
+    a = db.get(TicketAttachment, attachment_id)
+    if a is None or a.ticket_id != ticket_id or not storage.exists(a.file_key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo not found.")
+    return Response(
+        content=storage.read(a.file_key), media_type=a.content_type,
+        headers={"Content-Disposition": "inline", "Cache-Control": "private, no-store"},
+    )

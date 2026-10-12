@@ -8,19 +8,25 @@ from app.api.v1.endpoints import (
     bottles,
     cards,
     cash_adjustments,
+    client_errors,
     card_sheet,
     cash_purchases,
     external_accounts,
+    external_actions,
+    external_data,
+    external_portal,
     compliance,
     employees,
     health,
     integrations,
+    my_notifications,
     orders,
     partner,
     partners,
     permissions,
     regions,
     stores,
+    sync,
     test_reports,
     tickets,
 )
@@ -49,3 +55,9 @@ api_router.include_router(cash_adjustments.router)
 api_router.include_router(bottles.router)
 api_router.include_router(card_sheet.router)
 api_router.include_router(external_accounts.router)
+api_router.include_router(external_portal.router)
+api_router.include_router(external_data.router)
+api_router.include_router(external_actions.router)
+api_router.include_router(sync.router)
+api_router.include_router(client_errors.router)
+api_router.include_router(my_notifications.router)

@@ -139,3 +139,63 @@ def test_cards_require_login_and_permission(client, make_user):
     code, pw, _ = make_user(grants=("compliance.upload",))
     h = auth(login(client, code, pw).json()["access_token"])
     assert client.get(f"{API}/cards/vendors", headers=h).status_code == 403
+
+
+def test_signature_verifies_with_rotation_and_legacy_jwt(make_store, monkeypatch):
+    from app.core.config import settings
+    s = make_store()
+    # 1. Sign when only JWT_SECRET_KEY is present
+    monkeypatch.setattr(settings, "QR_SIGNING_SECRET", "")
+    legacy_sig = cards.sign_store(s.id)
+    assert cards.verify_signature(s.id, legacy_sig)
+
+    # 2. Add QR_SIGNING_SECRET: new signature uses QR_SIGNING_SECRET, but legacy_sig still verifies!
+    monkeypatch.setattr(settings, "QR_SIGNING_SECRET", "brand-new-qr-secret-key")
+    new_sig = cards.sign_store(s.id)
+    assert cards.verify_signature(s.id, new_sig)
+    assert cards.verify_signature(s.id, legacy_sig)
+
+    # 3. Rotate QR_SIGNING_SECRET using comma-separated list: both work!
+    monkeypatch.setattr(settings, "QR_SIGNING_SECRET", "rotated-secret-key,brand-new-qr-secret-key")
+    rotated_sig = cards.sign_store(s.id)
+    assert cards.verify_signature(s.id, rotated_sig)
+    assert cards.verify_signature(s.id, new_sig)
+    assert cards.verify_signature(s.id, legacy_sig)
+
+
+def test_direct_count_html_and_redirect(client, db, make_store, monkeypatch):
+    from app.core.config import settings
+    s = make_store(vendor="Aquatic")
+    sig = cards.sign_store(s.id)
+
+    # Missing params -> 400 HTML
+    r_bad = client.get("/count")
+    assert r_bad.status_code == 400
+    assert "Invalid QR Code" in r_bad.text
+
+    # Invalid sig -> 404 HTML
+    r_invalid = client.get(f"/count?s={s.id}&sig=badbadbad")
+    assert r_invalid.status_code == 404
+    assert "Invalid or Tampered" in r_invalid.text
+
+    # Valid sig when host matches public_app_url -> 200 HTML
+    monkeypatch.setattr(settings, "PUBLIC_APP_URL", "http://testserver")
+    r_ok = client.get(f"/count?s={s.id}&sig={sig}")
+    assert r_ok.status_code == 200
+    assert s.name in r_ok.text
+    assert "Aquatic" in r_ok.text
+
+    # Redirect when PUBLIC_APP_URL points to another domain
+    monkeypatch.setattr(settings, "PUBLIC_APP_URL", "https://crm.veekayaquatech.com")
+    r_redir = client.get(f"/count?s={s.id}&sig={sig}", follow_redirects=False)
+    assert r_redir.status_code == 307
+    assert r_redir.headers["location"] == f"https://crm.veekayaquatech.com/count?s={s.id}&sig={sig}"
+
+
+def test_cards_vendors_returns_public_app_url(client, admin):
+    res = client.get(f"{API}/cards/vendors", headers=admin)
+    assert res.status_code == 200
+    body = res.json()
+    assert "public_app_url" in body
+    assert "is_public_app_url_production_ready" in body
+

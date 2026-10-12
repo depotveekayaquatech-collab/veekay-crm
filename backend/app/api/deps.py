@@ -15,7 +15,8 @@ from app.core.security import InvalidTokenError, TokenClaims, TokenType, decode_
 from app.db.session import get_db
 from app.models.user import User, UserStatus
 from app.repositories.user_repository import UserRepository
-from app.services import session_service
+from app.models.external_account import ExternalAccount
+from app.services import external_auth_service, session_service
 from app.schemas.common import PageParams
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -84,6 +85,13 @@ def get_current_permissions(
     role change takes effect on the user's very next call, not after
     their token expires."""
     return UserRepository(db).get_permission_codes(user.id)
+
+
+def get_current_external_account(
+    token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> ExternalAccount:
+    """A signed-in vendor / POC. Only vendor-app tokens pass; CRM staff tokens are rejected here, and these never work elsewhere."""
+    return external_auth_service.authenticate(db, token)
 
 
 def require_permission(*required: str) -> Callable[..., User]:

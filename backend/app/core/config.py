@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     # persistent volume — or swap app/core/storage.py for object storage.
     UPLOAD_DIR: str = Field(default="storage")
     COMPLIANCE_MAX_FILE_MB: int = Field(default=12)
+    # Push messages to the vendor / POC app. Empty = in-app notifications only. Needs `pip install firebase-admin`.
+    FIREBASE_CREDENTIALS_FILE: str = Field(default="")
     BILL_DUE_DAYS_AFTER_MONTH_END: int = Field(default=45)
     COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")  # cards/bills start here
     COMPLIANCE_MAX_MONTHS_BACK: int = Field(default=12)
@@ -159,6 +161,9 @@ class Settings(BaseSettings):
     #   STORE_SYNC_SHEETS='["blinkit=12fo5ar...:0","zepto=1xlxl4...:0"]'
     STORE_SYNC_SHEETS: list[str] = Field(default_factory=list)
     STORE_SYNC_ENABLED: bool = Field(default=True)      # run the daily job
+    # Lets an external scheduler (Render Cron, cron-job.org ...) run the daily sync by calling POST /api/v1/sync/trigger with
+    # header X-Sync-Key. Needed when the API sleeps at 10:00 (free plans), because the in-process scheduler is asleep too.
+    SYNC_TRIGGER_KEY: str = Field(default="")
     STORE_SYNC_HOUR: int = Field(default=10)            # local hour, 24h
     STORE_SYNC_MINUTE: int = Field(default=0)
     STORE_SYNC_TIMEZONE: str = Field(default="Asia/Kolkata")
@@ -175,6 +180,19 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _refuse_unsafe_production(self) -> "Settings":
         """Fail fast at boot rather than run a production server with dev-grade settings."""
+        # Always normalize CORS origins (strip whitespace and trailing slashes, ensure PUBLIC_APP_URL is whitelisted)
+        normalized_cors: list[str] = []
+        for origin in self.CORS_ORIGINS:
+            cleaned = origin.strip().rstrip("/")
+            if cleaned and cleaned not in normalized_cors:
+                normalized_cors.append(cleaned)
+
+        public_origin = self.PUBLIC_APP_URL.strip().rstrip("/")
+        if public_origin and public_origin not in normalized_cors:
+            normalized_cors.append(public_origin)
+
+        self.CORS_ORIGINS = normalized_cors
+
         if self.ENVIRONMENT.strip().lower() != "production":
             return self
         problems: list[str] = []
@@ -186,6 +204,8 @@ class Settings(BaseSettings):
             problems.append("CORS_ORIGINS must use https://")
         if "localhost" in self.PUBLIC_APP_URL or "127.0.0.1" in self.PUBLIC_APP_URL:
             problems.append("PUBLIC_APP_URL must be the public frontend URL (it is printed in every card QR code)")
+        if not self.PUBLIC_APP_URL.startswith("https://"):
+            problems.append("PUBLIC_APP_URL must start with https:// in production (printed in every card QR code)")
         if self.DEBUG:
             problems.append("DEBUG must be false")
         if self.BCRYPT_ROUNDS < 12:

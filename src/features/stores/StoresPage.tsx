@@ -85,59 +85,89 @@ export function StoresPage() {
         }
       />
 
-      {/* status = "what's in work" vs the rest */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {STATUS_TABS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => {
-              setStoreStatus(t.value);
+      {/* Control Toolbar */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-surface-border bg-surface p-4 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1 rounded-xl bg-surface-subtle p-1 ring-1 ring-surface-border">
+            {STATUS_TABS.map((t) => {
+              const active = storeStatus === t.value;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => {
+                    setStoreStatus(t.value);
+                    setPage(1);
+                  }}
+                  className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                    active
+                      ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs"
+                      : "text-gray-600 hover:bg-surface hover:text-gray-900"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {(partner || regionId || q || storeStatus !== "LIVE") && (
+              <button
+                onClick={() => {
+                  setPartner("");
+                  setRegionId("");
+                  setQ("");
+                  setStoreStatus("LIVE");
+                  setPage(1);
+                }}
+                className="text-xs font-semibold text-brand-600 hover:text-brand-700"
+              >
+                Clear filters
+              </button>
+            )}
+            <span className="text-xs font-medium text-gray-500">
+              {data ? `${data.total} store${data.total === 1 ? "" : "s"}` : ""}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="lg:col-span-2">
+            <SearchBox
+              hotkey
+              value={q}
+              onChange={(v) => {
+                setQ(v);
+                setPage(1);
+              }}
+              placeholder="Search store name, outlet ID, city, POC…"
+              className="w-full"
+            />
+          </div>
+          <Select
+            label="Partner"
+            value={partner}
+            onChange={(e) => {
+              setPartner(e.target.value);
+              setRegionId("");
               setPage(1);
             }}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              storeStatus === t.value
-                ? "bg-brand-500 text-white"
-                : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <SearchBox
-        hotkey
-        className="sm:max-w-xl"
-        value={q}
-        onChange={(v) => {
-          setQ(v);
-          setPage(1);
-        }}
-        placeholder="Search store name, outlet ID, city, state, vendor or POC"
-      />
-
-      <div className="grid gap-3 sm:max-w-lg sm:grid-cols-2">
-        <Select
-          label="Partner"
-          value={partner}
-          onChange={(e) => {
-            setPartner(e.target.value);
-            setRegionId("");
-            setPage(1);
-          }}
-          placeholder="All partners"
-          options={partners.map((p) => ({ value: p.slug, label: p.name }))}
-        />
-        <Select
-          label="Region"
-          value={regionId}
-          onChange={(e) => {
-            setRegionId(e.target.value);
-            setPage(1);
-          }}
-          placeholder="All regions"
-          options={regions.map((r) => ({ value: r.id, label: r.name }))}
-        />
+            placeholder="All partners"
+            options={partners.map((p) => ({ value: p.slug, label: p.name }))}
+            className="[&_label]:sr-only"
+          />
+          <Select
+            label="Region"
+            value={regionId}
+            onChange={(e) => {
+              setRegionId(e.target.value);
+              setPage(1);
+            }}
+            placeholder="All regions"
+            options={regions.map((r) => ({ value: r.id, label: r.name }))}
+            className="[&_label]:sr-only"
+          />
+        </div>
       </div>
 
       {isLoading && <Skeleton className="h-64" />}
@@ -155,7 +185,7 @@ export function StoresPage() {
                 <Th>State</Th>
                 <Th>Start date</Th>
                 <Th>Status</Th>
-                {canManage && <Th className="w-20 text-right">Actions</Th>}
+                {canManage && <Th className="w-24 text-right">Actions</Th>}
               </tr>
             </thead>
             <tbody>
@@ -175,35 +205,58 @@ export function StoresPage() {
                   )}
                 </TableEmpty>
               )}
-              {data.items.map((store) => (
-                <tr key={store.id}>
-                  <Td className="font-medium text-gray-900">{store.name}</Td>
-                  <Td>{store.externalCode}</Td>
-                  <Td>{store.partnerName}</Td>
-                  <Td>{store.regionName ?? "—"}</Td>
-                  <Td>{store.state ?? "—"}</Td>
-                  <Td>{store.startDate ?? <span className="text-gray-400">—</span>}</Td>
-                  <Td>
-                    <Badge
-                      tone={
-                        store.status === "LIVE" ? "success" : store.status === "PENDING" ? "warning" : "neutral"
-                      }
-                    >
-                      {store.status}
-                    </Badge>
-                  </Td>
-                  {canManage && (
-                    <Td className="text-right">
-                      <button
-                        className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                        onClick={() => setEditing(store)}
-                      >
-                        Edit
-                      </button>
+              {data.items.map((store) => {
+                const partnerTone =
+                  store.partnerSlug === "blinkit"
+                    ? "success"
+                    : store.partnerSlug === "zepto"
+                      ? "info"
+                      : "neutral";
+                return (
+                  <tr key={store.id} className="transition-colors hover:bg-surface-subtle/50">
+                    <Td className="font-semibold text-heading">
+                      <div>{store.name}</div>
+                      {store.pocName && (
+                        <div className="text-xs font-normal text-gray-500">
+                          POC: {store.pocName} {store.pocNumber ? `· ${store.pocNumber}` : ""}
+                        </div>
+                      )}
                     </Td>
-                  )}
-                </tr>
-              ))}
+                    <Td>
+                      <code className="rounded-md border border-surface-border bg-surface-subtle px-2 py-0.5 font-mono text-xs font-medium text-gray-700">
+                        {store.externalCode}
+                      </code>
+                    </Td>
+                    <Td>
+                      <Badge tone={partnerTone}>{store.partnerName}</Badge>
+                    </Td>
+                    <Td className="text-gray-700">{store.regionName ?? "—"}</Td>
+                    <Td className="text-gray-700">{store.state ?? "—"}</Td>
+                    <Td className="text-gray-700">{store.startDate ?? <span className="text-gray-400">—</span>}</Td>
+                    <Td>
+                      <Badge
+                        dot
+                        tone={
+                          store.status === "LIVE" ? "success" : store.status === "PENDING" ? "warning" : "neutral"
+                        }
+                      >
+                        {store.status}
+                      </Badge>
+                    </Td>
+                    {canManage && (
+                      <Td className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditing(store)}
+                        >
+                          Edit
+                        </Button>
+                      </Td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />

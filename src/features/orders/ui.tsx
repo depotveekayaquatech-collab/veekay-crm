@@ -18,7 +18,7 @@ export function SegmentedControl<T extends string>({
   label: string;
 }) {
   return (
-    <div role="tablist" aria-label={label} className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border border-surface-border bg-surface-muted/70 p-1">
+    <div role="tablist" aria-label={label} className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border border-surface-border bg-surface-muted/60 p-1">
       {options.map((o) => (
         <button
           key={o.value}
@@ -26,10 +26,10 @@ export function SegmentedControl<T extends string>({
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`whitespace-nowrap rounded-lg px-3.5 py-[5px] text-sm font-semibold transition-[color,background-color,box-shadow] ${
+          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
             value === o.value
-              ? "bg-surface text-brand-700 shadow-sm ring-1 ring-surface-border"
-              : "text-gray-500 hover:text-gray-800"
+              ? "bg-surface text-brand-600 dark:text-brand-300 shadow-xs ring-1 ring-surface-border"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
           }`}
         >
           {o.label}
@@ -46,15 +46,15 @@ export function FilterChip({ active, onClick, children, count }: { active: boole
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
         active
-          ? "border-brand-500/40 bg-brand-50 text-brand-700"
-          : "border-surface-border bg-surface text-gray-600 hover:border-gray-300 hover:text-gray-900"
+          ? "border-brand-500/30 bg-brand-500/10 text-brand-600 ring-1 ring-brand-500/20"
+          : "border-surface-border bg-surface text-gray-700 hover:border-gray-400 hover:text-gray-900"
       }`}
     >
       {children}
       {count !== undefined && (
-        <span className={`rounded-full px-1.5 text-xs tabular-nums ${active ? "bg-brand-500/20" : "bg-surface-muted text-gray-500"}`}>{count}</span>
+        <span className={`rounded-full px-1.5 py-0.2 text-[11px] tabular-nums ${active ? "bg-brand-500/20 text-brand-700" : "bg-surface-muted text-gray-500"}`}>{count}</span>
       )}
     </button>
   );
@@ -101,14 +101,14 @@ export function SearchBox({
         aria-label={placeholder}
         autoComplete="off"
         spellCheck={false}
-        className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-9 text-sm shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+        className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-9 text-sm shadow-xs outline-none transition-all placeholder:text-gray-400 focus:border-brand-500 focus:ring-3 focus:ring-brand-500/15"
       />
       {value ? (
         <button type="button" onClick={() => onChange("")} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 hover:bg-surface-muted hover:text-gray-700">
           <IconClose className="h-4 w-4" aria-hidden="true" />
         </button>
       ) : (
-        hotkey && <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-surface-border px-1.5 text-[10px] font-semibold text-gray-400 sm:block">/</kbd>
+        hotkey && <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-surface-border bg-surface-subtle px-1.5 text-[10px] font-semibold text-gray-400 sm:block">/</kbd>
       )}
     </div>
   );

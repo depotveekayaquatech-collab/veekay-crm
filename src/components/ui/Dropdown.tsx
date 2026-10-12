@@ -191,7 +191,7 @@ export function Dropdown({
               : "border-surface-border hover:border-gray-300 focus-visible:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/20"
         }`}
       >
-        <span className={`truncate ${isPlaceholder ? "text-gray-500" : "font-medium text-gray-900"}`}>{current?.label ?? placeholder ?? "Select…"}</span>
+        <span className={`truncate ${isPlaceholder ? "text-gray-400" : "font-medium text-gray-900"}`}>{current?.label ?? placeholder ?? "Select…"}</span>
         <IconChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform group-hover:text-gray-600 ${open ? "rotate-180 text-brand-500" : ""}`} />
       </button>
 
@@ -234,10 +234,10 @@ export function Dropdown({
                     onClick={() => choose(o)}
                     className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                       o.disabled
-                        ? "cursor-not-allowed text-gray-300"
+                        ? "cursor-not-allowed text-gray-400"
                         : i === active
-                          ? "bg-brand-50 text-brand-700"
-                          : "text-gray-700"
+                          ? "bg-brand-500/10 text-brand-600 font-medium"
+                          : "text-gray-800 hover:text-gray-900"
                     } ${selected ? "font-semibold" : ""}`}
                   >
                     <span className="truncate">{o.label}</span>

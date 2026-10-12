@@ -48,7 +48,11 @@ function pctChange(cur: number, prev: number): { text: string; tone: "up" | "dow
   return { text: `${p > 0 ? "▲" : "▼"} ${Math.abs(p)}% vs prior period`, tone: p > 0 ? "up" : "down" };
 }
 
-const toneText = { up: "text-status-success", down: "text-status-danger", flat: "text-gray-500" };
+const toneText = {
+  up: "text-emerald-600 dark:text-emerald-400 font-semibold",
+  down: "text-rose-600 dark:text-rose-400 font-semibold",
+  flat: "text-gray-500",
+};
 
 function sum(a: number[]): number {
   return a.reduce((s, x) => s + x, 0);
@@ -103,17 +107,25 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
       </div>
     );
 
-  const bg = { warning: "bg-status-warning-soft text-status-warning", danger: "bg-status-danger-soft text-status-danger", info: "bg-status-info-soft text-status-info" };
+  const toneClasses = {
+    warning: "bg-amber-500/10 text-amber-800 dark:text-amber-300 ring-1 ring-inset ring-amber-500/25 hover:bg-amber-500/20",
+    danger: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/25 hover:bg-rose-500/20",
+    info: "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/25 hover:bg-sky-500/20",
+  };
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-surface-border bg-surface px-4 py-3 shadow-card">
-      <span className="mr-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500">
-        <IconAlertTriangle className="h-4 w-4" /> Needs attention
+    <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-surface-border bg-surface px-4.5 py-3 shadow-card">
+      <span className="mr-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-heading">
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <IconAlertTriangle className="h-3.5 w-3.5" />
+        </span>
+        Ops attention
       </span>
       {items.map((it) => {
-        const cls = `rounded-full px-3 py-1 text-xs font-semibold ${bg[it.tone]}`;
+        const cls = `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${toneClasses[it.tone]}`;
         return it.to ? (
-          <Link key={it.key} to={it.to} className={`${cls} transition-opacity hover:opacity-80`}>
-            {it.text} →
+          <Link key={it.key} to={it.to} className={`${cls} hover:-translate-y-px`}>
+            <span>{it.text}</span>
+            <span className="opacity-60 text-[10px]">→</span>
           </Link>
         ) : (
           <span key={it.key} className={cls}>{it.text}</span>
@@ -127,14 +139,14 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
 
 function Kpi({ label, value, hint, hintTone = "flat", loading, tone = "brand" }: { label: string; value: ReactNode; hint?: string; hintTone?: "up" | "down" | "flat"; loading?: boolean; tone?: "brand" | "aqua" | "success" | "warning" }) {
   return (
-    <div className={`tile tile-${tone} rounded-xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
+    <div className={`tile tile-${tone} rounded-2xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover`}>
       <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
       {loading ? (
-        <Skeleton className="mt-2 h-8 w-20" />
+        <Skeleton className="mt-2.5 h-8 w-24" />
       ) : (
-        <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-heading">{value}</p>
+        <p className="mt-2 text-[1.85rem] font-extrabold leading-none tracking-tight tabular-nums text-heading">{value}</p>
       )}
-      {hint && !loading && <p className={`mt-1.5 text-xs font-medium ${toneText[hintTone]}`}>{hint}</p>}
+      {hint && !loading && <p className={`mt-2 text-xs font-semibold ${toneText[hintTone]}`}>{hint}</p>}
     </div>
   );
 }

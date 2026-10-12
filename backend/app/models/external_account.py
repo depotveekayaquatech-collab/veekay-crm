@@ -7,11 +7,14 @@ table so the Team page, attendance and assignments never see them. The future ve
 Standard format (see scripts/create_external_accounts.py):
     vendor  <name>@supplier.com   password 123456
     POC     <name>@blinkit.com    password <name>@123
-`must_change_password` is set on every account: the first thing the app must do is make the person choose their own.
+The password stays the one the admin set: the app has no change-password option, so `must_change_password` is kept
+only as a record and is not enforced at sign-in. Sign-in lives in services/external_auth_service.py.
 """
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +40,8 @@ class ExternalAccount(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     password_hash: Mapped[str] = mapped_column(String(255))
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ExternalAccountStore(Base):
@@ -45,3 +50,19 @@ class ExternalAccountStore(Base):
 
     account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("external_accounts.id", ondelete="CASCADE"), primary_key=True)
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True, index=True)
+
+
+class ExternalSession(Base):
+    """One refresh token issued to a vendor / POC (same family / rotation / reuse-detection scheme as refresh_sessions)."""
+    __tablename__ = "external_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)  # = the token's jti
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("external_accounts.id", ondelete="CASCADE"), index=True)
+    family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    replaced_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)

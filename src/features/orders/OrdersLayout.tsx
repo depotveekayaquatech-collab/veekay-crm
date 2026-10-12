@@ -69,7 +69,7 @@ export function OrdersLayout() {
           </div>
         </div>
 
-        <nav className="relative -mb-1 mt-5 flex gap-1 overflow-x-auto pb-1" aria-label="Orders sections">
+        <nav className="relative -mb-1 mt-5 flex gap-1.5 overflow-x-auto pb-1" aria-label="Orders sections">
           {tabs.map((t, i) => {
             const Icon = t.icon;
             return (
@@ -79,10 +79,10 @@ export function OrdersLayout() {
                 end={t.end}
                 title={`${t.blurb} (press ${i + 1})`}
                 className={({ isActive }) =>
-                  `group flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] ${
+                  `group flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all ${
                     isActive
-                      ? "bg-gradient-to-b from-[rgb(var(--btn-a))] to-[rgb(var(--btn-b))] text-white shadow-glow"
-                      : "text-gray-600 hover:bg-surface-muted hover:text-gray-900"
+                      ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs border border-white/15"
+                      : "text-gray-700 hover:bg-surface-subtle hover:text-gray-900 border border-transparent"
                   }`
                 }
               >

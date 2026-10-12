@@ -10,7 +10,7 @@ import {
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
   const tone = status === "OPEN" ? "warning" : status === "IN_PROGRESS" ? "info" : status === "RESOLVED" ? "success" : "neutral";
-  return <Badge tone={tone}>{STATUS_LABEL[status]}</Badge>;
+  return <Badge dot tone={tone}>{STATUS_LABEL[status]}</Badge>;
 }
 
 export function PriorityBadge({ priority }: { priority: TicketPriority }) {

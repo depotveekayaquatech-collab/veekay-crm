@@ -1,0 +1,23 @@
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Generated native projects (Expo prebuild); the config lives in app.config.ts
+/android
+/ios
+
+# Secrets: never commit these
+google-services.json
+GoogleService-Info.plist
+*.jks
+*.keystore
+*.p12
+*.pem
+.env
+.env.*
+!.env.example
+
+npm-debug.*
+*.log
+.DS_Store

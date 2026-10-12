@@ -2,15 +2,19 @@
 import csv
 import io
 import uuid
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select
+from pydantic import BaseModel, Field
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
+from app.core.security import generate_temp_password, hash_password
+from app.services import activity_service
 from app.db.session import get_db
-from app.models.external_account import AccountKind, ExternalAccount, ExternalAccountStore
+from app.models.external_account import AccountKind, ExternalAccount, ExternalAccountStore, ExternalSession
 from app.models.organization import Organization
 from app.models.store import Store
 from app.models.user import User
@@ -98,3 +102,39 @@ def detail(account_id: uuid.UUID, user: User = Depends(require_permission("login
         account=_out(a),
         stores=[StoreRef(id=s.id, name=s.name, code=s.external_code, platform=slug, city=s.city, state=s.state) for s, slug in stores],
     )
+
+
+class PasswordReset(BaseModel):
+    password: str | None = Field(default=None, min_length=6, max_length=64, description="Leave out to generate a random one.")
+
+
+class PasswordResetResult(BaseModel):
+    email: str
+    password: str
+    generated: bool
+
+
+@router.post("/{account_id}/reset-password", response_model=PasswordResetResult)
+def reset_password(
+    account_id: uuid.UUID, body: PasswordReset, response: Response,
+    user: User = Depends(require_permission("logins.manage")), db: Session = Depends(get_db),
+) -> PasswordResetResult:
+    """Sets the password you choose (or a random one), unlocks the account and signs it out of every phone.
+    The password is shown once, here: it is stored only as a hash."""
+    a = db.get(ExternalAccount, account_id)
+    if a is None or a.organization_id != user.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found.")
+    chosen = (body.password or "").strip()
+    pw = chosen or generate_temp_password()
+    a.password_hash = hash_password(pw)
+    a.must_change_password = False          # the standard starting password is gone
+    a.failed_login_attempts = 0
+    a.locked_until = None
+    db.execute(update(ExternalSession).where(ExternalSession.account_id == a.id, ExternalSession.revoked_at.is_(None)).values(revoked_at=datetime.now(timezone.utc)))
+    activity_service.record(
+        db, actor=user, action="external_account.password_reset", entity_type="external_account", entity_id=a.id,
+        metadata={"login": a.email, "generated": not chosen},
+    )
+    db.commit()
+    response.headers["Cache-Control"] = "private, no-store"
+    return PasswordResetResult(email=a.email, password=pw, generated=not chosen)

@@ -81,3 +81,14 @@ export async function downloadLogins(f: LoginFilters): Promise<void> {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
+
+export interface PasswordResult {
+  email: string;
+  password: string;
+  generated: boolean;
+}
+
+/** Sets the password you type, or a random one when empty. The password comes back once; the server keeps only a hash. */
+export async function resetLoginPassword(id: string, password?: string): Promise<PasswordResult> {
+  return camelize<PasswordResult>(await apiRequest(`/external-accounts/${id}/reset-password`, { method: "POST", body: password ? { password } : {} }));
+}

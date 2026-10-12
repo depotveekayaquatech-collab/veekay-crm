@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.attendance import LeaveRequest
 from app.models.user import User
-from app.services import activity_service, attendance_service
+from app.services import activity_service, attendance_service, staff_notify
 
 LEAVE_TYPES = ("CASUAL", "SICK", "PAID", "UNPAID")
 STATUSES = ("PENDING", "APPROVED", "REJECTED", "CANCELLED")
@@ -127,6 +127,11 @@ def apply(db: Session, user: User, leave_type: str, start: date, end: date, half
         db, actor=user, action="leave.applied", entity_type="leave", entity_id=lr.id,
         metadata={"type": leave_type, "from": start.isoformat(), "to": end.isoformat(), "days": days},
     )
+    staff_notify.notify_users(
+        db, staff_notify.users_with_permission(db, user.organization_id, "leave.review"), kind="leave", ref_id=lr.id, skip=user.id,
+        title="New leave request",
+        body=f"{user.full_name}: {leave_type.title()} leave, {start:%d %b}{'' if start == end else f' to {end:%d %b}'}",
+    )
     db.commit()
     return _dict(lr, db, with_person=False, today=today)
 
@@ -202,6 +207,11 @@ def review(db: Session, reviewer: User, leave_id: uuid.UUID, approve: bool, note
     activity_service.record(
         db, actor=reviewer, action="leave.approved" if approve else "leave.rejected", entity_type="leave", entity_id=lr.id,
         metadata={"for": str(lr.user_id)},
+    )
+    staff_notify.notify_users(
+        db, [lr.user_id], kind="leave", ref_id=lr.id,
+        title=f"Your leave was {'approved' if approve else 'rejected'}",
+        body=f"{lr.start_date:%d %b}{'' if lr.start_date == lr.end_date else f' to {lr.end_date:%d %b}'}" + (f": {lr.review_note}" if lr.review_note else ""),
     )
     db.commit()
     return _dict(lr, db, with_person=True, today=attendance_service.today_local())

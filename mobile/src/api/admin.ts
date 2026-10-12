@@ -1,0 +1,63 @@
+/** Admin and reporting endpoints (the same ones the web dashboard uses), plus sheet-sync status. */
+import { request } from "@/api/client";
+import type { LeaveItem } from "@/api/staff";
+
+function qs(params: Record<string, string | number | undefined | null>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
+
+export interface SyncStatus {
+  schedule: string | null;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_run_source: "scheduled" | "manual" | null;
+  last_run_by: string | null;
+  last_run_warnings: number | null;
+  stores_sheets: number;
+  orders_sheets: number;
+  can_sync: boolean;
+}
+
+export interface Insights {
+  bottles_today: number;
+  bottles_yesterday: number;
+  entries_today: number;
+  store_status: Record<string, number>;
+  trend: { date: string; label: string; entries: number; bottles: number }[];
+  platforms: { slug: string; label: string; total_stores: number; entries_done: number; bottles: number; percent: number }[];
+  attention_stores: { id: string; name: string; external_code: string; platform: string | null; city: string | null; state: string | null }[];
+  dormant_live: number;
+  last_store_sync: string | null;
+}
+
+export interface PendingStore {
+  id: string; name: string; external_code: string; platform: string | null; region_name: string | null; state: string | null;
+  city: string | null; vendor_name: string | null; poc_name: string | null; poc_number: string | null; pending_days: number;
+}
+export interface PendingEntries { date: string; date_label: string; day_offset: number; live_stores: number; marked: number; pending: number; items: PendingStore[] }
+
+export interface LeaveAdminItem extends LeaveItem { person: { name: string; code: string; platform: string | null; region: string | null } | null }
+export interface LeavesAll { items: LeaveAdminItem[]; pending: number }
+
+export interface BottleSummary { total_active: number; at_store: number; overdue: number; lost_after_days: number }
+export interface OverdueBottle { serial: string; store_name: string | null; last_in_at: string | null; days_at_store: number | null }
+export interface OverdueList { items: OverdueBottle[]; total: number; page: number; page_size: number }
+
+export interface DueBill { id: string; store_name: string; external_code: string; platform: string | null; state: string | null; vendor_name: string | null; month: string; due_date: string; days_overdue: number }
+export interface DueBills { total: number; items: DueBill[] }
+
+export const adminApi = {
+  syncStatus: () => request<SyncStatus>("/sync/status"),
+  syncRun: () => request<{ stores: { platform: string; created: number; updated: number }[]; orders: { platform: string; created: number; updated: number }[] }>("/sync/run", { method: "POST", body: {} }),
+  insights: () => request<Insights>("/orders/insights"),
+  pending: (dayOffset: number) => request<PendingEntries>(`/orders/pending${qs({ day_offset: dayOffset })}`),
+  leaves: (status: string) => request<LeavesAll>(`/attendance/leaves${qs({ status })}`),
+  reviewLeave: (id: string, approve: boolean, note: string) =>
+    request<LeaveAdminItem>(`/attendance/leaves/${id}/review`, { method: "POST", body: { approve, note: note || null } }),
+  bottleSummary: () => request<BottleSummary>("/bottles/summary"),
+  overdueBottles: (page: number) => request<OverdueList>(`/bottles${qs({ state: "OVERDUE", page, page_size: 50 })}`),
+  dueBills: () => request<DueBills>("/compliance/due"),
+};

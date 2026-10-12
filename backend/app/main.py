@@ -1,14 +1,18 @@
-"""Application entrypoint: FastAPI app, middleware, router mounting."""
+import html
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from sqlalchemy.orm import Session
 
 from app.api.v1.router import api_router
 from app.core import scheduler
 from app.core.config import settings
+from app.db.session import get_db
+from app.services import card_service
 from app.core.logging_config import request_id_var, setup_logging
 from app.core.middleware import (
     BodyLimitMiddleware,
@@ -101,3 +105,186 @@ app.add_middleware(
 app.add_middleware(RequestContextMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.get("/count", include_in_schema=False)
+def direct_qr_count(
+    request: Request,
+    s: str | None = None,
+    sig: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Direct handler for scans hitting the backend:
+    - If the backend is running separately from the frontend SPA, redirect the browser to the frontend SPA's /count URL.
+    - If accessed directly or frontend is co-hosted, render a clean branded HTML count card directly.
+    """
+    public_url = (settings.PUBLIC_APP_URL or "").strip().rstrip("/")
+    s_clean = (s or "").strip()
+    sig_clean = (sig or "").strip()
+
+    req_host = request.headers.get("host") or ""
+    should_redirect = False
+    if public_url and s_clean and sig_clean:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(public_url)
+            if parsed.netloc and parsed.netloc != req_host:
+                should_redirect = True
+        except Exception:
+            pass
+
+    if should_redirect:
+        return RedirectResponse(
+            url=f"{public_url}/count?s={s_clean}&sig={sig_clean}",
+            status_code=307,
+        )
+
+    # Standalone HTML fallback rendering
+    if not s_clean or not sig_clean:
+        return HTMLResponse(
+            content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veekay Bottle Count</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #eaf3fa; margin: 0; padding: 0; color: #1e293b; }
+    .header { background: #0B6FB8; color: white; padding: 12px; text-align: center; font-weight: 700; font-size: 14px; letter-spacing: 1px; }
+    .card { max-width: 420px; margin: 32px auto; background: white; border-radius: 16px; padding: 28px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    h2 { font-size: 18px; margin: 0 0 8px; color: #0f172a; }
+    p { color: #64748b; font-size: 14px; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="header">VEE KAY AQUATECH PVT. LTD.</div>
+  <div class="card">
+    <h2>Invalid QR Code</h2>
+    <p>Missing store identification or signature parameters. Please scan the QR code printed on the physical Veekay card again.</p>
+  </div>
+</body>
+</html>""",
+            status_code=400,
+        )
+
+    try:
+        store_uuid = uuid.UUID(s_clean)
+    except ValueError:
+        return HTMLResponse(
+            content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veekay Bottle Count</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #eaf3fa; margin: 0; padding: 0; color: #1e293b; }
+    .header { background: #0B6FB8; color: white; padding: 12px; text-align: center; font-weight: 700; font-size: 14px; letter-spacing: 1px; }
+    .card { max-width: 420px; margin: 32px auto; background: white; border-radius: 16px; padding: 28px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    h2 { font-size: 18px; margin: 0 0 8px; color: #0f172a; }
+    p { color: #64748b; font-size: 14px; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="header">VEE KAY AQUATECH PVT. LTD.</div>
+  <div class="card">
+    <h2>Invalid QR Code Format</h2>
+    <p>The scanned store identifier is not formatted properly. Please scan the code printed on your Veekay card again.</p>
+  </div>
+</body>
+</html>""",
+            status_code=400,
+        )
+
+    try:
+        data = card_service.public_count(db, store_uuid, sig_clean)
+    except Exception:
+        return HTMLResponse(
+            content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veekay Bottle Count</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #eaf3fa; margin: 0; padding: 0; color: #1e293b; }
+    .header { background: #0B6FB8; color: white; padding: 12px; text-align: center; font-weight: 700; font-size: 14px; letter-spacing: 1px; }
+    .card { max-width: 420px; margin: 32px auto; background: white; border-radius: 16px; padding: 28px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    h2 { font-size: 18px; margin: 0 0 8px; color: #0f172a; }
+    p { color: #64748b; font-size: 14px; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="header">VEE KAY AQUATECH PVT. LTD.</div>
+  <div class="card">
+    <h2>Invalid or Tampered QR Code</h2>
+    <p>This QR code could not be verified or the store is no longer active. Please scan the code printed on your physical Veekay card again.</p>
+  </div>
+</body>
+</html>""",
+            status_code=404,
+        )
+
+    store_name = html.escape(data.get("store_name") or "Store")
+    store_code = html.escape(data.get("store_code") or "")
+    vendor_name = html.escape(data.get("vendor_name") or "")
+    cur_label = html.escape(data.get("this_month_label") or "This Month")
+    cur_bottles = int(data.get("this_month_bottles") or 0)
+    has_last = bool(data.get("last_month_label"))
+    last_label = html.escape(data.get("last_month_label") or "")
+    last_bottles = int(data.get("last_month_bottles") or 0)
+    as_on_str = html.escape(data.get("as_on").strftime("%d %b %Y, %I:%M %p UTC") if data.get("as_on") else "")
+
+    last_month_html = ""
+    if has_last:
+        last_month_html = f"""
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+          <div style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Last Month &mdash; {last_label}</div>
+          <div style="font-size: 40px; font-weight: 800; color: #084B7C; margin: 4px 0;">{last_bottles}</div>
+          <div style="font-size: 12px; color: #64748b;">bottles supplied (full month)</div>
+        </div>
+        """
+
+    vendor_line = f" &middot; Vendor: <b>{vendor_name}</b>" if vendor_name else ""
+
+    html_page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{store_name} - Bottle Supply Status</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #eaf3fa; margin: 0; padding: 0; color: #1e293b; }}
+    .header {{ background: #0B6FB8; color: white; padding: 12px; text-align: center; font-weight: 700; font-size: 14px; letter-spacing: 1px; }}
+    .container {{ max-width: 440px; margin: 20px auto; padding: 0 16px 40px; }}
+    .card {{ background: white; border-radius: 20px; padding: 24px; text-align: center; box-shadow: 0 6px 20px rgba(11, 111, 184, 0.08); border: 1px solid #dbeafe; }}
+    .meta-tag {{ display: inline-block; background: #e8f2fa; color: #084B7C; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700; margin-bottom: 12px; }}
+    .store-title {{ font-size: 20px; font-weight: 800; color: #0f172a; margin: 4px 0 6px; line-height: 1.3; }}
+    .store-sub {{ font-size: 13px; color: #64748b; margin-bottom: 20px; }}
+    .stat-box {{ background: #f8fafc; border-radius: 16px; padding: 20px; border: 1px solid #e2e8f0; }}
+    .count-number {{ font-size: 56px; font-weight: 800; color: #0B6FB8; line-height: 1; margin: 8px 0; }}
+    .footer-note {{ font-size: 11px; color: #94a3b8; margin-top: 18px; }}
+  </style>
+</head>
+<body>
+  <div class="header">VEE KAY AQUATECH PVT. LTD.</div>
+  <div class="container">
+    <div class="card">
+      <div class="meta-tag">Verified Store Card</div>
+      <h1 class="store-title">{store_name}</h1>
+      <div class="store-sub">Store ID: <b>{store_code}</b>{vendor_line}</div>
+
+      <div class="stat-box">
+        <div style="font-size: 12px; font-weight: 700; color: #0B6FB8; text-transform: uppercase;">{cur_label} &bull; Till Date</div>
+        <div class="count-number">{cur_bottles}</div>
+        <div style="font-size: 13px; font-weight: 600; color: #64748b;">bottles supplied</div>
+      </div>
+
+      {last_month_html}
+
+      <div class="footer-note">As on {as_on_str}</div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html_page, status_code=200)

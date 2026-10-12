@@ -234,3 +234,116 @@ def test_random_card_is_pixel_identical_to_the_store_cards_page(client, dev, db)
     assert shot(r.content) == shot(ref)
     total = sum(n for _, n in entries)
     assert str(total) in fitz.open(stream=r.content, filetype="pdf")[0].get_text()
+
+
+def _month_preview(client, dev, token, text, month, name="m.csv"):
+    r = client.post(f"{BASE}/preview", data={"token": token, "month": month}, files=_files(text, name), headers=dev)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_chosen_month_keeps_only_that_months_days(client, dev):
+    token = _unlock(client, dev).json()["token"]
+    sheet = "Outlet ID,28-Sep,30-Sep,1-Oct,2-Oct\nBLK-4821,5,6,7,8\n"
+    both = _preview(client, dev, token, sheet)
+    assert both["bottles"] == 26 and both["cards"] == 2                       # no month chosen: everything, as before
+    only = _month_preview(client, dev, token, sheet, "2026-10")
+    assert (only["cards"], only["entries"], only["bottles"]) == (1, 2, 15)
+    assert any("other months" in w for w in only["warnings"])
+    none = _month_preview(client, dev, token, sheet, "2026-01")
+    assert none["cards"] == 0 and any("Nothing in the sheet falls in" in w for w in none["warnings"])
+
+
+def test_day_number_columns_are_days_of_the_chosen_month(client, dev):
+    token = _unlock(client, dev).json()["token"]
+    sheet = "Outlet Name,1,2,3rd,Day 4\nBlinkit — Saket,10,20,30,40\n"
+    p = _month_preview(client, dev, token, sheet, "2026-09")
+    assert (p["cards"], p["entries"], p["bottles"]) == (1, 4, 100)
+    assert any("SEP-2026" in w.upper() for w in p["warnings"])
+    # without a month a bare number is not a date, so the sheet can't be read
+    r = client.post(f"{BASE}/preview", data={"token": token}, files=_files(sheet), headers=dev)
+    assert r.status_code == 422
+    bad = client.post(f"{BASE}/preview", data={"token": token, "month": "October"}, files=_files(sheet), headers=dev)
+    assert bad.status_code == 422 and "2026-10" in bad.json()["detail"]
+
+
+def test_any_column_that_identifies_the_store_is_used(client, dev):
+    token = _unlock(client, dev).json()["token"]
+    # punctuation / spacing / case differ from the stored name
+    loose = "Outlet Name,1-Oct,2-Oct\nblinkit saket,4,6\nBLINKIT - ROHINI,1,2\n"
+    p = _preview(client, dev, token, loose)
+    assert (p["cards"], p["unmatched_count"], p["bottles"]) == (2, 0, 13)
+    # no 'Outlet ID' / 'Outlet Name' header at all: the column full of known stores is found by its content
+    unnamed = "Region,Shop,Notes,1-Oct,2-Oct\nNORTH,BLK-4821,ok,5,5\nNORTH,BLK-4830,ok,2,2\nNORTH,BLK-4901,ok,1,1\n"
+    q = _preview(client, dev, token, unnamed)
+    assert (q["cards"], q["bottles"], q["unmatched_count"]) == (3, 16, 0)
+    # the store only appears in some other cell of the row, under a header we don't know
+    buried = "Outlet ID,Remark,1-Oct\n,Saket outlet BLK-4821,9\nunknown-1,Blinkit — Rohini,3\n"
+    r = _preview(client, dev, token, buried)
+    assert r["cards"] == 1 and r["bottles"] == 3 and r["unmatched_count"] == 1
+
+
+# ------------------------------------------------------------ random generator from a sheet (store + total, no dates)
+
+def _totals(client, dev, token, text, name="totals.csv"):
+    r = client.post(f"{BASE}/totals-preview", data={"token": token}, files=_files(text, name), headers=dev)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_a_headerless_name_and_total_sheet_is_read_and_near_misses_get_suggestions(client, dev):
+    token = _unlock(client, dev).json()["token"]
+    sheet = "Blinkit — Saket,150\nBLINKIT - rohini,455\nBlinkit Gurugram New,340\nNo Such Outlet,12\n"
+    p = _totals(client, dev, token, sheet)
+    assert p["rows"] == 4
+    got = {m["code"]: m["total"] for m in p["matched"]}
+    assert got == {"BLK-4821": 150, "BLK-4830": 455}                       # punctuation and case don't matter
+    by_name = {u["name"]: u for u in p["unmatched"]}
+    assert set(by_name) == {"Blinkit Gurugram New", "No Such Outlet"}
+    assert any(s["code"] == "BLK-4901" for s in by_name["Blinkit Gurugram New"]["suggestions"])   # "did you mean ..."
+    assert by_name["No Such Outlet"]["suggestions"] == []
+
+
+def test_headers_codes_repeats_and_junk_rows(client, dev):
+    token = _unlock(client, dev).json()["token"]
+    sheet = "Outlet ID,Outlet Name,Notes,Total Count\nBLK-4821,,hello,100\nBLK-4821,,again,20\nBLK-4830,,,5\n,Grand Total,,125\n"
+    p = _totals(client, dev, token, sheet)
+    assert {m["code"]: m["total"] for m in p["matched"]} == {"BLK-4821": 120, "BLK-4830": 5}      # a repeated store adds up
+    assert p["unmatched"] == [] and any("more than once" in w for w in p["warnings"])
+    bad = client.post(f"{BASE}/totals-preview", data={"token": token}, files=_files("just,words\nhere,there\n"), headers=dev)
+    assert bad.status_code == 422
+
+
+def test_bulk_random_pdf_draws_one_card_per_store_and_month(client, dev, db):
+    import fitz
+
+    token = _unlock(client, dev).json()["token"]
+    from app.models.store import Store
+
+    a = db.query(Store).filter_by(external_code="BLK-4821").one()
+    b = db.query(Store).filter_by(external_code="BLK-4830").one()
+    body = {"token": token, "items": [
+        {"store_id": str(a.id), "rows": [{"date": "2026-10-01", "count": 10}, {"date": "2026-10-02", "count": 5}]},
+        {"store_id": str(b.id), "rows": [{"date": "2026-09-30", "count": 3}, {"date": "2026-10-01", "count": 4}]},   # spans two months
+    ]}
+    r = client.post(f"{BASE}/random-bulk-pdf", json=body, headers=dev)
+    assert r.status_code == 200 and r.content.startswith(b"%PDF") and "attachment" in r.headers["content-disposition"]
+    assert fitz.open(stream=r.content, filetype="pdf").page_count == 3                  # 1 + 2 months
+    assert "2026-09-30_to_2026-10-02" in r.headers["content-disposition"]
+
+    def post(**over):
+        return client.post(f"{BASE}/random-bulk-pdf", json={**body, **over}, headers=dev)
+
+    one = body["items"][0]
+    assert post(items=[one, one]).status_code == 422                                     # same store twice
+    assert post(items=[{**one, "rows": [one["rows"][0], one["rows"][0]]}]).status_code == 422   # same date twice
+    assert post(items=[{**one, "rows": [{"date": "2026-10-01", "count": -1}]}]).status_code == 422
+    assert post(items=[{"store_id": "00000000-0000-0000-0000-000000000000", "rows": one["rows"]}]).status_code == 404
+    assert post(token="bad").status_code == 403
+    assert post(items=[]).status_code == 422
+
+
+def test_bulk_random_is_for_the_developer_only(client, emp, admin):
+    for h in (emp, admin):
+        assert client.post(f"{BASE}/totals-preview", data={"token": "x"}, files=_files("a,1\n"), headers=h).status_code == 403
+        assert client.post(f"{BASE}/random-bulk-pdf", json={"token": "x", "items": []}, headers=h).status_code == 403

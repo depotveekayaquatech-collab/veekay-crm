@@ -34,6 +34,7 @@ const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m)
 const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
 const StoresPage = lazy(() => import("@/features/stores/StoresPage").then((m) => ({ default: m.StoresPage })));
 const ActivityPage = lazy(() => import("@/features/activity/ActivityPage").then((m) => ({ default: m.ActivityPage })));
+const VendorRoutes = lazy(() => import("@/features/vendor/VendorRoutes").then((m) => ({ default: m.VendorRoutes })));
 const NotFoundPage = lazy(() => import("@/app/NotFoundPage").then((m) => ({ default: m.NotFoundPage })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -75,6 +76,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
       <Route path="/count" element={<CountPage />} />
+      <Route path="/vendor/*" element={<VendorRoutes />} />
       <Route
         element={
           <ProtectedRoute>

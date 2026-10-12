@@ -182,3 +182,26 @@ class OrderImportResult(BaseModel):
     invalid_values: int
     future_skipped: int
     warnings: list[str]
+
+
+class MarkEntry(BaseModel):
+    order_date: date
+    bottle_count: int = Field(..., ge=0, le=200)
+
+
+class MarkManyRequest(BaseModel):
+    """Several dates of one store, each with its own count, marked in one go."""
+    store_id: uuid.UUID
+    entries: list[MarkEntry] = Field(..., min_length=1, max_length=31)
+
+
+class MarkResultItem(BaseModel):
+    order_date: date
+    ok: bool
+    error: str | None = None
+
+
+class MarkManyResult(BaseModel):
+    saved: int
+    failed: int
+    results: list[MarkResultItem]

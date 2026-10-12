@@ -24,6 +24,8 @@ interface VendorsResponse {
   vendors: Vendor[];
   regions: { id: string; name: string }[];
   months: { value: string; label: string }[];
+  publicAppUrl?: string;
+  isPublicAppUrlProductionReady?: boolean;
 }
 
 const field =
@@ -154,6 +156,20 @@ export function CardsPage() {
         title="Store cards"
         subtitle="A printable A4 card for every live store, one PDF per vendor. Choose one vendor for a PDF, or several for a ZIP."
       />
+
+      {data && data.isPublicAppUrlProductionReady === false && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm">
+          <span className="mt-0.5 text-lg">⚠️</span>
+          <div className="flex-1 text-xs sm:text-sm">
+            <span className="font-bold">QR Destination Warning:</span> The QR code printed on these cards currently points to{" "}
+            <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono font-semibold text-amber-950">
+              {data.publicAppUrl || "http://localhost:5173"}
+            </code>
+            . Before sending physical cards to the print shop for stores, ensure{" "}
+            <code className="font-mono font-semibold">PUBLIC_APP_URL</code> is set to your production frontend domain (starting with <code className="font-mono">https://</code>) in your deployment environment variables.
+          </div>
+        </div>
+      )}
 
       <section className="flex flex-wrap items-end gap-4 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">

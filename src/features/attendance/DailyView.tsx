@@ -12,14 +12,19 @@ import { LEAVE_LABEL, useDayAttendance, type DayStatus } from "@/features/attend
 import { downloadCsv } from "@/lib/csv";
 import { daysAgo } from "@/lib/dates";
 
-const field = "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
-
 function Tile({ title, value, tone, hint }: { title: string; value: number | string; tone: "brand" | "aqua" | "success" | "warning"; hint?: string }) {
+  const topGradients = {
+    brand: "from-brand-500 to-brand-600",
+    aqua: "from-aqua-400 to-brand-500",
+    success: "from-emerald-400 to-teal-500",
+    warning: "from-amber-400 to-orange-500",
+  };
   return (
-    <div className={`tile tile-${tone} rounded-xl border border-surface-border bg-surface p-4 shadow-card`}>
+    <div className={`relative overflow-hidden tile tile-${tone} rounded-2xl border border-surface-border bg-surface p-4 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover`}>
+      <span aria-hidden="true" className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${topGradients[tone]}`} />
       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}</p>
-      <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-heading">{value}</p>
-      {hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}
+      <p className="mt-1.5 text-[1.65rem] font-extrabold leading-none tabular-nums text-heading tracking-tight">{value}</p>
+      {hint && <p className="mt-1 text-[11px] font-medium text-gray-400 truncate">{hint}</p>}
     </div>
   );
 }
@@ -66,30 +71,65 @@ export function DailyView() {
   const s = data?.summary;
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
-          Date
-          <input type="date" className={field} value={date} max={daysAgo(0)} onChange={(e) => e.target.value && setDate(e.target.value)} />
-        </label>
-        <div className="flex gap-1 pb-0.5">
-          {[["Today", 0], ["Yesterday", 1]].map(([l, n]) => (
-            <button
-              key={l as string}
-              onClick={() => setDate(daysAgo(n as number))}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${date === daysAgo(n as number) ? "bg-brand-500 text-white" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"}`}
-            >
-              {l}
-            </button>
-          ))}
+      <div className="flex flex-col gap-3 rounded-2xl border border-surface-border bg-surface p-4 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-700">Date</label>
+              <input
+                type="date"
+                className="h-9 rounded-lg border border-surface-border bg-surface px-3 text-sm text-gray-900 shadow-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                value={date}
+                max={daysAgo(0)}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1 rounded-xl bg-surface-subtle p-1 ring-1 ring-surface-border">
+              {[["Today", 0], ["Yesterday", 1]].map(([l, n]) => {
+                const active = date === daysAgo(n as number);
+                return (
+                  <button
+                    key={l as string}
+                    onClick={() => setDate(daysAgo(n as number))}
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${
+                      active
+                        ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs"
+                        : "text-gray-600 hover:bg-surface hover:text-gray-900"
+                    }`}
+                  >
+                    {l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={exportCsv} disabled={!rows.length}>
+              <IconDownload className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
-        <div className="w-full sm:w-44">
-          <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as "" | DayStatus)} placeholder="All" options={STATUS_OPTIONS} />
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="lg:col-span-3">
+            <SearchBox
+              value={q}
+              onChange={setQ}
+              placeholder="Search employee name, ID, platform or region…"
+              className="w-full"
+            />
+          </div>
+          <Select
+            label="Status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as "" | DayStatus)}
+            placeholder="All statuses"
+            options={STATUS_OPTIONS}
+            className="[&_label]:sr-only"
+          />
         </div>
-        <SearchBox value={q} onChange={setQ} placeholder="Search name, ID, platform…" className="w-full sm:ml-auto sm:w-72" />
-        <Button variant="secondary" onClick={exportCsv} disabled={!rows.length}>
-          <IconDownload className="h-4 w-4" />
-          Export CSV
-        </Button>
       </div>
 
       {data && <CategoryChips rows={data.rows} value={cat} onChange={setCat} />}

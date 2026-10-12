@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Pagination } from "@/components/ui/Pagination";
 import { Table, TableEmpty, Td, Th } from "@/components/ui/Table";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { SearchBox, SegmentedControl } from "@/features/orders/ui";
-import { PAGE_SIZE, downloadLogins, useLoginDetail, useLogins, type LoginAccount, type LoginFilters } from "@/features/logins/api";
+import { PAGE_SIZE, downloadLogins, resetLoginPassword, useLoginDetail, useLogins, type LoginAccount, type LoginFilters, type PasswordResult } from "@/features/logins/api";
+import { useAuth } from "@/features/auth/useAuth";
 import { useDebounced } from "@/hooks/useDebounced";
 import { pushToast } from "@/lib/toast";
 
@@ -26,6 +29,51 @@ function copy(text: string) {
   navigator.clipboard?.writeText(text).then(() => pushToast("Copied.", "success"), () => undefined);
 }
 
+function PasswordSection({ account }: { account: LoginAccount }) {
+  const { hasPermission } = useAuth();
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<PasswordResult | null>(null);
+  const [default_, setDefault] = useState(account.mustChangePassword);
+  if (!hasPermission("logins.manage")) return null;
+
+  async function save() {
+    setBusy(true);
+    try {
+      setResult(await resetLoginPassword(account.id, value.trim() || undefined));
+      setValue("");
+      setDefault(false);
+      void queryClient.invalidateQueries({ queryKey: ["logins"] });
+    } catch {
+      /* the API layer already showed the reason */
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface-subtle p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-bold text-heading">Password</p>
+        {default_ ? <Badge tone="warning">Still the standard starting password</Badge> : <Badge tone="success">Custom password set</Badge>}
+      </div>
+      <p className="text-xs text-gray-500">Setting a password signs this person out of every phone and unlocks the account. Leave the box empty for a random one. Passwords are stored only as a hash, so this is the one time you see it.</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1"><Input label="New password (6+ characters)" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" /></div>
+        <Button onClick={save} isLoading={busy} disabled={value.length > 0 && value.trim().length < 6}>{value.trim() ? "Set password" : "Generate random"}</Button>
+      </div>
+      {result && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-status-success-soft px-3 py-2.5 text-sm">
+          <span className="text-gray-700">{result.generated ? "New random password" : "Password set"}:</span>
+          <code className="rounded bg-surface px-2 py-1 font-mono text-sm font-bold text-heading">{result.password}</code>
+          <Button size="sm" variant="secondary" onClick={() => copy(result.password)}>Copy</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AccountModal({ account, onClose }: { account: LoginAccount; onClose: () => void }) {
   const { data, isLoading } = useLoginDetail(account.id);
   return (
@@ -33,9 +81,9 @@ function AccountModal({ account, onClose }: { account: LoginAccount; onClose: ()
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => copy(account.email)}>Copy login</Button>
-          {account.mustChangePassword ? <Badge tone="warning">Must choose a new password at first login</Badge> : <Badge tone="success">Password changed</Badge>}
           {account.phone && <span className="text-sm text-gray-600">{account.phone}</span>}
         </div>
+        <PasswordSection account={account} />
         {isLoading ? <Skeleton className="h-32 w-full" /> : (
           <Table>
             <thead><tr><Th>Store</Th><Th>Code</Th><Th>Platform</Th><Th>City</Th></tr></thead>

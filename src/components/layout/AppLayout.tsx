@@ -14,16 +14,19 @@ import {
   IconGrid,
   IconLogout,
   IconMenu,
+  IconMoon,
   IconReceipt,
   IconRefresh,
-  IconWallet,
   IconReport,
   IconSearch,
   IconShield,
   IconStore,
+  IconSun,
   IconTicket,
   IconUsers,
+  IconWallet,
 } from "@/components/ui/icons";
+import { useTheme } from "@/lib/theme";
 
 interface NavItem {
   label: string;
@@ -97,7 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Data sync", to: "/data-sync", icon: IconRefresh, permission: "sheets.sync" },
       { label: "Cash purchase", to: "/developer/cash", icon: IconWallet, permission: "cash.adjust" },
-      { label: "Cards from sheet", to: "/developer/card-sheet", icon: IconCard, permission: "cards.sheet" },
+      { label: "Random Count PDF", to: "/developer/card-sheet", icon: IconCard, permission: "cards.sheet" },
     ],
   },
   {
@@ -136,11 +139,18 @@ function initials(name: string): string {
 
 function BrandMark() {
   return (
-    <div className="flex items-center gap-2.5">
-      <BrandLogo tile height={30} />
+    <div className="flex items-center gap-3">
+      <BrandLogo tile height={32} />
       <div className="leading-tight">
-        <div className="text-[15px] font-bold tracking-tight text-white">Veekay CRM</div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">Aquatrack</div>
+        <div className="flex items-center gap-1.5 text-[15px] font-extrabold tracking-tight text-white">
+          Veekay CRM
+          <span className="rounded-full bg-brand-400/20 px-1.5 py-0.2 text-[9px] font-bold text-brand-300 ring-1 ring-brand-400/30">
+            PRO
+          </span>
+        </div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+          Aquatrack Ops
+        </div>
       </div>
     </div>
   );
@@ -160,10 +170,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <BrandMark />
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2" aria-label="Main">
+      <nav className="flex-1 overflow-y-auto px-3 pb-8 pt-2" aria-label="Main">
         {visibleGroups.map((group) => (
           <div key={group.title} className="mt-4 first:mt-1">
-            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-brand-300/70">{group.title}</p>
+            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+              {group.title}
+            </p>
             <div className="space-y-0.5">
             {group.items.map((item) => {
               const Icon = item.icon;
@@ -174,25 +186,25 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   end={!item.prefix}
                   onClick={onNavigate}
                   className={({ isActive }) =>
-                    `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-all ${
                       isActive
-                        ? "bg-gradient-to-r from-brand-500/30 to-brand-500/5 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
-                        : "text-white/60 hover:bg-white/5 hover:text-white"
+                        ? "bg-gradient-to-r from-brand-500/25 via-brand-500/10 to-transparent text-white font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                        : "text-white/60 hover:bg-white/[0.07] hover:text-white"
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
                       {isActive && (
-                        <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-aqua-300 to-brand-400 shadow-[0_0_10px_rgb(var(--brand-400)/0.8)]" />
+                        <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-aqua-400 shadow-[0_0_8px_rgba(56,189,248,0.7)]" />
                       )}
                       <Icon
                         aria-hidden="true"
-                        className={`h-[18px] w-[18px] shrink-0 ${
-                          isActive ? "text-brand-300" : "text-white/40 group-hover:text-white/70"
+                        className={`h-[18px] w-[18px] shrink-0 transition-colors ${
+                          isActive ? "text-brand-300" : "text-white/40 group-hover:text-white/80"
                         }`}
                       />
-                      {item.label}
+                      <span>{item.label}</span>
                     </>
                   )}
                 </NavLink>
@@ -203,16 +215,19 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </nav>
 
-      <div className="shrink-0 border-t border-white/5 p-3">
+      <div className="shrink-0 border-t border-white/10 p-3 bg-ink-950/40">
         <NavLink
           to="/account"
           onClick={onNavigate}
           title="My account"
-          className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5"
+          className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-white/[0.07]"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-700 text-xs font-bold text-white ring-2 ring-white/10">
-            {initials(user?.fullName ?? "")}
-          </span>
+          <div className="relative">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-aqua-600 text-xs font-extrabold text-white ring-2 ring-white/15 shadow-sm">
+              {initials(user?.fullName ?? "")}
+            </span>
+            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-ink-950" />
+          </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-white">{user?.fullName}</div>
             {primaryRole && (
@@ -222,9 +237,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </NavLink>
         <button
           onClick={() => void logout()}
-          className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white/60 transition-colors hover:bg-status-danger/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          className="mt-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/50 transition-colors hover:bg-rose-500/20 hover:text-rose-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         >
-          <IconLogout className="h-[18px] w-[18px]" />
+          <IconLogout className="h-4 w-4" />
           Sign out
         </button>
       </div>
@@ -247,6 +262,7 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
   const pages = NAV_ITEMS.filter((i) => canSee(i, hasPermission, user?.roles ?? []));
@@ -347,33 +363,45 @@ export function AppLayout() {
       )}
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex h-[4.5rem] items-center gap-3 border-b border-surface-border/70 bg-surface/75 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+      <header className="sticky top-0 z-20 flex h-[4.25rem] items-center gap-3 border-b border-surface-border/70 bg-surface/85 px-4 backdrop-blur-md sm:px-6 lg:px-10">
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
-          className="-ml-1.5 rounded-md p-1.5 text-gray-600 hover:bg-surface-subtle hover:text-gray-900 lg:hidden"
+          className="-ml-1.5 rounded-lg p-2 text-gray-500 hover:bg-surface-subtle hover:text-gray-900 lg:hidden"
         >
           <IconMenu className="h-5 w-5" />
         </button>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-400">Veekay</span>
-          <span className="text-gray-300">/</span>
-          <h1 className="font-semibold text-heading">{currentTitle}</h1>
+        <div className="flex items-center gap-2.5 text-sm">
+          <span className="font-semibold text-gray-500">Aquatrack</span>
+          <span className="text-gray-400">/</span>
+          <h1 className="font-bold text-heading">{currentTitle}</h1>
+          <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live Ops
+          </span>
         </div>
         <button
           onClick={() => setPaletteOpen(true)}
           aria-label="Search pages and stores"
-          className="ml-auto flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-1.5 text-sm text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-700"
+          className="ml-auto flex items-center gap-2.5 rounded-lg border border-surface-border bg-surface-subtle/70 px-3.5 py-1.5 text-xs text-gray-500 shadow-xs transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
         >
-          <IconSearch className="h-4 w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">Search…</span>
-          <kbd className="hidden rounded border border-surface-border px-1.5 text-[10px] font-semibold sm:inline">Ctrl K</kbd>
+          <IconSearch className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="hidden sm:inline">Search pages, stores…</span>
+          <kbd className="hidden rounded border border-surface-border bg-surface px-1.5 py-0.5 text-[10px] font-semibold sm:inline">Ctrl K</kbd>
+        </button>
+        <button
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label="Toggle theme"
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-gray-500 shadow-xs transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+        >
+          {theme === "dark" ? <IconSun className="h-4 w-4 text-amber-400" /> : <IconMoon className="h-4 w-4 text-gray-600" />}
         </button>
         <button
           onClick={() => setHelpOpen(true)}
           aria-label="Keyboard shortcuts"
           title="Keyboard shortcuts (?)"
-          className="hidden h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-sm font-bold text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:text-gray-800 sm:flex"
+          className="hidden h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-xs font-bold text-gray-500 shadow-xs transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200 sm:flex"
         >
           ?
         </button>
