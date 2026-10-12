@@ -6,6 +6,7 @@ import {
   getInsights,
   getMyStores,
   importOrdersFile,
+  markManyOrders,
   markOrder,
   syncOrders,
 } from "@/services/orders";
@@ -44,6 +45,32 @@ export function useMarkOrder() {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
       for (const key of ["daily-overview", "my-stores", "pending"]) qc.invalidateQueries({ queryKey: [key] });
       pushToast("Order marked.", "success");
+    },
+  });
+}
+
+export function useMarkManyOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      storeId,
+      entries,
+    }: {
+      storeId: string;
+      entries: { orderDate: string; bottleCount: number }[];
+    }) => markManyOrders(storeId, entries),
+    onSuccess: (data, vars) => {
+      qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
+      for (const key of ["daily-overview", "my-stores", "pending", "order-insights"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+      if (data.failed === 0) {
+        pushToast(`${data.saved} order${data.saved === 1 ? "" : "s"} marked successfully.`, "success");
+      } else if (data.saved > 0) {
+        pushToast(`${data.saved} saved, ${data.failed} skipped.`, "info");
+      } else {
+        pushToast(`Failed to mark entries: ${data.results[0]?.error ?? "validation error"}`, "error");
+      }
     },
   });
 }

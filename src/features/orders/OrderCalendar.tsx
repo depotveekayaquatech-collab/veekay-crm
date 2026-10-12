@@ -29,18 +29,32 @@ interface Props {
   calendar: Cal;
   /** null when the viewer can't mark (e.g. admin uses CorrectEntryModal instead). */
   onMark?: (date: string, count: number) => Promise<unknown>;
+  /** Batch mark multiple dates in one request */
+  onMarkMany?: (entries: { orderDate: string; bottleCount: number }[]) => Promise<unknown>;
   onPickDay?: (day: CalendarDay) => void;
   marking?: boolean;
   /** Month stepping. Omit to hide the arrows. */
   onNavigate?: (year: number, month: number) => void;
+  isAdmin?: boolean;
 }
 
-export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate }: Props) {
+export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking, onNavigate, isAdmin }: Props) {
   const [selected, setSelected] = useState<CalendarDay | null>(null);
   const [count, setCount] = useState("");
 
+  // Multi-date selection state
+  const [multiMode, setMultiMode] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [multiCount, setMultiCount] = useState("");
+  const [customCounts, setCustomCounts] = useState<Record<string, string>>({});
+  const [customizeEach, setCustomizeEach] = useState(false);
+
   const firstWeekday = new Date(calendar.year, calendar.month - 1, 1).getDay();
   const blanks = Array.from({ length: firstWeekday });
+
+  const missingDays = useMemo(() => {
+    return calendar.days.filter((d) => (isAdmin ? !d.isFuture : !d.marked && !d.isFuture));
+  }, [calendar, isAdmin]);
 
   const stats = useMemo(() => {
     const past = calendar.days.filter((d) => !d.isFuture);
@@ -65,13 +79,39 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
     if (!onNavigate) return;
     const d = new Date(calendar.year, calendar.month - 1 + delta, 1);
     setSelected(null);
+    setSelectedDates(new Set());
     onNavigate(d.getFullYear(), d.getMonth() + 1);
   }
 
   const canMark = Boolean(onMark);
+
+  function toggleDate(dateStr: string) {
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  }
+
+  function selectAllMissing() {
+    setSelectedDates(new Set(missingDays.map((d) => d.date)));
+  }
+
+  function clearSelection() {
+    setSelectedDates(new Set());
+    setMultiCount("");
+    setCustomCounts({});
+  }
+
   function pick(d: CalendarDay) {
     if (onPickDay) {
       onPickDay(d);
+      return;
+    }
+    if (multiMode) {
+      const isSelectable = isAdmin ? !d.isFuture : !d.marked && !d.isFuture;
+      if (isSelectable) toggleDate(d.date);
       return;
     }
     if (d.marked || d.isFuture || !onMark) return;
@@ -88,6 +128,31 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
     await onMark(selected.date, n);
     setSelected(null);
     setCount("");
+  }
+
+  const sortedSelected = useMemo(() => Array.from(selectedDates).sort(), [selectedDates]);
+  const defaultMultiNum = Number(multiCount);
+  const isValidCommonMulti = multiCount !== "" && Number.isInteger(defaultMultiNum) && defaultMultiNum >= 0 && defaultMultiNum <= 200;
+
+  const canSubmitMulti = useMemo(() => {
+    if (selectedDates.size === 0 || !onMarkMany) return false;
+    if (!customizeEach) return isValidCommonMulti;
+    return sortedSelected.every((d) => {
+      const c = Number(customCounts[d] ?? multiCount);
+      return Number.isInteger(c) && c >= 0 && c <= 200;
+    });
+  }, [selectedDates.size, onMarkMany, customizeEach, isValidCommonMulti, sortedSelected, customCounts, multiCount]);
+
+  async function submitMulti(e: FormEvent) {
+    e.preventDefault();
+    if (!canSubmitMulti || !onMarkMany) return;
+    const entries = sortedSelected.map((d) => ({
+      orderDate: d,
+      bottleCount: customizeEach ? Number(customCounts[d] ?? multiCount) : defaultMultiNum,
+    }));
+    await onMarkMany(entries);
+    clearSelection();
+    setMultiMode(false);
   }
 
   return (
@@ -126,10 +191,31 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
             </button>
           )}
         </div>
-        <div className="flex gap-3 text-xs text-gray-500">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-status-success" /> Employee</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-status-warning" /> Admin</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-gray-400" /> Missing</span>
+
+        <div className="flex items-center gap-3">
+          {canMark && onMarkMany && (missingDays.length > 0 || isAdmin) && (
+            <button
+              type="button"
+              onClick={() => {
+                setMultiMode((m) => !m);
+                setSelected(null);
+                if (multiMode) clearSelection();
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                multiMode
+                  ? "bg-brand-600 text-white shadow-xs"
+                  : "bg-brand-50 text-brand-700 hover:bg-brand-100"
+              }`}
+            >
+              <span>⚡</span>
+              {multiMode ? `Multi-date mode (${selectedDates.size})` : "Select multiple dates"}
+            </button>
+          )}
+          <div className="hidden sm:flex gap-3 text-xs text-gray-500">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-status-success" /> Employee</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-status-warning" /> Admin</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-gray-400" /> Missing</span>
+          </div>
         </div>
       </div>
 
@@ -148,6 +234,48 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
       </div>
 
       <div className="p-3 sm:p-5">
+        {multiMode && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50/70 p-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold text-brand-900">
+                {selectedDates.size === 0
+                  ? "Tap any dates below to select them"
+                  : `${selectedDates.size} date${selectedDates.size === 1 ? "" : "s"} selected`}
+              </span>
+              {selectedDates.size > 0 && (
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="font-semibold text-brand-600 hover:underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {missingDays.length > 0 && (
+                <button
+                  type="button"
+                  onClick={selectAllMissing}
+                  className="rounded-lg border border-brand-200 bg-white px-2.5 py-1 font-bold text-brand-700 shadow-2xs hover:bg-brand-50"
+                >
+                  Select all missing ({missingDays.length})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiMode(false);
+                  clearSelection();
+                }}
+                className="font-medium text-gray-500 hover:text-gray-700"
+              >
+                Single date mode
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 sm:gap-2">
           {WEEKDAYS.map((w) => (
             <div key={w} className="pb-1">{w}</div>
@@ -158,19 +286,29 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
             <div key={`b${i}`} />
           ))}
           {calendar.days.map((d) => {
-            const clickable = Boolean(onPickDay) || (canMark && !d.marked && !d.isFuture);
+            const isClickable = Boolean(onPickDay) || (canMark && (isAdmin ? !d.isFuture : !d.marked && !d.isFuture));
             const isSel = selected?.date === d.date;
+            const isPicked = selectedDates.has(d.date);
+
             return (
               <button
                 key={d.day}
                 type="button"
                 onClick={() => pick(d)}
-                disabled={!clickable}
+                disabled={!isClickable}
                 title={d.marked ? `${d.count} bottles (${d.source})` : d.isFuture ? undefined : "Not marked"}
-                style={d.marked && d.source !== "admin" ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` } : undefined}
-                className={`relative flex h-14 flex-col sm:h-[4.25rem] items-center justify-center rounded-lg border text-sm transition-[transform,box-shadow,background-color,border-color] disabled:cursor-default ${dayTone(d, clickable)} ${
-                  d.isToday ? "ring-2 ring-brand-400 ring-offset-1" : ""
-                } ${isSel ? "scale-[1.04] border-brand-500 bg-brand-50 text-brand-700 shadow-md" : ""}`}
+                style={
+                  !isPicked && d.marked && d.source !== "admin"
+                    ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` }
+                    : undefined
+                }
+                className={`relative flex h-14 flex-col sm:h-[4.25rem] items-center justify-center rounded-lg border text-sm transition-[transform,box-shadow,background-color,border-color] disabled:cursor-default ${
+                  isPicked
+                    ? "ring-2 ring-brand-500 bg-brand-100/70 border-brand-500 text-brand-900 font-extrabold scale-[1.04] shadow-xs z-10"
+                    : dayTone(d, isClickable)
+                } ${d.isToday ? "ring-2 ring-brand-400 ring-offset-1" : ""} ${
+                  isSel ? "scale-[1.04] border-brand-500 bg-brand-50 text-brand-700 shadow-md" : ""
+                }`}
               >
                 <span className={`absolute left-1.5 top-1 text-[10px] font-semibold ${d.marked ? "opacity-70" : ""}`}>{d.day}</span>
                 {d.marked ? (
@@ -178,12 +316,18 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
                 ) : !d.isFuture ? (
                   <span className="text-lg font-light text-gray-300">+</span>
                 ) : null}
+                {isPicked && (
+                  <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-600 text-[10px] text-white font-bold">
+                    ✓
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
 
-        {selected && onMark && (
+        {/* Single date mark form */}
+        {!multiMode && selected && onMark && (
           <form onSubmit={submit} className="mt-5 flex flex-wrap items-end gap-3 rounded-lg border border-brand-100 bg-brand-50/60 p-3.5">
             <div className="min-w-[10rem] flex-1">
               <Input
@@ -204,10 +348,127 @@ export function OrderCalendar({ calendar, onMark, onPickDay, marking, onNavigate
             <Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={marking}>
               Cancel
             </Button>
+            {onMarkMany && missingDays.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiMode(true);
+                  setSelectedDates(new Set([selected.date]));
+                  setSelected(null);
+                }}
+                className="text-xs font-bold text-brand-600 hover:underline ml-2"
+              >
+                Select more dates together →
+              </button>
+            )}
           </form>
         )}
-        {!selected && canMark && stats.missing > 0 && (
-          <p className="mt-4 text-center text-xs text-gray-500">Tap a dashed day to add its bottle count.</p>
+
+        {/* Multi-date batch entry card */}
+        {multiMode && selectedDates.size > 0 && onMarkMany && (
+          <form onSubmit={submitMulti} className="mt-5 rounded-2xl border border-brand-200 bg-brand-50/70 p-4 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 pb-3">
+              <div>
+                <h4 className="text-sm font-extrabold text-brand-950">
+                  Mark {selectedDates.size} Selected Dates Together
+                </h4>
+                <p className="text-xs text-brand-700">
+                  Enter bottle count to log for all selected dates in a single request.
+                </p>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-brand-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={customizeEach}
+                  onChange={(e) => setCustomizeEach(e.target.checked)}
+                  className="rounded border-brand-300 text-brand-600 focus:ring-brand-500"
+                />
+                Customize count per date
+              </label>
+            </div>
+
+            {!customizeEach ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="w-40">
+                    <Input
+                      label="Bottles count"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={200}
+                      value={multiCount}
+                      onChange={(e) => setMultiCount(e.target.value)}
+                      autoFocus
+                      placeholder="e.g. 15"
+                      hint="0–200"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                    {[0, 5, 10, 15, 20, 25, 30].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setMultiCount(String(preset))}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-bold border transition-colors ${
+                          multiCount === String(preset)
+                            ? "border-brand-600 bg-brand-600 text-white"
+                            : "border-brand-200 bg-white text-brand-800 hover:bg-brand-100"
+                        }`}
+                      >
+                        {preset === 0 ? "0 (Closed)" : `${preset} bottles`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 max-h-48 overflow-y-auto pr-1">
+                {sortedSelected.map((d) => (
+                  <div key={d} className="flex items-center justify-between rounded-xl bg-white p-2.5 border border-brand-100">
+                    <span className="text-xs font-bold text-gray-800">{d}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={200}
+                      value={customCounts[d] ?? multiCount}
+                      onChange={(e) => setCustomCounts((prev) => ({ ...prev, [d]: e.target.value }))}
+                      placeholder={multiCount || "0"}
+                      className="h-8 w-20 rounded-lg border border-surface-border text-center text-xs font-bold focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-brand-100">
+              <span className="text-xs text-brand-700">
+                Selected: <b className="font-semibold">{sortedSelected.map((d) => d.slice(5)).join(", ")}</b>
+              </span>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={clearSelection} disabled={marking}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" isLoading={marking} disabled={!canSubmitMulti}>
+                  Save All {selectedDates.size} Orders
+                </Button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {!multiMode && !selected && canMark && stats.missing > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-gray-500">
+            <span>Tap a dashed day to add its bottle count, or</span>
+            <button
+              type="button"
+              onClick={() => setMultiMode(true)}
+              className="font-bold text-brand-600 hover:underline"
+            >
+              switch to multi-date select
+            </button>
+          </div>
         )}
       </div>
     </div>

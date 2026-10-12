@@ -40,6 +40,23 @@ export interface OrderCalendar {
   days: CalendarDay[];
 }
 
+export interface MarkManyEntry {
+  orderDate: string;
+  bottleCount: number;
+}
+
+export interface MarkManyResultItem {
+  orderDate: string;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface MarkManyResult {
+  saved: number;
+  failed: number;
+  results: MarkManyResultItem[];
+}
+
 export interface EmployeeOverviewRow {
   employeeId: string;
   employeeCode: string;

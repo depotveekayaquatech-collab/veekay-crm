@@ -8,10 +8,12 @@ import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { Button } from "@/components/ui/Button";
+import { MultiDateMarkModal } from "@/features/orders/MultiDateMarkModal";
 import { OrderCalendar } from "@/features/orders/OrderCalendar";
 import { QuickEntry } from "@/features/orders/QuickEntry";
 import { RegionFilter, SegmentedControl, SelectStorePrompt, StorePicker } from "@/features/orders/ui";
-import { useCalendar, useMarkOrder, useMyStores } from "@/features/orders/useOrders";
+import { useCalendar, useMarkManyOrders, useMarkOrder, useMyStores } from "@/features/orders/useOrders";
 import type { MyStore } from "@/types/order";
 
 function ContactCard({ label, name, phone }: { label: string; name: string | null; phone: string | null }) {
@@ -82,6 +84,7 @@ export function MarkOrdersPage() {
   const [region, setRegion] = useState("");
   const [params] = useSearchParams();
   const canMark = usePermission("orders.mark");
+  const isAdmin = usePermission("orders.correct");
   const [pickedId, setStoreId] = useState(params.get("store") ?? "");
   // Someone with a single store has nothing to pick — open it straight away.
   const storeId = pickedId || (stores?.length === 1 ? stores[0].id : "");
@@ -89,6 +92,8 @@ export function MarkOrdersPage() {
   const [savedView, setView] = usePersistentState<"quick" | "store">("orders.view", "quick");
   const view = params.get("store") || !canMark ? "store" : savedView;
   const mark = useMarkOrder();
+  const markMany = useMarkManyOrders();
+  const [multiModalOpen, setMultiModalOpen] = useState(false);
   const { data: calendar, isLoading: calLoading, isError: calError, refetch: refetchCal } = useCalendar(
     storeId || null,
     period.year,
@@ -159,6 +164,17 @@ export function MarkOrdersPage() {
             <Select label="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="All vendors" options={vendors} />
           </div>
         )}
+        {canMark && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setMultiModalOpen(true)}
+            className="sm:ml-auto flex items-center gap-1.5 font-bold"
+          >
+            <span>⚡</span>
+            <span>Mark multiple dates</span>
+          </Button>
+        )}
       </div>
 
       {isLoading && (
@@ -196,15 +212,27 @@ export function MarkOrdersPage() {
                 ) : (
                   <OrderCalendar
                     calendar={calendar}
-                    marking={mark.isPending}
+                    marking={mark.isPending || markMany.isPending}
                     onNavigate={(year, month) => setPeriod({ year, month })}
                     onMark={canMark ? (date, count) => mark.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
+                    onMarkMany={canMark ? (entries) => markMany.mutateAsync({ storeId: selectedStore.id, entries }) : undefined}
+                    isAdmin={isAdmin}
                   />
                 )}
               </>
             )}
           </div>
         </div>
+      )}
+
+      {canMark && (
+        <MultiDateMarkModal
+          isOpen={multiModalOpen}
+          onClose={() => setMultiModalOpen(false)}
+          stores={filtered}
+          initialStoreId={storeId}
+          isAdmin={isAdmin}
+        />
       )}
     </div>
   );

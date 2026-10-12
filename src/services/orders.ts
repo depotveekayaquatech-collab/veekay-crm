@@ -7,6 +7,8 @@ import {
   toOverview,
   type DashboardInsights,
   type DailyOverview,
+  type MarkManyEntry,
+  type MarkManyResult,
   type MyStore,
   type OrderCalendar,
   type OrderImportResult,
@@ -35,6 +37,35 @@ export async function markOrder(
       body: { store_id: storeId, order_date: orderDate, bottle_count: bottleCount },
     }),
   );
+}
+
+export async function markManyOrders(
+  storeId: string,
+  entries: MarkManyEntry[],
+): Promise<MarkManyResult> {
+  const wire = await apiRequest<{
+    saved: number;
+    failed: number;
+    results: { order_date: string; ok: boolean; error: string | null }[];
+  }>("/orders/mark-many", {
+    method: "POST",
+    body: {
+      store_id: storeId,
+      entries: entries.map((e) => ({
+        order_date: e.orderDate,
+        bottle_count: e.bottleCount,
+      })),
+    },
+  });
+  return {
+    saved: wire.saved,
+    failed: wire.failed,
+    results: wire.results.map((r) => ({
+      orderDate: r.order_date,
+      ok: r.ok,
+      error: r.error,
+    })),
+  };
 }
 
 export async function correctEntry(
