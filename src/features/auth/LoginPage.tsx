@@ -90,7 +90,6 @@ export function LoginPage() {
               value={employeeCode}
               onChange={(e) => setEmployeeCode(e.target.value.toUpperCase())}
               autoComplete="username"
-              placeholder="e.g. ADMIN001"
               required
             />
             <Input
