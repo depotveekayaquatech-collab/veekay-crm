@@ -10,11 +10,11 @@ import { isoDate } from "@/lib/dates";
 import { pushToast } from "@/lib/toast";
 import { MAX_DAYS, datesBetween, fmtDay, freshDistribution, type DayCount } from "./randomCounts";
 
-interface Matched { row: number; sheet_name: string; store_id: string; store_name: string; code: string; platform: string | null; total: number }
+interface Matched { row: number; sheet_name: string; store_id: string; store_name: string; code: string; platform: string | null; total: number; entries?: DayCount[] }
 interface Suggestion { store_id: string; name: string; code: string }
 interface Unmatched { row: number; name: string; total: number; reason: string; suggestions: Suggestion[] }
-interface Parsed { file: string; rows: number; matched: Matched[]; unmatched: Unmatched[]; warnings: string[] }
-interface Line { storeId: string; name: string; code: string; total: number }
+interface Parsed { file: string; rows: number; matched: Matched[]; unmatched: Unmatched[]; warnings: string[]; has_entries?: boolean }
+interface Line { storeId: string; name: string; code: string; total: number; entries?: DayCount[] }
 
 const SKIP = "skip";
 
@@ -64,7 +64,7 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
   const lines = useMemo<Line[]>(() => {
     if (!parsed) return [];
     const out = new Map<string, Line>();
-    for (const m of parsed.matched) out.set(m.store_id, { storeId: m.store_id, name: m.store_name, code: m.code, total: m.total });
+    for (const m of parsed.matched) out.set(m.store_id, { storeId: m.store_id, name: m.store_name, code: m.code, total: m.total, entries: m.entries });
     for (const u of parsed.unmatched) {
       const id = choice[u.row];
       if (!id || id === SKIP) continue;
@@ -81,10 +81,13 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
   const unresolved = parsed ? parsed.unmatched.filter((u) => !choice[u.row]).length : 0;
   const skipped = parsed ? parsed.unmatched.filter((u) => choice[u.row] === SKIP).length : 0;
   const days = useMemo(() => (start && end && end >= start ? datesBetween(start, end) : []), [start, end]);
+  // A sheet that already has daily entries is used exactly as written; nothing is randomised and no date range is needed.
+  const fromSheet = !!parsed?.has_entries;
   const tooFew = !allowZero ? lines.filter((l) => l.total < days.length) : [];
   const problem =
     !parsed ? "Upload the sheet first."
     : lines.length === 0 ? "No outlet is matched to a store yet."
+    : fromSheet ? null
     : !start || !end ? "Pick the start and end dates."
     : end < start ? "The end date can't be before the start date."
     : days.length > MAX_DAYS ? `The range can't be longer than ${MAX_DAYS} days.`
@@ -96,6 +99,10 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
 
   function generate() {
     if (problem) return;
+    if (fromSheet) {
+      setSplit(Object.fromEntries(lines.map((l) => [l.storeId, l.entries ?? []])));
+      return;
+    }
     setSplit(Object.fromEntries(lines.map((l) => [l.storeId, freshDistribution(l.total, days, split?.[l.storeId], allowZero)])));
   }
   function shuffle(l: Line) {
@@ -182,22 +189,23 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
             </div>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
+          {fromSheet && <p className="text-sm text-gray-700">This sheet already has daily entries, so those exact numbers go on the cards. Nothing is randomised.</p>}
+          {!fromSheet && <div className="grid gap-4 md:grid-cols-2">
             <Input label="Start date" type="date" value={start} onChange={(e) => stale(setStart)(e.target.value)} />
             <Input label="End date" type="date" value={end} min={start || undefined} onChange={(e) => stale(setEnd)(e.target.value)} />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+          </div>}
+          {!fromSheet && <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => range("this")}>This month so far</Button>
             <Button size="sm" variant="secondary" onClick={() => range("last")}>Last month</Button>
             <label className="ml-2 flex items-center gap-2 text-sm font-medium text-gray-700">
               <input type="checkbox" checked={allowZero} onChange={(e) => { setAllowZero(e.target.checked); setSplit(null); }} className="h-4 w-4 rounded border-surface-border accent-brand-500" />
               Allow zero-count days <span className="font-normal text-gray-500">(off = every day gets at least 1)</span>
             </label>
-          </div>
-          {problem && (start || end) && <p className="text-sm text-status-warning">{problem}</p>}
+          </div>}
+          {problem && (start || end || fromSheet) && <p className="text-sm text-status-warning">{problem}</p>}
 
           <div className="flex flex-wrap justify-end gap-2">
-            <Button onClick={generate} disabled={Boolean(problem)}>{split ? "Shuffle all" : "Generate preview"}</Button>
+            <Button onClick={generate} disabled={Boolean(problem)}>{fromSheet ? "Show preview" : split ? "Shuffle all" : "Generate preview"}</Button>
             <Button onClick={download} isLoading={busy === "pdf"} disabled={!allGood}>Download {lines.length} card{lines.length === 1 ? "" : "s"} (PDF)</Button>
           </div>
 
@@ -205,7 +213,7 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
             <>
               <p className={`text-sm font-semibold ${allGood ? "text-status-success" : "text-status-danger"}`}>
                 {allGood
-                  ? `Check passed: every outlet's ${days.length} daily counts add up to its total.${skipped ? ` ${skipped} outlet(s) skipped.` : ""}`
+                  ? `Check passed: every outlet's daily counts add up to its total.${skipped ? ` ${skipped} outlet(s) skipped.` : ""}`
                   : "Some outlets don't add up to their total. Shuffle all before downloading."}
               </p>
               <Table>
@@ -217,10 +225,10 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
                         <Td className="font-medium text-gray-900">{l.name}</Td>
                         <Td className="font-mono text-xs">{l.code}</Td>
                         <Td className="text-right tabular-nums">{l.total.toLocaleString("en-IN")}</Td>
-                        <Td className="text-right tabular-nums">{days.length}</Td>
+                        <Td className="text-right tabular-nums">{split[l.storeId]?.length ?? days.length}</Td>
                         <Td className={`text-right font-bold ${sums(l.storeId) === l.total ? "text-status-success" : "text-status-danger"}`}>{sums(l.storeId) === l.total ? "✓" : "✗"}</Td>
                         <Td className="whitespace-nowrap text-right">
-                          <Button size="sm" variant="ghost" onClick={() => shuffle(l)}>Shuffle</Button>
+                          {!fromSheet && <Button size="sm" variant="ghost" onClick={() => shuffle(l)}>Shuffle</Button>}
                           <Button size="sm" variant="ghost" onClick={() => setOpen(open === l.storeId ? null : l.storeId)}>{open === l.storeId ? "Hide" : "Days"}</Button>
                         </Td>
                       </tr>

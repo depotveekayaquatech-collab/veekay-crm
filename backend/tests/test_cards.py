@@ -20,14 +20,21 @@ def entry(db, store, day: date, bottles: int):
 def test_blank_means_no_month_and_the_range_is_enforced():
     assert cards.parse_card_month(None) is None and cards.parse_card_month("") is None
     assert cards.parse_card_month("2026-09") == date(2026, 9, 1)
-    for bad in ("2026-08", "2999-01", "garbage", "2026-13"):
+    assert cards.parse_card_month("2026-08") == date(2026, 8, 1)
+    for bad in ("2020-01", "2999-01", "garbage", "2026-13"):
         with pytest.raises(Exception):
             cards.parse_card_month(bad)
 
 
-def test_months_list_starts_at_the_first_active_month(client, admin):
+def test_months_list_shows_only_months_with_entries(client, admin, db, make_store):
+    store = make_store()
+    entry(db, store, date(2026, 6, 10), 5)
+    entry(db, store, date(2026, 6, 11), 7)
     months = client.get(f"{API}/cards/vendors", headers=admin).json()["months"]
-    assert months and months[-1]["value"] == "2026-09"
+    values = [m["value"] for m in months]
+    assert "2026-06" in values
+    assert "2026-07" not in values and "2026-08" not in values
+    assert values == sorted(values, reverse=True)
 
 
 # ---------------------------------------------------------------- QR signing / public page
@@ -97,7 +104,7 @@ def test_pdf_with_entries_differs_from_the_blank_card(client, db, admin, make_st
 
 @pytest.mark.parametrize("params,status", [
     ({"partner": "blinkit", "vendor": "NO SUCH VENDOR"}, 404),
-    ({"partner": "blinkit", "vendor": "x", "month": "2026-08"}, 422),
+    ({"partner": "blinkit", "vendor": "x", "month": "2020-01"}, 422),
     ({"partner": "blinkit", "vendor": "x", "month": "junk"}, 422),
 ])
 def test_pdf_errors(client, admin, params, status):
@@ -123,7 +130,7 @@ def test_zip_with_a_month_is_named_for_it(client, admin, make_store):
 def test_zip_validation(client, admin, make_store, monkeypatch):
     assert client.post(f"{API}/cards/zip", headers=admin, json={"vendors": []}).status_code == 422
     assert client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["NOBODY AT ALL"]}).status_code == 404
-    assert client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["x"], "month": "2026-08"}).status_code == 422
+    assert client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["x"], "month": "2020-01"}).status_code == 422
     make_store(vendor="CAP")
     monkeypatch.setattr(cards, "MAX_STORES_PER_ZIP", 0)
     assert client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["CAP"], "partner": "blinkit"}).status_code == 422

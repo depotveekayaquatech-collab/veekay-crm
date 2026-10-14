@@ -32,7 +32,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -77,14 +77,33 @@ def _prev_month(d: date) -> date:
     return date(d.year - 1, 12, 1) if d.month == 1 else date(d.year, d.month - 1, 1)
 
 
-def available_months() -> list[dict]:
-    """Months a card can be filled for: this month (till date) and every earlier month back to the first active one."""
-    cur = _today().replace(day=1)
-    out, m = [], cur
-    while m >= first_month():
-        out.append({"value": f"{m:%Y-%m}", "label": month_label(m) + (" (till date)" if m == cur else " (full month)")})
+MAX_MONTHS_BACK = 36
+
+
+def earliest_card_month() -> date:
+    """Oldest month a card can be printed for: any month in the last MAX_MONTHS_BACK, not only since go-live."""
+    m = _today().replace(day=1)
+    for _ in range(MAX_MONTHS_BACK):
         m = _prev_month(m)
-    return out
+    return m
+
+
+def available_months(db: Session, organization_id: uuid.UUID) -> list[dict]:
+    """Months a card can be filled for: only those that have bottle entries in the CRM (newest first), so a sheet
+    uploaded for an earlier month makes that month appear, and months with nothing in them do not."""
+    cur = _today().replace(day=1)
+    lo = earliest_card_month()
+    rows = db.execute(
+        select(extract("year", OrderEntry.order_date), extract("month", OrderEntry.order_date))
+        .where(OrderEntry.organization_id == organization_id, OrderEntry.order_date >= lo, OrderEntry.order_date < _next_month(cur))
+        .distinct()
+    ).all()
+    months = sorted({date(int(y), int(m), 1) for y, m in rows}, reverse=True)
+    return [{"value": f"{m:%Y-%m}", "label": month_label(m) + (" (till date)" if m == cur else " (full month)")} for m in months]
+
+
+def _next_month(d: date) -> date:
+    return date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
 
 
 def parse_card_month(value: str | None) -> date | None:
@@ -96,10 +115,10 @@ def parse_card_month(value: str | None) -> date | None:
         d = date(y, m, 1)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Month must look like 2026-09.") from exc
-    if d > _today().replace(day=1) or d < first_month():
+    if d > _today().replace(day=1) or d < earliest_card_month():
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Choose a month from {month_label(first_month())} to {month_label(_today().replace(day=1))}, or leave it blank.",
+            f"Choose a month from {month_label(earliest_card_month())} to {month_label(_today().replace(day=1))}, or leave it blank.",
         )
     return d
 

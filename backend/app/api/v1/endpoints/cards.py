@@ -89,7 +89,7 @@ def vendors(
     return VendorsOut(
         vendors=[VendorOut(**v) for v in card_service.list_vendors(db, user, is_admin=_is_admin(perms), partner=partner, region=region, q=q)],
         regions=[RegionOut(**r) for r in card_service.list_regions(db, user, is_admin=_is_admin(perms), partner=partner)],
-        months=[MonthOption(**m) for m in card_service.available_months()],
+        months=[MonthOption(**m) for m in card_service.available_months(db, user.organization_id)],
         public_app_url=settings.PUBLIC_APP_URL,
         is_public_app_url_production_ready=is_prod_ready,
     )

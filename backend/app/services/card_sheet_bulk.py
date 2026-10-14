@@ -22,7 +22,7 @@ from app.models.store import Store
 from app.models.user import User
 from app.services import card_service
 from app.services.card_sheet_service import (
-    MAX_COUNT, MAX_RANDOM_DAYS, _alnum, _content_store_col, _grids,
+    MAX_COUNT, MAX_RANDOM_DAYS, _alnum, _content_store_col, _grids, parse_sheet,
 )
 
 MAX_BULK_STORES = 400
@@ -58,10 +58,46 @@ def _suggestions(name_key: str, by_key: dict[str, list[Store]], limit: int = 4) 
     return [{"store_id": st.id, "name": st.name, "code": st.external_code} for _, st in best]
 
 
+def _parse_dated(db: Session, user: User, filename: str, content: bytes) -> dict | None:
+    """A sheet that already has per-day counts (a column per day, or a date column plus a count column) keeps those exact
+    entries; nothing is randomised for those stores. None when the sheet is only outlet + total."""
+    try:
+        p = parse_sheet(db, user, filename, content)
+    except HTTPException:
+        return None
+    if not p.cards:
+        return None
+    entries: dict[uuid.UUID, dict[date, int]] = defaultdict(dict)
+    stores: dict[uuid.UUID, Store] = {}
+    for card in p.cards:
+        stores[card.store.id] = card.store
+        entries[card.store.id].update(card.entries)
+    matched = []
+    for sid, days in entries.items():
+        st = stores[sid]
+        matched.append({
+            "row": 0, "sheet_name": st.name, "store_id": st.id, "store_name": st.name, "code": st.external_code,
+            "platform": st.partner_organization.slug if st.partner_organization else None,
+            "total": sum(days.values()),
+            "entries": [{"date": d, "count": n} for d, n in sorted(days.items())],
+        })
+    matched.sort(key=lambda m: m["store_name"].lower())
+    warnings = [*p.warnings]
+    if p.unmatched:
+        names = ", ".join(sorted({str(u["store"]) for u in p.unmatched})[:10])
+        warnings.append(f"{len(p.unmatched)} row(s) matched no store and were left out: {names}.")
+    warnings.append("This sheet already has daily entries; those exact numbers are used, nothing is randomised.")
+    return {"file": filename, "rows": p.rows, "matched": matched, "unmatched": [], "warnings": warnings, "has_entries": True}
+
+
 def parse_totals(db: Session, user: User, filename: str, content: bytes) -> dict:
     """Reads a sheet of one store and one total per row, with or without a header row, with the store written however the
     sheet writes it (Outlet ID, Outlet Name, anything the CRM knows). Returns what matched and what didn't, with
     suggestions for the rest, so the person can fix those before any card is drawn."""
+    dated = _parse_dated(db, user, filename, content)
+    if dated is not None:
+        return dated
+
     stores = db.execute(
         select(Store).options(joinedload(Store.partner_organization)).where(Store.organization_id == user.organization_id)
     ).unique().scalars().all()

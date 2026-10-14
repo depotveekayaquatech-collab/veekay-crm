@@ -22,7 +22,8 @@ export default defineConfig({
     alias: { "@": path.resolve(import.meta.dirname, "./src") },
   },
   server: {
-    port: 5173,
+    port: 5174,
+    strictPort: true,
     proxy: {
       "/api": {
         target: process.env.VITE_PROXY_TARGET ?? "http://localhost:8000",
