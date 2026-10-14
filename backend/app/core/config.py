@@ -4,9 +4,13 @@ Central application settings.
 All configuration is read from environment variables (via .env in dev).
 Nothing here is hard-coded per the "no hard-coded secrets/URLs" rule.
 """
+
+import json
 from functools import lru_cache
+from typing import Annotated
+
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -28,9 +32,7 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def _use_psycopg3_driver(cls, value: str) -> str:
-        # Managed hosts (Render, Railway, Heroku, ...) hand out a bare
-        # "postgres://" / "postgresql://" URL, which SQLAlchemy would try to
-        # open with psycopg2. We ship psycopg (v3), so normalize the scheme.
+        # Normalize managed PostgreSQL URLs for psycopg v3.
         if value.startswith("postgres://"):
             value = "postgresql://" + value[len("postgres://") :]
         if value.startswith("postgresql://"):
@@ -38,28 +40,50 @@ class Settings(BaseSettings):
         return value
 
     # Auth / JWT
-    JWT_SECRET_KEY: str = Field(...)  # must be set via env — no default in prod
+    JWT_SECRET_KEY: str = Field(...)
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
 
-    # Refresh-token cookie (HttpOnly; used by the web app, which sends `X-Auth-Mode: cookie`)
+    # Refresh-token cookie
     REFRESH_COOKIE_NAME: str = "vk_refresh"
-    REFRESH_COOKIE_SAMESITE: str = "lax"     # lax | strict | none ("none" only if the API and web app are on different sites)
-    REFRESH_COOKIE_SECURE: bool | None = Field(default=None)   # None = secure in production, off for local http
+    REFRESH_COOKIE_SAMESITE: str = "lax"
+    REFRESH_COOKIE_SECURE: bool | None = Field(default=None)
 
     # Login protection
     PASSWORD_MIN_LENGTH: int = 10
-    REFRESH_REUSE_GRACE_SECONDS: int = 15   # tolerate two tabs refreshing with the same token at once
-    LOGIN_IP_MAX_FAILURES: int = 20         # failed logins per IP per window before it is blocked
+    REFRESH_REUSE_GRACE_SECONDS: int = 15
+    LOGIN_IP_MAX_FAILURES: int = 20
     LOGIN_IP_WINDOW_MINUTES: int = 10
-    TRUST_PROXY_HEADERS: bool = False       # set true behind a reverse proxy (Render) so the real client IP is used
-    BOOTSTRAP_ADMIN_PASSWORD: str = Field(default="")  # production seed: creates ADMIN001 with this password (forced change)
+    TRUST_PROXY_HEADERS: bool = False
+    BOOTSTRAP_ADMIN_PASSWORD: str = Field(default="")
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
 
     # CORS
-    CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:5173"]
+    )
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        """Accept JSON arrays or comma-separated CORS origins."""
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+            return [
+                origin.strip()
+                for origin in value.split(",")
+                if origin.strip()
+            ]
+
+        return value
 
     # File uploads (tickets / damaged bottle photos)
     MAX_UPLOAD_SIZE_MB: int = 8
@@ -67,121 +91,109 @@ class Settings(BaseSettings):
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp"]
     )
 
-    # ---- Compliance / bill file storage ----
-    # Local folder for uploaded cards & bills (relative paths resolve from the
-    # backend working dir). On hosts with an ephemeral disk, point this at a
-    # persistent volume — or swap app/core/storage.py for object storage.
+    # Compliance / bill file storage
     UPLOAD_DIR: str = Field(default="storage")
     COMPLIANCE_MAX_FILE_MB: int = Field(default=12)
-    # Push messages to the vendor / POC app. Empty = in-app notifications only. Needs `pip install firebase-admin`.
     FIREBASE_CREDENTIALS_FILE: str = Field(default="")
     BILL_DUE_DAYS_AFTER_MONTH_END: int = Field(default=45)
-    COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")  # cards/bills start here
+    COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")
     COMPLIANCE_MAX_MONTHS_BACK: int = Field(default=12)
 
-    # ---- Security / operations ----
-    BCRYPT_ROUNDS: int = Field(default=12)              # tests lower this; production keeps 12
+    # Security / operations
+    BCRYPT_ROUNDS: int = Field(default=12)
     SECURITY_HEADERS_ENABLED: bool = Field(default=True)
-    DOCS_ENABLED: bool | None = Field(default=None)     # None = on in development, off in production
-    MAX_REQUEST_BYTES: int = Field(default=150 * 1024 * 1024)   # largest accepted request body (bulk uploads)
+    DOCS_ENABLED: bool | None = Field(default=None)
+    MAX_REQUEST_BYTES: int = Field(default=150 * 1024 * 1024)
     RATE_LIMIT_ENABLED: bool = Field(default=True)
-    RATE_LIMIT_DEFAULT_PER_MIN: int = Field(default=600)    # any API call, per client IP
-    RATE_LIMIT_HEAVY_PER_MIN: int = Field(default=30)       # uploads, imports, PDF / Excel generation, per client IP
-    RATE_LIMIT_PUBLIC_PER_MIN: int = Field(default=60)      # unauthenticated endpoints (QR page)
+    RATE_LIMIT_DEFAULT_PER_MIN: int = Field(default=600)
+    RATE_LIMIT_HEAVY_PER_MIN: int = Field(default=30)
+    RATE_LIMIT_PUBLIC_PER_MIN: int = Field(default=60)
     LOG_LEVEL: str = Field(default="INFO")
-    LOG_JSON: bool | None = Field(default=None)         # None = JSON lines in production, readable text otherwise
-    SENTRY_DSN: str = Field(default="")                 # set to forward unhandled errors to Sentry
-    RELEASE: str = Field(default="")                    # e.g. the git commit; tags logs / Sentry events
+    LOG_JSON: bool | None = Field(default=None)
+    SENTRY_DSN: str = Field(default="")
+    RELEASE: str = Field(default="")
 
-    # ---- File storage ----
-    STORAGE_BACKEND: str = Field(default="local")       # local | s3 (any S3-compatible service: AWS, Cloudflare R2, Backblaze, MinIO)
+    # File storage
+    STORAGE_BACKEND: str = Field(default="local")
     S3_BUCKET: str = Field(default="")
-    S3_ENDPOINT_URL: str = Field(default="")            # blank for AWS; set for R2 / Backblaze / MinIO
+    S3_ENDPOINT_URL: str = Field(default="")
     S3_REGION: str = Field(default="auto")
     S3_ACCESS_KEY_ID: str = Field(default="")
     S3_SECRET_ACCESS_KEY: str = Field(default="")
     S3_PREFIX: str = Field(default="veekay/")
-    # Files are handed to the browser as short-lived signed links straight from the bucket, so the API never streams them.
     S3_URL_EXPIRE_SECONDS: int = Field(default=300, ge=30, le=3600)
 
-    # ---- Database connection pool (per worker process) ----
+    # Database connection pool
     DB_POOL_SIZE: int = Field(default=10, ge=1, le=50)
     DB_MAX_OVERFLOW: int = Field(default=20, ge=0, le=100)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=30)
 
-    # ---- Read cache for the dashboard roll-ups (seconds; 0 turns it off) ----
+    # Dashboard cache
     DASHBOARD_CACHE_SECONDS: int = Field(default=30, ge=0, le=600)
 
-    # ---- Test reports (water tests, valid for six months) ----
-    # Platforms that accept test reports. Blinkit is off for now: add "blinkit" here to switch it on.
-    TEST_REPORT_PLATFORMS: list[str] = Field(default_factory=lambda: ["zepto"])
-    TEST_REPORT_ALERT_DAYS: int = Field(default=30, ge=1, le=120)   # warn this many days before a report expires
+    # Test reports
+    TEST_REPORT_PLATFORMS: list[str] = Field(
+        default_factory=lambda: ["zepto"]
+    )
+    TEST_REPORT_ALERT_DAYS: int = Field(default=30, ge=1, le=120)
 
-    # ---- Attendance ----
-    ATTENDANCE_TIMEZONE: str = Field(default="Asia/Kolkata")   # which local day a sign-in belongs to
-    ATTENDANCE_ACTIVE_WINDOW_MINUTES: int = Field(default=30)  # still 'active' if seen this recently
+    # Attendance
+    ATTENDANCE_TIMEZONE: str = Field(default="Asia/Kolkata")
+    ATTENDANCE_ACTIVE_WINDOW_MINUTES: int = Field(default=30)
     OFFICE_DEFAULT_RADIUS_M: int = Field(default=100)
-    # Shared secret for tickets pushed in from outside (e.g. a Google Apps Script). Empty = that endpoint is switched off.
+
+    # Ticket integration
     TICKET_WEBHOOK_KEY: str = Field(default="")
-    # Bottle QR tracking. BOTTLE_API_KEY lets a partner's / third-party scanner system push scans and read bottle data
-    # (header X-Integration-Key); empty = that API is switched off. A bottle scanned IN to a store and not scanned OUT
-    # within BOTTLE_LOST_AFTER_DAYS is reported as overdue (possibly lost).
-    # Access code for the developer-only "Cards from sheet" tool (checked on the server, rate-limited). Change it in production.
+
+    # Bottle QR tracking
     CARD_SHEET_CODE: str = Field(default="2580")
     BOTTLE_API_KEY: str = Field(default="")
     BOTTLE_LOST_AFTER_DAYS: int = Field(default=30)
-    ATTENDANCE_WORK_START: str = Field(default="10:00")        # HH:MM local time; checking in later than start + grace is "late"
+
+    ATTENDANCE_WORK_START: str = Field(default="10:00")
     ATTENDANCE_GRACE_MINUTES: int = Field(default=15)
 
-    # ---- Vendor cards ----
+    # Vendor cards
     COMPANY_NAME: str = Field(default="VEE KAY AQUATECH PVT. LTD.")
     COMPANY_TAGLINE: str = Field(default="Packaged Drinking Water")
-    COMPANY_EMAIL: str = Field(default="info1.veekayaquatech@gmail.com")   # printed on every card
-    CARDS_FIRST_MONTH: str = Field(default="2026-09")   # earliest month a card can be filled for / shown as "last month"
-    CARD_LOGO_PATH: str = Field(default="")             # override the logo printed on cards / PDFs (default: app/assets/watr-logo.png)
-    # Base URL of the web app. The QR code on each card opens <PUBLIC_APP_URL>/count?...
+    COMPANY_EMAIL: str = Field(default="info1.veekayaquatech@gmail.com")
+    CARDS_FIRST_MONTH: str = Field(default="2026-09")
+    CARD_LOGO_PATH: str = Field(default="")
     PUBLIC_APP_URL: str = Field(default="http://localhost:5173")
-    QR_SIGNING_SECRET: str = Field(default="")          # falls back to JWT_SECRET_KEY
+    QR_SIGNING_SECRET: str = Field(default="")
 
-    # ---- Order marking ----
+    # Order marking
     MIN_BOTTLE_COUNT: int = 0
     MAX_BOTTLE_COUNT: int = 200
 
-    # Partner platforms (by slug) that use the employee-model: no region
-    # concept, stores routed purely by state -> employee assignment.
-    EMPLOYEE_MODEL_PLATFORM_SLUGS: list[str] = Field(default_factory=lambda: ["zepto"])
-    # Platforms where a state may be assigned to any employee regardless of
-    # the employee's home region (the region label is informational only).
-    REGION_INDEPENDENT_PLATFORM_SLUGS: list[str] = Field(default_factory=lambda: ["zepto"])
+    # Partner platform configuration
+    EMPLOYEE_MODEL_PLATFORM_SLUGS: list[str] = Field(
+        default_factory=lambda: ["zepto"]
+    )
+    REGION_INDEPENDENT_PLATFORM_SLUGS: list[str] = Field(
+        default_factory=lambda: ["zepto"]
+    )
 
-    # ---- Store sync from Google Sheets ----
-    # Each entry: "<partner_slug>=<spreadsheet_id>[:<gid>]". The sheet must be
-    # shared as "Anyone with the link - Viewer" (or Published to web); the
-    # backend reads it via the public CSV export endpoint. Example:
-    #   STORE_SYNC_SHEETS='["blinkit=12fo5ar...:0","zepto=1xlxl4...:0"]'
+    # Store sync from Google Sheets
     STORE_SYNC_SHEETS: list[str] = Field(default_factory=list)
-    STORE_SYNC_ENABLED: bool = Field(default=True)      # run the daily job
-    # Lets an external scheduler (Render Cron, cron-job.org ...) run the daily sync by calling POST /api/v1/sync/trigger with
-    # header X-Sync-Key. Needed when the API sleeps at 10:00 (free plans), because the in-process scheduler is asleep too.
+    STORE_SYNC_ENABLED: bool = Field(default=True)
     SYNC_TRIGGER_KEY: str = Field(default="")
-    STORE_SYNC_HOUR: int = Field(default=10)            # local hour, 24h
+    STORE_SYNC_HOUR: int = Field(default=10)
     STORE_SYNC_MINUTE: int = Field(default=0)
     STORE_SYNC_TIMEZONE: str = Field(default="Asia/Kolkata")
 
-    # ---- Order sync from Google Sheets ----
-    # Same "<partner_slug>=<spreadsheet_id>[:<gid>]" format, but a platform may appear more than once
-    # (one entry per month tab). Each sheet is "one row per store, one column per date".
-    #   ORDER_SYNC_SHEETS='["blinkit=1AbC...:0","blinkit=1AbC...:123456","zepto=1XyZ...:0"]'
+    # Order sync from Google Sheets
     ORDER_SYNC_SHEETS: list[str] = Field(default_factory=list)
-    ORDER_SYNC_ENABLED: bool = Field(default=True)      # run it right after the daily store sync
-    # Off (default): a day that already has a different count is kept. On: the sheet replaces it.
+    ORDER_SYNC_ENABLED: bool = Field(default=True)
     ORDER_SYNC_OVERWRITE: bool = Field(default=False)
 
     @model_validator(mode="after")
     def _refuse_unsafe_production(self) -> "Settings":
-        """Fail fast at boot rather than run a production server with dev-grade settings."""
-        # Always normalize CORS origins (strip whitespace and trailing slashes, ensure PUBLIC_APP_URL is whitelisted)
+        """Reject unsafe configuration before running in production."""
+
+        # Normalize CORS origins and whitelist the public application URL.
         normalized_cors: list[str] = []
+
         for origin in self.CORS_ORIGINS:
             cleaned = origin.strip().rstrip("/")
             if cleaned and cleaned not in normalized_cors:
@@ -195,48 +207,102 @@ class Settings(BaseSettings):
 
         if self.ENVIRONMENT.strip().lower() != "production":
             return self
+
         problems: list[str] = []
-        if len(self.JWT_SECRET_KEY) < 32 or "change-me" in self.JWT_SECRET_KEY.lower():
-            problems.append("JWT_SECRET_KEY must be a random value of at least 32 characters")
-        if any("localhost" in o or "127.0.0.1" in o for o in self.CORS_ORIGINS) or "*" in self.CORS_ORIGINS:
-            problems.append("CORS_ORIGINS must list only your real https frontend origin(s)")
-        if any(o.startswith("http://") for o in self.CORS_ORIGINS):
+
+        if (
+            len(self.JWT_SECRET_KEY) < 32
+            or "change-me" in self.JWT_SECRET_KEY.lower()
+        ):
+            problems.append(
+                "JWT_SECRET_KEY must be a random value of at least 32 characters"
+            )
+
+        if (
+            any(
+                "localhost" in origin or "127.0.0.1" in origin
+                for origin in self.CORS_ORIGINS
+            )
+            or "*" in self.CORS_ORIGINS
+        ):
+            problems.append(
+                "CORS_ORIGINS must list only your real https frontend origin(s)"
+            )
+
+        if any(origin.startswith("http://") for origin in self.CORS_ORIGINS):
             problems.append("CORS_ORIGINS must use https://")
-        if "localhost" in self.PUBLIC_APP_URL or "127.0.0.1" in self.PUBLIC_APP_URL:
-            problems.append("PUBLIC_APP_URL must be the public frontend URL (it is printed in every card QR code)")
+
+        if (
+            "localhost" in self.PUBLIC_APP_URL
+            or "127.0.0.1" in self.PUBLIC_APP_URL
+        ):
+            problems.append(
+                "PUBLIC_APP_URL must be the public frontend URL "
+                "(it is printed in every card QR code)"
+            )
+
         if not self.PUBLIC_APP_URL.startswith("https://"):
-            problems.append("PUBLIC_APP_URL must start with https:// in production (printed in every card QR code)")
+            problems.append(
+                "PUBLIC_APP_URL must start with https:// in production "
+                "(printed in every card QR code)"
+            )
+
         if self.DEBUG:
             problems.append("DEBUG must be false")
+
         if self.BCRYPT_ROUNDS < 12:
             problems.append("BCRYPT_ROUNDS must be at least 12")
-        if self.STORAGE_BACKEND == "s3" and not (self.S3_BUCKET and self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY):
-            problems.append("STORAGE_BACKEND=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY")
+
+        if self.STORAGE_BACKEND == "s3" and not (
+            self.S3_BUCKET
+            and self.S3_ACCESS_KEY_ID
+            and self.S3_SECRET_ACCESS_KEY
+        ):
+            problems.append(
+                "STORAGE_BACKEND=s3 needs S3_BUCKET, "
+                "S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY"
+            )
+
         if problems:
-            raise ValueError("Unsafe production configuration: " + "; ".join(problems))
+            raise ValueError(
+                "Unsafe production configuration: " + "; ".join(problems)
+            )
+
         return self
 
     def sheet_sources(self) -> dict[str, tuple[str, str]]:
-        """{partner_slug: (spreadsheet_id, gid)} parsed from STORE_SYNC_SHEETS."""
+        """Return {partner_slug: (spreadsheet_id, gid)}."""
         out: dict[str, tuple[str, str]] = {}
+
         for raw in self.STORE_SYNC_SHEETS:
             if "=" not in raw:
                 continue
+
             slug, ref = raw.split("=", 1)
             sheet_id, _, gid = ref.strip().partition(":")
-            out[slug.strip().lower()] = (sheet_id.strip(), gid.strip() or "0")
+            out[slug.strip().lower()] = (
+                sheet_id.strip(),
+                gid.strip() or "0",
+            )
+
         return out
 
     def order_sheet_sources(self) -> dict[str, list[tuple[str, str]]]:
-        """{partner_slug: [(spreadsheet_id, gid), ...]} parsed from ORDER_SYNC_SHEETS."""
+        """Return {partner_slug: [(spreadsheet_id, gid), ...]}."""
         out: dict[str, list[tuple[str, str]]] = {}
+
         for raw in self.ORDER_SYNC_SHEETS:
             if "=" not in raw:
                 continue
+
             slug, ref = raw.split("=", 1)
             sheet_id, _, gid = ref.strip().partition(":")
+
             if sheet_id.strip():
-                out.setdefault(slug.strip().lower(), []).append((sheet_id.strip(), gid.strip() or "0"))
+                out.setdefault(slug.strip().lower(), []).append(
+                    (sheet_id.strip(), gid.strip() or "0")
+                )
+
         return out
 
 
