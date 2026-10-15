@@ -30,7 +30,9 @@ const config: ExpoConfig = {
   backgroundColor: "#FFFFFF",
   android: {
     package: ANDROID_PACKAGE,
-    versionCode: 1,
+    // Cloud (EAS) builds take the number from EAS (appVersionSource: remote). A LOCAL build uses this one; raise it with
+    // ANDROID_VERSION_CODE=5 so a phone accepts it as an update.
+    versionCode: Number(process.env.ANDROID_VERSION_CODE) || 1,
     googleServicesFile: googleServices,
     // Tokens live in the Android Keystore; never let an OS backup copy app data to another phone.
     allowBackup: false,
@@ -98,6 +100,9 @@ const config: ExpoConfig = {
   updates: {
     url: "https://u.expo.dev/0e2cbd9b-7b3c-4528-8399-a7e61bbc1c17",
     checkAutomatically: "ON_LOAD",
+    // EAS cloud builds get their update channel from eas.json. A LOCAL build has none, so it would never receive an
+    // over-the-air update; give it the production channel (EAS_BUILD is only set on EAS servers).
+    ...(process.env.EAS_BUILD ? {} : { requestHeaders: { "expo-channel-name": "production" } }),
     fallbackToCacheTimeout: 0, // never hold the splash screen waiting for the network; a downloaded update applies on the next start
   },
   experiments: { typedRoutes: true },

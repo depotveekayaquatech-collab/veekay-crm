@@ -50,6 +50,7 @@
     "doctor": "expo-doctor",
     "build:aab": "eas build --platform android --profile production",
     "build:apk": "eas build --platform android --profile preview",
+    "build:apk-local": "node scripts/build-local-apk.mjs",
     "build:lan": "eas build --platform android --profile lan-test"
   },
   "private": true

@@ -256,29 +256,36 @@ def move_stores(db: Session, actor: User, from_slug: str, to_slug: str, contains
 
 def restore_archived_history(db: Session, org_id: uuid.UUID, partner_id: uuid.UUID | None = None) -> int:
     """Put archived order days back for stores that exist again (same platform + code). Days a store already has
-    are left alone, and every restored archive row is removed. Returns how many days came back."""
-    cond = [OrderEntryArchive.organization_id == org_id]
+    are left alone, and every restored archive row is removed. Returns how many days came back.
+
+    Done entirely inside the database (INSERT ... SELECT, then DELETE ... USING): after "Remove all stores" the archive
+    holds a platform's WHOLE order history (hundreds of thousands of rows), and pulling that into Python and building one
+    giant statement is what exhausted the server's memory. Memory use here no longer depends on the archive size."""
+    A = OrderEntryArchive
+    same_store = (
+        (Store.partner_organization_id == A.partner_organization_id)
+        & (Store.external_code == A.external_code)
+        & (Store.organization_id == A.organization_id)
+    )
+    cond = [A.organization_id == org_id]
     if partner_id is not None:
-        cond.append(OrderEntryArchive.partner_organization_id == partner_id)
-    rows = db.execute(
-        select(Store.id, Store.organization_id, OrderEntryArchive.id, OrderEntryArchive.order_date,
-               OrderEntryArchive.bottle_count, OrderEntryArchive.cash_adjustment, OrderEntryArchive.source)
-        .select_from(OrderEntryArchive)
-        .join(Store, (Store.partner_organization_id == OrderEntryArchive.partner_organization_id)
-              & (Store.external_code == OrderEntryArchive.external_code)
-              & (Store.organization_id == OrderEntryArchive.organization_id))
-        .where(*cond)
-    ).all()
-    if not rows:
-        return 0
-    ins = pg_insert(OrderEntry).values([
-        {"id": uuid.uuid4(), "organization_id": o, "store_id": sid, "order_date": d, "bottle_count": n,
-         "cash_adjustment": adj, "source": src, "created_at": func.now(), "updated_at": func.now()}
-        for sid, o, _aid, d, n, adj, src in rows
-    ]).on_conflict_do_nothing(constraint="uq_order_entry_store_date")
+        cond.append(A.partner_organization_id == partner_id)
+
+    src = (
+        select(func.gen_random_uuid(), func.now(), func.now(), Store.organization_id, Store.id, A.order_date,
+               A.bottle_count, A.cash_adjustment, A.source)
+        .select_from(A).join(Store, same_store).where(*cond)
+    )
+    ins = pg_insert(OrderEntry).from_select(
+        ["id", "created_at", "updated_at", "organization_id", "store_id", "order_date", "bottle_count",
+         "cash_adjustment", "source"], src,
+    ).on_conflict_do_nothing(constraint="uq_order_entry_store_date")
     db.execute(ins)
-    db.execute(delete(OrderEntryArchive).where(OrderEntryArchive.id.in_([r[2] for r in rows])))
-    return len(rows)
+
+    # drop the archive rows whose store exists again (their days are now in order_entries, or the store already had that day)
+    matched = select(A.id).select_from(A).join(Store, same_store).where(*cond)
+    res = db.execute(delete(A).where(A.id.in_(matched)))
+    return int(res.rowcount or 0)
 
 
 def require_store(db: Session, actor: User, store_id: uuid.UUID) -> Store:

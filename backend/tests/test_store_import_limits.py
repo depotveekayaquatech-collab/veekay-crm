@@ -101,3 +101,64 @@ def test_oversized_upload_is_refused_cleanly(client, dev):
 
 def test_the_import_endpoint_does_not_block_the_event_loop():
     assert not inspect.iscoroutinefunction(stores_endpoint.import_stores)
+
+
+# ---- order history archived by "Remove all stores" comes back in constant memory
+def _seed_archive(db, codes=1000, days=150):
+    from sqlalchemy import text
+    db.execute(text("""
+        INSERT INTO order_entry_archive (id, created_at, updated_at, organization_id, partner_organization_id, external_code,
+                                         store_name, state, city, order_date, bottle_count, cash_adjustment, source, reason)
+        SELECT gen_random_uuid(), now(), now(), (SELECT id FROM organizations WHERE slug='veekay'),
+               (SELECT id FROM organizations WHERE slug='blinkit'), 'ARC-' || s, 'Blinkit - Arc ' || s, 'Delhi', 'Delhi',
+               DATE '2026-01-01' + d, 5, 0, 'employee', 'stores_wiped'
+        FROM generate_series(0, :c - 1) s, generate_series(0, :d - 1) d
+    """), {"c": codes, "d": days})
+    db.commit()
+
+
+def test_a_huge_archive_is_restored_inside_the_database_not_in_python(client, dev, db):
+    import tracemalloc
+    from app.models.order_archive import OrderEntryArchive
+    from app.models.order_entry import OrderEntry
+
+    _seed_archive(db, codes=1000, days=150)                         # 150,000 archived order days
+    assert db.query(OrderEntryArchive).count() == 150_000
+    data = _xlsx([[f"ARC-{i}", f"Blinkit - Arc {i}", "Live", "Delhi", "Delhi"] for i in range(1000)])
+    tracemalloc.start()
+    t = time.time()
+    r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.xlsx", data, "application/octet-stream")}, headers=dev)
+    secs = time.time() - t
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 1000
+    assert peak < 60 * 1024 * 1024, f"Python heap peaked at {peak / 1e6:.0f} MB"       # the old code needed hundreds of MB here
+    db.expire_all()
+    assert db.query(OrderEntryArchive).filter(OrderEntryArchive.external_code.like("ARC-%")).count() == 0
+    n = db.query(OrderEntry).join(Store, Store.id == OrderEntry.store_id).filter(Store.external_code.like("ARC-%")).count()
+    assert n == 150_000
+    print(f"\nrestore of 150,000 archived days: {secs:.1f}s total request, python heap peak {peak / 1e6:.1f} MB")
+    db.query(Store).filter(Store.external_code.like("ARC-%")).delete(synchronize_session=False)   # cascades the entries
+    db.commit()
+
+
+def test_restore_never_overwrites_a_day_the_store_already_has(db, make_store):
+    from sqlalchemy import text
+    from app.models.order_entry import OrderEntry
+    from app.services import store_service
+
+    s = make_store(platform="blinkit", code="ARC-KEEP", name="Keep")
+    org = s.organization_id
+    db.add(OrderEntry(organization_id=org, store_id=s.id, order_date=__import__("datetime").date(2026, 1, 1), bottle_count=99))
+    db.commit()
+    db.execute(text("""
+        INSERT INTO order_entry_archive (id, created_at, updated_at, organization_id, partner_organization_id, external_code, store_name,
+                                         order_date, bottle_count, cash_adjustment, source, reason)
+        SELECT gen_random_uuid(), now(), now(), :o, :p, 'ARC-KEEP', 'Keep', DATE '2026-01-01' + d, 5, 0, 'employee', 'stores_wiped'
+        FROM generate_series(0, 2) d"""), {"o": org, "p": s.partner_organization_id})
+    db.commit()
+    store_service.restore_archived_history(db, org, s.partner_organization_id)
+    db.commit()
+    got = {e.order_date.day: e.bottle_count for e in db.query(OrderEntry).filter_by(store_id=s.id)}
+    assert got == {1: 99, 2: 5, 3: 5}                                # the existing day (99) is untouched

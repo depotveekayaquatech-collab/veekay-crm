@@ -27,3 +27,8 @@ npm-debug.*
 
 expo-env.d.ts
 # @end expo-cli
+
+# Local APK builds
+/build/
+*.apk
+*.aab
