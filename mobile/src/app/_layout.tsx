@@ -13,6 +13,7 @@ import { startAutoFlush } from "@/lib/scanQueue";
 import { connectOnlineManager, useDailyRefresh } from "@/lib/dailyRefresh";
 import { installGlobalErrorHandler, reportError } from "@/lib/crash";
 import { Pressable } from "react-native";
+import { UpdateGate } from "@/components/UpdateGate";
 import { colors } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -136,7 +137,9 @@ export default function RootLayout() {
       <QueryClientProvider client={client}>
         <AuthProvider>
           <StatusBar style="dark" />
-          <Navigator />
+          <UpdateGate enabled>
+            <Navigator />
+          </UpdateGate>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

@@ -106,7 +106,7 @@ export const staffApi = {
 
   cashOptions: () => request<CashOptions>("/cash-purchases/options"),
   cashList: (p: { page?: number; page_size?: number }) => request<CashList>(`/cash-purchases${qs(p)}`),
-  addCash: (form: FormData) => request<CashPurchase>("/cash-purchases", { method: "POST", body: form }),
+  addCash: (form: FormData, key?: string) => request<CashPurchase>("/cash-purchases", { method: "POST", body: form, idempotencyKey: key }),
 
   alerts: (page = 1) => request<StaffAlertPage>(`/me/notifications${qs({ page, page_size: 50 })}`),
   markAlertsRead: (ids?: string[]) => request<void>("/me/notifications/read", { method: "POST", body: ids ? { ids } : {} }),

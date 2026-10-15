@@ -1,3 +1,4 @@
+import { useSubmissionKey } from "@/lib/submissionKey";
 import { useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -24,7 +25,8 @@ export default function UploadDocument() {
   const [pickMonth, setPickMonth] = useState(false);
   const [files, setFiles] = useState<Picked[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const upload = useWrite((f: FormData) => api.uploadDocument(f), ["documents"]);
+  const idem = useSubmissionKey();
+  const upload = useWrite((f: FormData) => api.uploadDocument(f, idem.get()), ["documents"]);
 
   function submit() {
     setError(null);
@@ -34,7 +36,7 @@ export default function UploadDocument() {
     f.append("month", month);
     files.forEach((p) => appendFile(f, "files", p));
     upload.mutate(f, {
-      onSuccess: () => { Alert.alert("Uploaded", "Thank you. The document is on record."); router.back(); },
+      onSuccess: () => { idem.renew(); Alert.alert("Uploaded", "Thank you. The document is on record."); router.back(); },
       onError: (e) => setError(e.message),
     });
   }

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_external_account
 from app.api.v1.endpoints.external_data import _check_store, _own_store_ids, my_ticket
+from app.core.idempotency import idempotency_key_header, run_once
 from app.db.session import get_db
 from app.models.audit_log import AuditLog
 from app.models.compliance_document import ComplianceDocument
@@ -108,45 +109,55 @@ def raise_ticket(
     store_id: uuid.UUID = Form(...), category: Category = Form(...), title: str = Form(..., min_length=3, max_length=160),
     description: str | None = Form(None, max_length=2000), photos: list[UploadFile] = File(default=[]),
     account: ExternalAccount = Depends(get_current_external_account), db: Session = Depends(get_db),
+    idem: str | None = Depends(idempotency_key_header),
 ) -> TicketDetail:
     _require_poc(account, "raise tickets")
     store = _store(db, account, store_id)
-    today = db.execute(
-        select(func.count()).select_from(Ticket).where(Ticket.source == "vendor_app", Ticket.reporter == _label(account), Ticket.created_at >= _day_start())
-    ).scalar_one()
-    if today >= MAX_TICKETS_PER_DAY:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "You have raised the maximum number of tickets for today.")
-    ticket = _new_ticket(db, account, store, category, "MEDIUM", title, description, external_uploads.read_photos(photos))
-    db.commit()
-    return _ticket_detail(db, account, ticket.id)
+
+    def create() -> TicketDetail:
+        today = db.execute(
+            select(func.count()).select_from(Ticket).where(Ticket.source == "vendor_app", Ticket.reporter == _label(account), Ticket.created_at >= _day_start())
+        ).scalar_one()
+        if today >= MAX_TICKETS_PER_DAY:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "You have raised the maximum number of tickets for today.")
+        ticket = _new_ticket(db, account, store, category, "MEDIUM", title, description, external_uploads.read_photos(photos))
+        db.commit()
+        return _ticket_detail(db, account, ticket.id)
+
+    return run_once(db, owner=str(account.id), endpoint="external.ticket.create", key=idem, produce=create)
 
 
 @router.post("/tickets/{ticket_id}/comments", response_model=TicketDetail, status_code=201)
 def comment(
     ticket_id: uuid.UUID, body: str = Form(..., min_length=1, max_length=2000), photos: list[UploadFile] = File(default=[]),
     account: ExternalAccount = Depends(get_current_external_account), db: Session = Depends(get_db),
+    idem: str | None = Depends(idempotency_key_header),
 ) -> TicketDetail:
     _require_poc(account, "reply to tickets")
     t = db.execute(select(Ticket).where(Ticket.id == ticket_id)).scalar_one_or_none()
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found.")
     _check_store_or_404(db, account, t.store_id, "Ticket not found.")
-    if t.status == TicketStatus.CLOSED.value:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This ticket is closed. Raise a new ticket instead.")
-    recent = db.execute(
-        select(func.count()).select_from(TicketComment).where(TicketComment.author_label == _label(account), TicketComment.created_at >= _day_start())
-    ).scalar_one()
-    if recent >= MAX_COMMENTS_PER_DAY:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many replies today.")
-    prepared = external_uploads.read_photos(photos)
-    c = TicketComment(ticket_id=t.id, author_user_id=None, author_label=_label(account), body=body.strip())
-    db.add(c)
-    db.flush()
-    _attach(db, account, t, prepared, c.id)
-    t.updated_at = datetime.now(timezone.utc)
-    _audit(db, account, "external.ticket_commented", "ticket", t.id, number=t.number)
-    db.commit()
-    return _ticket_detail(db, account, t.id)
+
+    def create() -> TicketDetail:
+        if t.status == TicketStatus.CLOSED.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This ticket is closed. Raise a new ticket instead.")
+        recent = db.execute(
+            select(func.count()).select_from(TicketComment).where(TicketComment.author_label == _label(account), TicketComment.created_at >= _day_start())
+        ).scalar_one()
+        if recent >= MAX_COMMENTS_PER_DAY:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many replies today.")
+        prepared = external_uploads.read_photos(photos)
+        c = TicketComment(ticket_id=t.id, author_user_id=None, author_label=_label(account), body=body.strip())
+        db.add(c)
+        db.flush()
+        _attach(db, account, t, prepared, c.id)
+        t.updated_at = datetime.now(timezone.utc)
+        _audit(db, account, "external.ticket_commented", "ticket", t.id, number=t.number)
+        db.commit()
+        return _ticket_detail(db, account, t.id)
+
+    return run_once(db, owner=str(account.id), endpoint=f"external.comment.{ticket_id.hex[:20]}", key=idem, produce=create)
 
 
 def _check_store_or_404(db: Session, account: ExternalAccount, store_id: uuid.UUID, detail: str) -> None:
@@ -163,22 +174,27 @@ def upload_document(
     store_id: uuid.UUID = Form(...), kind: Literal["card", "payment"] = Form(...), month: str | None = Form(None, description="2026-09; this month by default"),
     files: list[UploadFile] = File(...),
     account: ExternalAccount = Depends(get_current_external_account), db: Session = Depends(get_db),
+    idem: str | None = Depends(idempotency_key_header),
 ) -> DocumentRow:
     """A compliance card or a payment proof for a month. Several photos are merged into one PDF, like the staff upload.
-    Uploading again adds a new version; earlier files are kept."""
+    Uploading again adds a new version; earlier files are kept. Resending with the same Idempotency-Key adds no extra version."""
     store = _store(db, account, store_id)
     the_month = compliance_service.parse_month(month)
-    limit = compliance_service.settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024
-    raw = [(f.filename or "file", f.file.read(limit + 1)) for f in files]
-    data, ext = compliance_service._prepare(raw)
-    doc, replaced = compliance_service.save_document(db, None, store, the_month, kind, data, ext, len(raw))
-    _audit(db, account, "external.document_uploaded", "compliance_document", doc.id, store=store.name, month=f"{the_month:%Y-%m}", kind=kind, replaced=replaced)
-    db.commit()
-    doc = db.execute(select(ComplianceDocument).where(ComplianceDocument.id == doc.id).options(joinedload(ComplianceDocument.store))).scalar_one()
-    return DocumentRow(
-        id=doc.id, store_id=doc.store_id, store_name=doc.store.name, month=doc.month, kind=doc.kind, file_name=doc.file_name,
-        content_type=doc.content_type, size_bytes=doc.size_bytes, updated_at=doc.updated_at, due_date=doc.due_date, status=doc.status,
-    )
+
+    def create() -> DocumentRow:
+        limit = compliance_service.settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024
+        raw = [(f.filename or "file", f.file.read(limit + 1)) for f in files]
+        data, ext = compliance_service._prepare(raw)
+        doc, replaced = compliance_service.save_document(db, None, store, the_month, kind, data, ext, len(raw))
+        _audit(db, account, "external.document_uploaded", "compliance_document", doc.id, store=store.name, month=f"{the_month:%Y-%m}", kind=kind, replaced=replaced)
+        db.commit()
+        doc = db.execute(select(ComplianceDocument).where(ComplianceDocument.id == doc.id).options(joinedload(ComplianceDocument.store))).scalar_one()
+        return DocumentRow(
+            id=doc.id, store_id=doc.store_id, store_name=doc.store.name, month=doc.month, kind=doc.kind, file_name=doc.file_name,
+            content_type=doc.content_type, size_bytes=doc.size_bytes, updated_at=doc.updated_at, due_date=doc.due_date, status=doc.status,
+        )
+
+    return run_once(db, owner=str(account.id), endpoint="external.document.upload", key=idem, produce=create)
 
 
 # ------------------------------------------------------------------ deliveries

@@ -123,6 +123,8 @@ interface Options {
   body?: unknown;
   retried?: boolean;
   noRefresh?: boolean;
+  /** Same key on every retry of one submission: the server then returns the first result instead of creating a duplicate. */
+  idempotencyKey?: string;
 }
 
 async function send(path: string, o: Options): Promise<Response> {
@@ -131,6 +133,7 @@ async function send(path: string, o: Options): Promise<Response> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (o.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  if (o.idempotencyKey) headers["Idempotency-Key"] = o.idempotencyKey;
   const res = await timedFetch(
     `${BASE}${path}`,
     { method: o.method ?? "GET", headers, body: o.body === undefined ? undefined : isForm ? (o.body as FormData) : JSON.stringify(o.body) },

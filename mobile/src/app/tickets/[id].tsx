@@ -1,3 +1,4 @@
+import { useSubmissionKey } from "@/lib/submissionKey";
 import { useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -46,7 +47,8 @@ export default function TicketDetailScreen() {
   const q = useTicket(id);
   const [body, setBody] = useState("");
   const [photos, setPhotos] = useState<Picked[]>([]);
-  const reply = useWrite((f: FormData) => api.reply(id, f), ["ticket", "tickets"]);
+  const idem = useSubmissionKey();
+  const reply = useWrite((f: FormData) => api.reply(id, f, idem.get()), ["ticket", "tickets"]);
 
   if (q.isLoading) return <Screen><ListSkeleton rows={3} /></Screen>;
   if (q.isError) return <Screen><ErrorNote message={q.error.message} onRetry={() => q.refetch()} /></Screen>;
@@ -57,7 +59,7 @@ export default function TicketDetailScreen() {
     f.append("body", body.trim());
     photos.forEach((p) => appendFile(f, "photos", p));
     reply.mutate(f, {
-      onSuccess: () => { setBody(""); setPhotos([]); },
+      onSuccess: () => { idem.renew(); setBody(""); setPhotos([]); },
       onError: (e) => Alert.alert("Couldn't send", e.message),
     });
   }

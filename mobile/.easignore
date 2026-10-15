@@ -1,0 +1,31 @@
+# EAS cloud-build upload filter, used when `eas build` archives the mobile/ folder on its own.
+# (If EAS archives the whole repository it reads the .easignore at the repository root instead; keep the two in step.)
+# When this file exists EAS uses it INSTEAD of .gitignore, so the secret / dependency rules are repeated here.
+
+node_modules
+android
+ios
+.expo
+dist
+web-build
+*.log
+*.apk
+*.aab
+
+# Local npm override that would hide peer-dependency conflicts (what broke the first cloud build): install strictly
+.npmrc
+
+# Secrets and local environment: never uploaded. API address etc. come from the EAS environment (eas env:*)
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pem
+google-services.json
+GoogleService-Info.plist
+
+.DS_Store
+.idea
+.vscode

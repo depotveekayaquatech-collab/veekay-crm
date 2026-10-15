@@ -1,3 +1,4 @@
+import { useSubmissionKey } from "@/lib/submissionKey";
 import { useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -25,7 +26,8 @@ export default function NewExpense() {
   const [notes, setNotes] = useState("");
   const [proof, setProof] = useState<Picked[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const add = useStaffWrite((f: FormData) => staffApi.addCash(f), ["s-cash"]);
+  const idem = useSubmissionKey();
+  const add = useStaffWrite((f: FormData) => staffApi.addCash(f, idem.get()), ["s-cash"]);
 
   const reasons = (kind === "OFFICE" ? opts.data?.office_reasons : opts.data?.store_reasons) ?? [];
   const max = Number(opts.data?.max_amount ?? 0);
@@ -47,7 +49,7 @@ export default function NewExpense() {
     if (notes.trim()) f.append("notes", notes.trim());
     appendFile(f, "proof", proof[0]);
     add.mutate(f, {
-      onSuccess: () => { Alert.alert("Saved", "Your purchase was recorded."); router.back(); },
+      onSuccess: () => { idem.renew(); Alert.alert("Saved", "Your purchase was recorded."); router.back(); },
       onError: (e) => setError(e.message),
     });
   }

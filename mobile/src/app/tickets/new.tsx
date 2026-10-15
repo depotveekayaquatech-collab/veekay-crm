@@ -1,3 +1,4 @@
+import { useSubmissionKey } from "@/lib/submissionKey";
 import { useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
@@ -24,7 +25,8 @@ export default function NewTicket() {
   const [description, setDescription] = useState("");
   const [photos, setPhotos] = useState<Picked[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const raise = useWrite((f: FormData) => api.raiseTicket(f), ["tickets", "notifications"]);
+  const idem = useSubmissionKey();
+  const raise = useWrite((f: FormData) => api.raiseTicket(f, idem.get()), ["tickets", "notifications"]);
 
   // Only a store POC raises tickets (the server enforces it too).
   if (account?.kind !== "poc") return <Redirect href="/tickets" />;
@@ -38,7 +40,7 @@ export default function NewTicket() {
     if (description.trim()) f.append("description", description.trim());
     photos.forEach((p) => appendFile(f, "photos", p));
     raise.mutate(f, {
-      onSuccess: (t) => { Alert.alert("Ticket raised", "Our team has been told and will get back to you."); router.replace(`/tickets/${t.id}`); },
+      onSuccess: (t) => { idem.renew(); Alert.alert("Ticket raised", "Our team has been told and will get back to you."); router.replace(`/tickets/${t.id}`); },
       onError: (e) => setError(e.message),
     });
   }

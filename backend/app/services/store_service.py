@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, OrganizationKind
+from app.models.audit_log import AuditLog
 from app.models.order_archive import OrderEntryArchive
 from app.models.order_entry import OrderEntry
 from app.models.store import Store
@@ -141,6 +142,33 @@ def record_status_change(db: Session, actor: User, store: Store, old_status: str
             "first_order": str(first) if first else None, "last_order": str(last) if last else None,
         },
     )
+
+
+def record_status_changes(db: Session, actor: User, changes: list[tuple[Store, str]]) -> None:
+    """record_status_change for many stores with two queries in total (used by the sheet sync / file import)."""
+    if not changes:
+        return
+    stats = {
+        sid: (n, b, first, last)
+        for sid, n, b, first, last in db.execute(
+            select(OrderEntry.store_id, func.count(OrderEntry.id), func.coalesce(func.sum(OrderEntry.bottle_count), 0),
+                   func.min(OrderEntry.order_date), func.max(OrderEntry.order_date))
+            .where(OrderEntry.store_id.in_([s.id for s, _ in changes]))
+            .group_by(OrderEntry.store_id)
+        )
+    }
+    for store, old in changes:
+        n, b, first, last = stats.get(store.id, (0, 0, None, None))
+        db.add(AuditLog(
+            user_id=actor.id, organization_id=actor.organization_id, action="store.status_changed",
+            entity_type="store", entity_id=str(store.id),
+            metadata_json={
+                "from": old, "to": store.status, "name": store.name, "external_code": store.external_code,
+                "order_days_kept": int(n), "bottles_kept": int(b),
+                "first_order": str(first) if first else None, "last_order": str(last) if last else None,
+            },
+        ))
+    db.flush()
 
 
 def delete_all_stores(db: Session, actor: User, platform_slug: str | None) -> dict:

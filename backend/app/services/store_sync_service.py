@@ -30,7 +30,6 @@ from app.models.organization import Organization, OrganizationKind
 from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.user import User
-from app.repositories.store_repository import StoreRepository
 from app.services import activity_service, assignment_service, store_service
 
 _CSV_URL = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
@@ -381,7 +380,13 @@ def _import_rows(
             select(Region).where(Region.organization_id == actor.organization_id)
         ).scalars()
     }
-    repo = StoreRepository(db)
+    # One query for every store of this platform; the loop below then touches the database only to insert/update
+    # in bulk at the end (a per-row lookup + flush was ~2 round trips per row: minutes on a remote database).
+    by_code: dict[str, Store] = {
+        s.external_code: s
+        for s in db.execute(select(Store).where(Store.partner_organization_id == partner.id)).scalars()
+    }
+    status_changes: list[tuple[Store, str]] = []
     seen_codes: set[str] = set()
     trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
     bad_dates: list[int] = []            # rows whose start date couldn't be read
@@ -438,14 +443,16 @@ def _import_rows(
                 fields[fname] = val[:limit].rstrip()
                 trimmed.setdefault(fname, []).append(i)
 
-        existing = repo.get_by_code(partner.id, code)
+        existing = by_code.get(code)
         if existing is None:
-            repo.add(Store(
+            new_store = Store(
                 organization_id=actor.organization_id,
                 partner_organization_id=partner.id,
                 external_code=code,
                 **fields,
-            ))
+            )
+            db.add(new_store)
+            by_code[code] = new_store
             result.created += 1
         else:
             changed = False
@@ -458,14 +465,15 @@ def _import_rows(
                     setattr(existing, k, v)
                     changed = True
             if existing.status != old_status:
-                store_service.record_status_change(db, actor, existing, old_status)
+                status_changes.append((existing, old_status))
             if changed:
                 result.updated += 1
             else:
                 result.unchanged += 1
 
+    db.flush()  # one batched INSERT/UPDATE for the whole file
+    store_service.record_status_changes(db, actor, status_changes)
     if result.created:
-        db.flush()
         restored = store_service.restore_archived_history(db, actor.organization_id, partner.id)
         if restored:
             result.warnings.append(f"{restored} archived order days were restored to re-added stores.")

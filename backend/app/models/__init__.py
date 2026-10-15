@@ -6,6 +6,7 @@ from app.models.user_permission import UserPermission
 from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.state_assignment import StateAssignment
+from app.models.idempotency_key import IdempotencyKey
 from app.models.order_archive import OrderEntryArchive
 from app.models.order_entry import EntrySource, OrderEntry
 from app.models.audit_log import AuditLog
@@ -57,6 +58,7 @@ __all__ = [
     "EntrySource",
     "OrderEntry",
     "OrderEntryArchive",
+    "IdempotencyKey",
     "AuditLog",
     "RefreshSession",
     "AttendanceSession",

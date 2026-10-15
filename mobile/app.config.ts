@@ -84,12 +84,24 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  // Over-the-air updates (EAS Update). An update only reaches installs whose runtimeVersion matches. The "appVersion"
+  // policy uses `version` above, so changing `version` starts a new update line: bump it for ANY change that needs a new
+  // APK (native dependency, permission, app.config plugin / native setting). JS-only changes keep the same `version`.
+  runtimeVersion: { policy: "appVersion" },
+  updates: {
+    url: "https://u.expo.dev/0e2cbd9b-7b3c-4528-8399-a7e61bbc1c17",
+    checkAutomatically: "ON_LOAD",
+    fallbackToCacheTimeout: 0, // never hold the splash screen waiting for the network; a downloaded update applies on the next start
+  },
   experiments: { typedRoutes: true },
   extra: {
-    privacyPolicyUrl: process.env.EXPO_PUBLIC_PRIVACY_URL ?? "",
-    supportEmail: process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? "",
-    supportPhone: process.env.EXPO_PUBLIC_SUPPORT_PHONE ?? "",
+  privacyPolicyUrl: process.env.EXPO_PUBLIC_PRIVACY_URL ?? "",
+  supportEmail: process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? "",
+  supportPhone: process.env.EXPO_PUBLIC_SUPPORT_PHONE ?? "",
+  eas: {
+    projectId: "0e2cbd9b-7b3c-4528-8399-a7e61bbc1c17",
   },
+},
 };
 
 export default config;
