@@ -7,7 +7,11 @@
  */
 import { pushToast } from "@/lib/toast";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  "https://veekay-crm-api.fly.dev/api/v1";
+
 // The refresh token never reaches JavaScript: the API keeps it in an HttpOnly cookie (we ask for that with
 // the X-Auth-Mode header). Only a non-secret "signed in" hint is stored so a page reload knows to try restoring.
 const SESSION_HINT_KEY = "veekay.session";
