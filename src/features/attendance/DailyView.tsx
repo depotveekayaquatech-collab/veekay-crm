@@ -10,6 +10,7 @@ import { CategoryChips, GroupRow, LocationBadge, StatusBadge } from "@/features/
 import { fmtMinutes, fmtTime } from "@/features/attendance/format";
 import { LEAVE_LABEL, useDayAttendance, type DayStatus } from "@/features/attendance/api";
 import { downloadCsv } from "@/lib/csv";
+import { locationText, presenceText } from "@/features/attendance/format";
 import { daysAgo } from "@/lib/dates";
 
 function Tile({ title, value, tone, hint }: { title: string; value: number | string; tone: "brand" | "aqua" | "success" | "warning"; hint?: string }) {
@@ -58,12 +59,13 @@ export function DailyView() {
     if (!data) return;
     downloadCsv(
       `attendance-${data.date}.csv`,
-      ["Date", "Employee ID", "Name", "Role", "Platform", "Status", "Late", "Check in", "Check out", "Hours", "Check-in location", "Latitude", "Longitude", "Distance to office (m)"],
+      ["Date", "Employee ID", "Name", "Role", "Platform", "Status", "Late", "Check in", "Check out", "Hours", "Check-in presence", "Check-in location", "Latitude", "Longitude", "Distance to office (m)", "Check-out presence", "Check-out location"],
       rows.map((r) => [
         data.date, r.employeeCode, r.fullName, r.roles.join("/"), r.platform, r.status, r.late ? "Yes" : "",
         fmtTime(r.checkInAt), fmtTime(r.checkOutAt), (r.minutes / 60).toFixed(2),
-        r.location.status === "office" ? r.location.label : r.location.status === "outside" ? "Outside office" : "Not shared",
+        presenceText(r.checkInAt ? r.location : null), locationText(r.checkInAt ? r.location : null),
         r.location.latitude, r.location.longitude, r.location.distanceM,
+        presenceText(r.checkOutAt ? r.checkOutLocation : null), locationText(r.checkOutAt ? r.checkOutLocation : null),
       ]),
     );
   }

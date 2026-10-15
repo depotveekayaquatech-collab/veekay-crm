@@ -2,20 +2,20 @@ import { useMemo, useState } from "react";
 import { SearchBox } from "@/features/orders/ui";
 import { useDebounced } from "@/hooks/useDebounced";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
-import { Table, Td, Th, TableEmpty } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { IconDownload, IconPlus } from "@/components/ui/icons";
 import { downloadCsv } from "@/lib/csv";
 import { usePermission } from "@/hooks/usePermission";
 import { useAllRegions } from "@/features/regions/useRegions";
+import { StoreCard } from "@/features/stores/StoreCard";
+import { StoreDetailsModal } from "@/features/stores/StoreDetailsModal";
 import { StoreFormModal } from "@/features/stores/StoreFormModal";
 import { useAllStores } from "@/features/stores/useAllStores";
-import { usePartners, useStores } from "@/features/stores/useStores";
+import { usePartners, useStoreMutations, useStores } from "@/features/stores/useStores";
 import type { Store } from "@/types/store";
 
 const STATUS_TABS = [
@@ -32,6 +32,7 @@ export function StoresPage() {
   const [storeStatus, setStoreStatus] = useState("LIVE");
   const [editing, setEditing] = useState<Store | null | undefined>(undefined);
   const [q, setQ] = useState("");
+  const [viewing, setViewing] = useState<Store | null>(null);
   const search = useDebounced(q.trim());
 
   const canManage = usePermission("stores.manage");
@@ -44,6 +45,7 @@ export function StoresPage() {
     return allRegions.filter((r) => ids.has(r.id));
   }, [allRegions, everyStore, partner]);
   const { data: partners = [] } = usePartners();
+  const { close } = useStoreMutations();
   const { data, isLoading, isError, refetch } = useStores(page, {
     regionId: regionId || undefined,
     partner: partner || undefined,
@@ -175,95 +177,49 @@ export function StoresPage() {
 
       {data && (
         <>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Store</Th>
-                <Th>Code</Th>
-                <Th>Partner</Th>
-                <Th>Region</Th>
-                <Th>State</Th>
-                <Th>Start date</Th>
-                <Th>Status</Th>
-                {canManage && <Th className="w-24 text-right">Actions</Th>}
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.length === 0 && (
-                <TableEmpty colSpan={canManage ? 8 : 7}>
-                  No stores match{search ? ` “${search}”` : " these filters"}.
-                  {search && storeStatus && (
-                    <button
-                      className="ml-2 font-medium text-brand-600 hover:text-brand-700"
-                      onClick={() => {
-                        setStoreStatus("");
-                        setPage(1);
-                      }}
-                    >
-                      Search all statuses
-                    </button>
-                  )}
-                </TableEmpty>
+          {data.items.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-surface-border bg-surface p-10 text-center text-sm text-gray-500">
+              No stores match{search ? ` \u201c${search}\u201d` : " these filters"}.
+              {search && storeStatus && (
+                <button
+                  className="ml-2 font-medium text-brand-600 hover:text-brand-700"
+                  onClick={() => {
+                    setStoreStatus("");
+                    setPage(1);
+                  }}
+                >
+                  Search all statuses
+                </button>
               )}
-              {data.items.map((store) => {
-                const partnerTone =
-                  store.partnerSlug === "blinkit"
-                    ? "success"
-                    : store.partnerSlug === "zepto"
-                      ? "info"
-                      : "neutral";
-                return (
-                  <tr key={store.id} className="transition-colors hover:bg-surface-subtle/50">
-                    <Td className="font-semibold text-heading">
-                      <div>{store.name}</div>
-                      {store.pocName && (
-                        <div className="text-xs font-normal text-gray-500">
-                          POC: {store.pocName} {store.pocNumber ? `· ${store.pocNumber}` : ""}
-                        </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <code className="rounded-md border border-surface-border bg-surface-subtle px-2 py-0.5 font-mono text-xs font-medium text-gray-700">
-                        {store.externalCode}
-                      </code>
-                    </Td>
-                    <Td>
-                      <Badge tone={partnerTone}>{store.partnerName}</Badge>
-                    </Td>
-                    <Td className="text-gray-700">{store.regionName ?? "—"}</Td>
-                    <Td className="text-gray-700">{store.state ?? "—"}</Td>
-                    <Td className="text-gray-700">{store.startDate ?? <span className="text-gray-400">—</span>}</Td>
-                    <Td>
-                      <Badge
-                        dot
-                        tone={
-                          store.status === "LIVE" ? "success" : store.status === "PENDING" ? "warning" : "neutral"
-                        }
-                      >
-                        {store.status}
-                      </Badge>
-                    </Td>
-                    {canManage && (
-                      <Td className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditing(store)}
-                        >
-                          Edit
-                        </Button>
-                      </Td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {data.items.map((store) => (
+                <StoreCard
+                  key={store.id}
+                  store={store}
+                  canManage={canManage}
+                  onView={() => setViewing(store)}
+                  onEdit={() => setEditing(store)}
+                  onClose={() => {
+                    if (window.confirm(`Close ${store.name}? Its order history is kept and you can set it Live again later.`)) close.mutate(store.id);
+                  }}
+                />
+              ))}
+            </div>
+          )}
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
         </>
       )}
 
 
+      {viewing && (
+        <StoreDetailsModal
+          store={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={canManage ? () => { setEditing(viewing); setViewing(null); } : undefined}
+        />
+      )}
       {editing !== undefined && (
         <StoreFormModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} store={editing ?? null} />
       )}

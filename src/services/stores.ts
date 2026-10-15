@@ -62,7 +62,13 @@ export async function importStoresFile(platform: string, file: File, allowMismat
   body.append("platform", platform);
   if (allowMismatch) body.append("allow_mismatch", "true");
   body.append("file", file);
-  const wire = await apiRequest<Parameters<typeof toSyncResult>[0]>("/stores/import", { method: "POST", body });
+  const wire = await apiRequest<Parameters<typeof toSyncResult>[0]>("/stores/import", {
+    method: "POST",
+    body,
+    networkErrorMessage:
+      "The connection to the server was lost while it was processing the file. Your internet may be fine: the server " +
+      "may have restarted. Nothing was imported. It is safe to try again, or split the file into smaller parts.",
+  });
   return toSyncResult(wire);
 }
 

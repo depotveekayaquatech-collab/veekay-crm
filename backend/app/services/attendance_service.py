@@ -121,9 +121,13 @@ def _read_location(db: Session, user: User, lat: float | None, lng: float | None
     }
 
 
+AWAY_TEXT = "Away (not from office)"
+
+
 def _loc_dict(st: str | None, lat, lng, acc, dist, label) -> dict:
     if not st or st == "unknown" or lat is None or lng is None:
-        return {"status": "unknown", "label": "Location not shared"}
+        # not verified at an office counts as away; the label stays honest that no location was shared
+        return {"status": "unknown", "label": "Location not shared", "presence": AWAY_TEXT}
     base = {
         "latitude": round(lat, 6), "longitude": round(lng, 6),
         "accuracy_m": round(acc) if acc is not None else None,
@@ -131,8 +135,8 @@ def _loc_dict(st: str | None, lat, lng, acc, dist, label) -> dict:
         "map_url": map_url(lat, lng),
     }
     if st == "office":
-        return {"status": "office", "label": label or "Office", **base}
-    return {"status": "outside", "label": f"{lat:.6f}, {lng:.6f}", **base}
+        return {"status": "office", "label": label or "Office", "presence": "At office", **base}
+    return {"status": "outside", "label": f"{lat:.6f}, {lng:.6f}", "presence": AWAY_TEXT, **base}
 
 
 def _in_loc(r: AttendanceRecord) -> dict:

@@ -297,3 +297,16 @@ def test_approved_leave_shows_as_on_leave_not_absent(client, admin, make_user):
 def test_admins_cannot_apply_for_leave(client, admin):
     monday = _next_weekday(date.today(), 0)
     assert _leave(client, admin, monday, monday).status_code == 403
+
+
+def test_presence_text_at_office_away_and_not_shared(client, office, make_user, clock):
+    clock(9, 30)
+    inside, _ = _fresh_employee(client, make_user)
+    away, _ = _fresh_employee(client, make_user)
+    silent, _ = _fresh_employee(client, make_user)
+    at = client.post(f"{API}/attendance/check-in", headers=inside, json=_at(_north(60))).json()["check_in_location"]
+    far = client.post(f"{API}/attendance/check-in", headers=away, json=_at(_north(5000))).json()["check_in_location"]
+    none = client.post(f"{API}/attendance/check-in", headers=silent, json={}).json()["check_in_location"]
+    assert at["presence"] == "At office" and at["label"] == "Head Office"
+    assert far["presence"] == "Away (not from office)" and "," in far["label"]          # coordinates are shown
+    assert none["presence"] == "Away (not from office)" and none["label"] == "Location not shared"

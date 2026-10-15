@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -12,7 +12,20 @@ interface Props {
   store?: Store | null;
 }
 
-const STATUSES: StoreStatus[] = ["LIVE", "PENDING", "CLOSE"];
+const STATUSES: { value: StoreStatus; label: string }[] = [
+  { value: "LIVE", label: "Live" },
+  { value: "PENDING", label: "Pending" },
+  { value: "CLOSE", label: "Closed" },
+];
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-xl border border-surface-border bg-surface-subtle/60 p-4">
+      <h3 className="mb-3 border-b border-surface-border pb-2 text-[11px] font-bold uppercase tracking-wider text-brand-700">{title}</h3>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
 
 export function StoreFormModal({ onClose, store }: Props) {
   const { create, update } = useStoreMutations();
@@ -73,7 +86,9 @@ export function StoreFormModal({ onClose, store }: Props) {
     <Modal
       open
       onClose={onClose}
-      title={editing ? "Edit store" : "Add store"}
+      size="lg"
+      title={editing ? "Edit store details" : "Add store"}
+      description="Update store configuration and operational details."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -84,17 +99,21 @@ export function StoreFormModal({ onClose, store }: Props) {
       }
     >
       <form id="store-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input label="Store name" value={f.name} onChange={(e) => set("name")(e.target.value)} required autoFocus />
-        <Input
-          label="Store code"
-          value={f.external_code}
-          onChange={(e) => set("external_code")(e.target.value)}
-          hint="The partner's own outlet ID, e.g. BLK-4821"
-          required
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <Section title="A. Store identity">
+          <Input
+            label={editing ? "Store ID (read-only)" : "Store ID"}
+            value={f.external_code}
+            onChange={(e) => set("external_code")(e.target.value)}
+            hint={editing ? undefined : "The partner's own outlet ID, e.g. 4589"}
+            readOnly={editing}
+            required
+          />
+          <Input label="Store name" value={f.name} onChange={(e) => set("name")(e.target.value)} required autoFocus={!editing} />
+        </Section>
+
+        <Section title="B. Business classification">
           <Select
-            label="Partner"
+            label="Platform"
             value={f.partner_organization_id}
             onChange={(e) => set("partner_organization_id")(e.target.value)}
             placeholder="Select"
@@ -103,39 +122,45 @@ export function StoreFormModal({ onClose, store }: Props) {
             disabled={editing}
           />
           <Select
+            label="Region"
+            value={f.region_id}
+            onChange={(e) => set("region_id")(e.target.value)}
+            placeholder="None (state-based)"
+            options={regions.map((r) => ({ value: r.id, label: r.name }))}
+          />
+          <Select
             label="Status"
             value={f.status}
             onChange={(e) => set("status")(e.target.value)}
-            options={STATUSES.map((s) => ({ value: s, label: s }))}
+            options={STATUSES}
           />
-        </div>
-        <Input
-          label="Start date"
-          type="date"
-          value={f.start_date}
-          onChange={(e) => set("start_date")(e.target.value)}
-          max={new Date().toISOString().slice(0, 10)}
-          hint="The day supply to this store began. Days before it are never counted as pending. Optional."
-        />
-        <Select
-          label="Region"
-          value={f.region_id}
-          onChange={(e) => set("region_id")(e.target.value)}
-          placeholder="None (state-based)"
-          options={regions.map((r) => ({ value: r.id, label: r.name }))}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Start date"
+            type="date"
+            value={f.start_date}
+            onChange={(e) => set("start_date")(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            hint="The day supply began. Earlier days are never counted as pending."
+          />
+          {store?.entity && <Input label="Entity (from the sheet)" value={store.entity} readOnly />}
+        </Section>
+
+        <Section title="C. Location details">
           <Input label="State" value={f.state} onChange={(e) => set("state")(e.target.value)} />
           <Input label="City" value={f.city} onChange={(e) => set("city")(e.target.value)} />
-        </div>
-        <Input label="Address" value={f.address} onChange={(e) => set("address")(e.target.value)} placeholder="Optional" />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="POC name" value={f.poc_name} onChange={(e) => set("poc_name")(e.target.value)} />
-          <Input label="POC number" value={f.poc_number} onChange={(e) => set("poc_number")(e.target.value)} />
+          <div className="sm:col-span-2">
+            <Input label="Address" value={f.address} onChange={(e) => set("address")(e.target.value)} placeholder="Optional" />
+          </div>
+        </Section>
+
+        <Section title="D. Vendor & contact assignment">
           <Input label="Vendor name" value={f.vendor_name} onChange={(e) => set("vendor_name")(e.target.value)} />
           <Input label="Vendor number" value={f.vendor_number} onChange={(e) => set("vendor_number")(e.target.value)} />
-        </div>
-        {error && <p className="text-sm text-status-danger">{error}</p>}
+          <Input label="POC name" value={f.poc_name} onChange={(e) => set("poc_name")(e.target.value)} />
+          <Input label="POC number" value={f.poc_number} onChange={(e) => set("poc_number")(e.target.value)} />
+        </Section>
+
+        {error && <p role="alert" className="text-sm text-status-danger">{error}</p>}
       </form>
     </Modal>
   );

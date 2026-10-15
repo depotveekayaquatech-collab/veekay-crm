@@ -19,6 +19,13 @@
       "android": { "buildType": "apk" },
       "environment": "preview"
     },
+    "employee": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "channel": "production",
+      "android": { "buildType": "apk" },
+      "environment": "production"
+    },
     "production": {
       "autoIncrement": true,
       "channel": "production",

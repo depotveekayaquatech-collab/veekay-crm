@@ -5,6 +5,7 @@ export interface Store {
   name: string;
   externalCode: string;
   status: StoreStatus;
+  entity: string | null;
   startDate: string | null;
   state: string | null;
   city: string | null;
@@ -25,6 +26,7 @@ export interface StoreWire {
   name: string;
   external_code: string;
   status: StoreStatus;
+  entity?: string | null;
   start_date?: string | null;
   state: string | null;
   city: string | null;
@@ -46,6 +48,7 @@ export function toStore(w: StoreWire): Store {
     name: w.name,
     externalCode: w.external_code,
     status: w.status,
+    entity: w.entity ?? null,
     startDate: w.start_date ?? null,
     state: w.state,
     city: w.city,

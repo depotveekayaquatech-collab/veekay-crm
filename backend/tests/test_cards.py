@@ -59,7 +59,8 @@ def test_public_count_needs_no_login_but_needs_a_valid_signature(client, db, mak
     assert body["store_code"] == s.external_code and body["this_month_bottles"] == expected and body["vendor_name"] == "Aqua One"
     assert set(body) == {"store_name", "store_code", "vendor_name", "platform", "this_month_label", "this_month_bottles",
                          "last_month_label", "last_month_bottles", "as_on"}            # totals only — nothing else is exposed
-    for sig in ("bad", cards.sign_store(s.id)[:-1] + "0"):
+    good = cards.sign_store(s.id)
+    for sig in ("bad", good[:-1] + ("1" if good[-1] == "0" else "0")):   # a genuinely different last character
         assert client.get(f"{API}/public/count", params={"s": str(s.id), "sig": sig}).status_code == 404
 
 

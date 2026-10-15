@@ -74,7 +74,7 @@ def sync_stores(
     "/import", response_model=StoreSyncResult,
     dependencies=[Depends(require_permission("sheets.sync"))],
 )
-async def import_stores(
+def import_stores(
     platform: str = Form(...),
     allow_mismatch: bool = Form(False),
     file: UploadFile = File(...),
@@ -83,7 +83,9 @@ async def import_stores(
 ) -> StoreSyncResult:
     """Upload a .csv / .xlsx outlet list for one platform. Same column
     mapping and upsert rules as the Google Sheet sync."""
-    content = await file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
+    # A plain `def`: FastAPI runs it in a worker thread. The import is blocking work (parsing + database), and in an
+    # `async def` it froze the whole event loop for its duration, so health checks and every other request stalled.
+    content = file.file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
     try:
         result = store_sync_service.import_file(
             db, user, platform, file.filename or "", content, allow_mismatch=allow_mismatch

@@ -104,6 +104,9 @@ interface RequestOptions {
    * login request itself: a 401 there means bad credentials, not an
    * expired session, and there's no session to refresh yet. */
   skipAuthRefresh?: boolean;
+  /** What to say when the connection drops mid-request. For a long server job "check your connection" is misleading:
+   * the server may have stopped, not the user's network. */
+  networkErrorMessage?: string;
 }
 
 /** FastAPI sends `detail` as a string, or (for validation errors) a list of {loc, msg} — always turn it into text. */
@@ -142,7 +145,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
           : undefined,
     });
   } catch {
-    const message = "Unable to connect. Please check your connection and try again.";
+    const message = options.networkErrorMessage ?? "Unable to connect. Please check your connection and try again.";
     if (!options.silent) pushToast(message, "error");
     throw new ApiError(0, message);
   }

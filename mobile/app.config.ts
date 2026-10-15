@@ -78,6 +78,13 @@ const config: ExpoConfig = {
           // Preview and production builds refuse plain http. Only the development build (APP_VARIANT=development,
           // for talking to a server on your own computer) may use it.
           usesCleartextTraffic: process.env.APP_VARIANT === "development",
+          // Real phones are ARM. The default also builds x86 / x86_64 (emulators only), which roughly doubles the APK
+          // (~22 MB of native libraries per architecture). Keep both ARM ABIs so 32-bit-only phones still install.
+          // The development variant (emulator testing) keeps every architecture.
+          buildArchs:
+            process.env.APP_VARIANT === "development"
+              ? ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+              : ["armeabi-v7a", "arm64-v8a"],
           enableMinifyInReleaseBuilds: true,
           enableShrinkResourcesInReleaseBuilds: true,
         },

@@ -28,7 +28,7 @@ async function readLocation(): Promise<{ reading: Reading } | { skipped: "denied
   if (!perm.granted) return { skipped: "denied" };
   try {
     const pos = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 15_000)),
     ]);
     return { reading: { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy ?? undefined } };
@@ -123,7 +123,7 @@ export default function Today() {
               <View style={{ flex: 1 }}><Text style={font.tiny}>CHECK OUT</Text><Text style={{ fontWeight: "700", color: colors.text, marginTop: 2 }}>{a.check_out_at ? time(a.check_out_at) : "–"}</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={font.tiny}>LOCATION</Text>
-                <Text numberOfLines={1} style={{ fontWeight: "700", color: colors.text, marginTop: 2 }}>{a.check_in_location?.label ?? (a.checked_in ? "Not shared" : "–")}</Text>
+                <Text numberOfLines={2} style={{ fontWeight: "700", color: a.check_in_location?.status === "office" ? colors.success : colors.warning, marginTop: 2 }}>{a.check_in_location?.status === "office" ? (a.check_in_location.label ?? "Office") : a.checked_in ? "Away (not from office)" : "–"}</Text>
               </View>
             </View>
 

@@ -13,3 +13,19 @@ export function fmtMinutes(m: number): string {
 export function fmtDay(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short" });
 }
+
+export const AWAY_TEXT = "Away (not from office)";
+
+/** "At office" or "Away (not from office)". Anything not verified at an office (outside it, or no location shared) is away. */
+export function presenceText(loc: { status: string } | null | undefined): string {
+  if (!loc) return "";
+  return loc.status === "office" ? "At office" : AWAY_TEXT;
+}
+
+/** For the sheet: the office name when at an office, otherwise the coordinates ("12.927611, 80.194880"). */
+export function locationText(loc: { status: string; label?: string; latitude?: number; longitude?: number } | null | undefined): string {
+  if (!loc) return "";
+  if (loc.status === "office") return loc.label ?? "Office";
+  if (loc.latitude != null && loc.longitude != null) return `${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)}`;
+  return "Location not shared";
+}

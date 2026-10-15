@@ -33,9 +33,10 @@ Two kinds of update, and which to use:
 npm ci                                   # strict install; must finish without peer-dependency errors
 npx eas-cli login
 npx eas-cli whoami
-# API address and other EXPO_PUBLIC_* values for cloud builds (the local .env is NOT uploaded):
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_API_URL --value https://veekay-crm-api.fly.dev/api/v1 --visibility plaintext
-npx eas-cli env:create --environment production --name EXPO_PUBLIC_API_URL --value https://veekay-crm-api.fly.dev/api/v1 --visibility plaintext
+# API address for cloud builds (the local .env is NOT uploaded; without this the APK opens on "App setup incomplete").
+# The PREVIEW environment already has it (set during the first preview build). Production does not yet:
+npx eas-cli env:create preview --name EXPO_PUBLIC_API_URL --value https://veekay-crm-api.fly.dev/api/v1 --visibility plaintext --scope project --non-interactive   # (env:create works but prints a deprecation notice; env:set is the newer name)
+npx eas-cli env:create production --name EXPO_PUBLIC_API_URL --value https://veekay-crm-api.fly.dev/api/v1 --visibility plaintext --scope project --non-interactive
 npx eas-cli env:list --environment preview
 # (repeat env:create for these only if you use them: EXPO_PUBLIC_PRIVACY_URL, EXPO_PUBLIC_SUPPORT_EMAIL, EXPO_PUBLIC_SUPPORT_PHONE)
 ```

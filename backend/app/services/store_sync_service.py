@@ -19,6 +19,7 @@ import re
 import urllib.error
 import urllib.request
 import uuid
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
@@ -134,11 +135,35 @@ def _parse_csv_text(body: str) -> list[dict[str, str]]:
         header = next(reader)
     except StopIteration:
         return []
-    keys = [h.strip() for h in header]
-    return [dict(zip(keys, row)) for row in reader if any(c.strip() for c in row)]
+    keys = _trim_header([h.strip() for h in header])
+    return _collect_rows(keys, (row for row in reader), lambda c: c.strip() if isinstance(c, str) else c)
+
+
+log = logging.getLogger("veekay.store_import")
+
+
+def _rss_mb() -> int | None:
+    """This process's resident memory (Linux only; None elsewhere). Logged per import phase so a memory problem
+    shows WHERE it grows, instead of just an out-of-memory kill."""
+    try:
+        with open("/proc/self/status", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return None
 
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+# A small .xlsx can unpack to a huge XML (a zip bomb, or a sheet formatted down to the last row / out to the last
+# column). These limits keep one import's memory and CPU bounded no matter what the file contains.
+MAX_UNPACKED_BYTES = 60 * 1024 * 1024
+MAX_ROWS = 20_000            # data rows; a real outlet list is a few thousand
+MAX_COLUMNS = 120
+BLANK_ROWS_STOP = 500        # this many blank rows in a row = the data has ended (formatting continues below it)
+MAX_CELL_CHARS = 1_000
+STORE_FLUSH_EVERY = 500      # new stores are written to the database in batches of this size
 
 # Column widths from the Store model. Real sheets have long free-text cells
 # (multi-line addresses, several phone numbers in one cell); trim instead of
@@ -158,27 +183,71 @@ def _cell_text(value: object) -> str:
     return str(value)
 
 
+def _trim_header(keys: list[str]) -> list[str]:
+    """Drop empty trailing header cells (a sheet formatted out to column XFD has thousands) and cap the width."""
+    while keys and not keys[-1]:
+        keys.pop()
+    if len(keys) > MAX_COLUMNS:
+        raise SyncError(f"The sheet has more than {MAX_COLUMNS} columns. Remove the extra columns and try again.")
+    return keys
+
+
+def _collect_rows(keys: list[str], rows, to_text) -> list[dict[str, str]]:
+    """Stream rows into dicts, reading only the header's width, stopping after a long run of blank rows, and
+    refusing absurd sizes: memory stays proportional to the real data, never to what the sheet declares."""
+    width = len(keys)
+    out: list[dict[str, str]] = []
+    blank_run = 0
+    for row in rows:
+        cells = [_cell_text(to_text(c))[:MAX_CELL_CHARS] for c in row[:width]]
+        if not any(c.strip() for c in cells):
+            blank_run += 1
+            if blank_run >= BLANK_ROWS_STOP:
+                break
+            continue
+        blank_run = 0
+        if len(out) >= MAX_ROWS:
+            raise SyncError(f"The sheet has more than {MAX_ROWS:,} rows. Split it into smaller files.")
+        out.append(dict(zip(keys, cells)))
+    return out
+
+
+def _check_unpacked_size(content: bytes) -> None:
+    """Refuse an .xlsx that unpacks far beyond its upload size, before anything is decompressed."""
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            unpacked = sum(i.file_size for i in z.infolist())
+    except zipfile.BadZipFile as exc:
+        raise SyncError("That file could not be read as an Excel workbook.") from exc
+    if unpacked > MAX_UNPACKED_BYTES:
+        raise SyncError(
+            f"That workbook unpacks to {unpacked // (1024 * 1024)} MB, which is too large to import safely. "
+            "Open it in Excel, copy the outlet table into a new file, and upload that."
+        )
+
+
 def _rows_from_xlsx(content: bytes) -> list[dict[str, str]]:
     try:
         from openpyxl import load_workbook
     except ImportError as exc:  # pragma: no cover - dependency is in requirements.txt
         raise SyncError("Excel files need the 'openpyxl' package on the server.") from exc
+    _check_unpacked_size(content)
     try:
         wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except Exception as exc:  # noqa: BLE001 - any parse failure is a bad file
         raise SyncError("That file could not be read as an Excel workbook.") from exc
-    ws = wb.active
-    it = ws.iter_rows(values_only=True)
     try:
-        header = next(it)
-    except StopIteration:
-        return []
-    keys = [_cell_text(h).strip() for h in header]
-    return [
-        dict(zip(keys, [_cell_text(c) for c in row]))
-        for row in it
-        if any(_cell_text(c).strip() for c in row)
-    ]
+        it = wb.active.iter_rows(values_only=True)
+        try:
+            header = next(it)
+        except StopIteration:
+            return []
+        keys = _trim_header([_cell_text(h).strip()[:MAX_CELL_CHARS] for h in header])
+        return _collect_rows(keys, it, lambda c: c)
+    finally:
+        wb.close()
 
 
 def rows_from_upload(filename: str, content: bytes) -> list[dict[str, str]]:
@@ -299,8 +368,10 @@ def import_file(
     ).scalar_one_or_none()
     if partner is None:
         raise SyncError(f"'{partner_slug}' is not a configured platform in the CRM.")
-    return _import_rows(db, actor, partner, partner_slug, rows_from_upload(filename, content), source="file",
-                        allow_mismatch=allow_mismatch)
+    log.info("store import start", extra={"platform": partner_slug, "bytes": len(content), "rss_mb": _rss_mb()})
+    rows = rows_from_upload(filename, content)
+    log.info("store import parsed", extra={"platform": partner_slug, "rows": len(rows), "rss_mb": _rss_mb()})
+    return _import_rows(db, actor, partner, partner_slug, rows, source="file", allow_mismatch=allow_mismatch)
 
 
 _MISMATCH_SHARE = 0.5   # this share of rows pointing at another platform blocks the import
@@ -454,6 +525,8 @@ def _import_rows(
             db.add(new_store)
             by_code[code] = new_store
             result.created += 1
+            if result.created % STORE_FLUSH_EVERY == 0:
+                db.flush()   # bounded batches instead of one giant statement; still one transaction, committed at the end
         else:
             changed = False
             old_status = existing.status
@@ -471,7 +544,8 @@ def _import_rows(
             else:
                 result.unchanged += 1
 
-    db.flush()  # one batched INSERT/UPDATE for the whole file
+    db.flush()
+    log.info("store import written", extra={"platform": partner_slug, "created": result.created, "rss_mb": _rss_mb()})
     store_service.record_status_changes(db, actor, status_changes)
     if result.created:
         restored = store_service.restore_archived_history(db, actor.organization_id, partner.id)
