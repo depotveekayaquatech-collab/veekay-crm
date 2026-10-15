@@ -2,11 +2,12 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_page_params, require_permission
+from app.core.cache import read_cache
 from app.core.cached_json import cached_json_response
 from app.db.session import get_db
 from app.models.user import User
@@ -75,6 +76,7 @@ def sync_stores(
 )
 async def import_stores(
     platform: str = Form(...),
+    allow_mismatch: bool = Form(False),
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -83,7 +85,9 @@ async def import_stores(
     mapping and upsert rules as the Google Sheet sync."""
     content = await file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
     try:
-        result = store_sync_service.import_file(db, user, platform, file.filename or "", content)
+        result = store_sync_service.import_file(
+            db, user, platform, file.filename or "", content, allow_mismatch=allow_mismatch
+        )
     except store_sync_service.SyncError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except DBAPIError as exc:
@@ -105,6 +109,48 @@ def create_store(
     db: Session = Depends(get_db),
 ) -> StoreOut:
     return store_service.create_store(db, user, payload)
+
+
+class MovePlatformRequest(BaseModel):
+    from_platform: str
+    to_platform: str
+    contains: str = ""          # only stores whose name or Outlet ID contains this text (blank = all)
+    dry_run: bool = True
+
+
+@router.post("/move-platform", dependencies=[Depends(require_permission("sheets.sync"))])
+def move_platform(
+    payload: MovePlatformRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Developer only. Re-file stores imported under the wrong platform. Keeps every store id, so order history,
+    documents and tickets follow the store. `dry_run` (default) only counts."""
+    result = store_service.move_stores(
+        db, user, payload.from_platform, payload.to_platform, payload.contains, dry_run=payload.dry_run
+    )
+    if not payload.dry_run:
+        read_cache.invalidate()
+    return result
+
+
+@router.delete("", dependencies=[Depends(require_permission("sheets.sync"))])  # developer-only (reserved permission)
+def delete_all_stores(
+    platform: str | None = None,
+    confirm: str = "",
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Developer only. Wipe every store of one platform (`?platform=zepto`) or of all platforms (omit it), with their order
+    history, so the list can be imported again; their order history is archived first and restored automatically when the
+    same stores (platform + code) are added again. `confirm` must be exactly `DELETE <PLATFORM SLUG>` (or
+    `DELETE ALL`): a stray call can never remove data."""
+    expected = f"DELETE {platform.upper()}" if platform else "DELETE ALL"
+    if confirm.strip().upper() != expected:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f'Type "{expected}" to confirm.')
+    result = store_service.delete_all_stores(db, user, platform)
+    read_cache.invalidate()
+    return result
 
 
 @router.get(

@@ -32,6 +32,7 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [result, setResult] = useState<StoreSyncResult | null>(null);
+  const [force, setForce] = useState(false);
 
   const activePartner = partner || partners[0]?.slug || "";
 
@@ -46,7 +47,7 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
 
   function submit() {
     if (!file || !activePartner) return;
-    importFile.mutate({ platform: activePartner, file }, { onSuccess: setResult });
+    importFile.mutate({ platform: activePartner, file, allowMismatch: force }, { onSuccess: setResult });
   }
 
   const done = result !== null;
@@ -120,6 +121,13 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
             <p role="alert" className="rounded-lg bg-status-danger-soft px-3 py-2 text-sm text-status-danger">
               {localError ?? (importFile.error instanceof Error ? importFile.error.message : "Import failed.")}
             </p>
+          )}
+
+          {importFile.error && (
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-gray-600">
+              <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-600" />
+              This really is a {partners.find((p) => p.slug === activePartner)?.name ?? "this"} sheet. Import it anyway.
+            </label>
           )}
 
           <div className="flex items-start justify-between gap-3 rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-600">

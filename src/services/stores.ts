@@ -57,10 +57,51 @@ export async function syncStores(platform?: string): Promise<StoreSyncResult[]> 
   return wire.map(toSyncResult);
 }
 
-export async function importStoresFile(platform: string, file: File): Promise<StoreSyncResult> {
+export async function importStoresFile(platform: string, file: File, allowMismatch = false): Promise<StoreSyncResult> {
   const body = new FormData();
   body.append("platform", platform);
+  if (allowMismatch) body.append("allow_mismatch", "true");
   body.append("file", file);
   const wire = await apiRequest<Parameters<typeof toSyncResult>[0]>("/stores/import", { method: "POST", body });
   return toSyncResult(wire);
+}
+
+export interface DeleteAllStoresResult {
+  platform: string;
+  storesDeleted: number;
+  orderEntriesDeleted: number;
+}
+
+/** Wipe every store (and its order history) of one platform, or of all when `platform` is empty. */
+export async function deleteAllStores(platform: string, confirm: string): Promise<DeleteAllStoresResult> {
+  const qs = new URLSearchParams({ confirm });
+  if (platform) qs.set("platform", platform);
+  const w = await apiRequest<{ platform: string; stores_deleted: number; order_entries_deleted: number }>(
+    `/stores?${qs}`,
+    { method: "DELETE" },
+  );
+  return { platform: w.platform, storesDeleted: w.stores_deleted, orderEntriesDeleted: w.order_entries_deleted };
+}
+
+export interface MovePlatformResult {
+  from: string;
+  to: string;
+  matched: number;
+  moved: number;
+  skippedDuplicates: number;
+  dryRun: boolean;
+}
+
+/** Re-file stores imported under the wrong platform (developer only). `dryRun` only counts. */
+export async function movePlatform(
+  fromPlatform: string,
+  toPlatform: string,
+  contains: string,
+  dryRun: boolean,
+): Promise<MovePlatformResult> {
+  const w = await apiRequest<{ from: string; to: string; matched: number; moved: number; skipped_duplicates: number; dry_run: boolean }>(
+    "/stores/move-platform",
+    { method: "POST", body: { from_platform: fromPlatform, to_platform: toPlatform, contains, dry_run: dryRun } },
+  );
+  return { from: w.from, to: w.to, matched: w.matched, moved: w.moved, skippedDuplicates: w.skipped_duplicates, dryRun: w.dry_run };
 }

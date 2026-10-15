@@ -31,7 +31,7 @@ from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.repositories.store_repository import StoreRepository
-from app.services import activity_service, assignment_service
+from app.services import activity_service, assignment_service, store_service
 
 _CSV_URL = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
@@ -287,7 +287,9 @@ def sync_platform(db: Session, actor: User, partner_slug: str) -> SyncResult:
     return _import_rows(db, actor, partner, partner_slug, _fetch_rows(sheet_id, gid), source="sheet")
 
 
-def import_file(db: Session, actor: User, partner_slug: str, filename: str, content: bytes) -> SyncResult:
+def import_file(
+    db: Session, actor: User, partner_slug: str, filename: str, content: bytes, *, allow_mismatch: bool = False
+) -> SyncResult:
     """Import stores for one platform from an uploaded CSV / Excel file."""
     partner_slug = partner_slug.strip().lower()
     partner = db.execute(
@@ -298,7 +300,55 @@ def import_file(db: Session, actor: User, partner_slug: str, filename: str, cont
     ).scalar_one_or_none()
     if partner is None:
         raise SyncError(f"'{partner_slug}' is not a configured platform in the CRM.")
-    return _import_rows(db, actor, partner, partner_slug, rows_from_upload(filename, content), source="file")
+    return _import_rows(db, actor, partner, partner_slug, rows_from_upload(filename, content), source="file",
+                        allow_mismatch=allow_mismatch)
+
+
+_MISMATCH_SHARE = 0.5   # this share of rows pointing at another platform blocks the import
+
+
+def _check_platform_match(db: Session, partner: Organization, cols: dict, rows: list[dict[str, str]]) -> None:
+    """Refuse a sheet that clearly belongs to a different platform (e.g. the Zepto outlet list picked as Blinkit).
+    Two independent signals, either one blocks:
+      1. rows whose Outlet ID / Name mention ANOTHER platform's name and never this one's;
+      2. Outlet IDs that already exist under another platform (and not under this one).
+    """
+    sample = [(_clean(r.get(cols["external_code"])), _clean(r.get(cols["name"]))) for r in rows]
+    sample = [(c, n) for c, n in sample if c and n]
+    if len(sample) < 3:
+        return
+    others = db.execute(
+        select(Organization).where(
+            Organization.kind == OrganizationKind.PARTNER.value, Organization.id != partner.id, Organization.is_active.is_(True)
+        )
+    ).scalars().all()
+
+    def mentions(org: Organization, c: str, n: str) -> bool:
+        text = f"{c} {n}".lower()
+        return org.slug.lower() in text or org.name.strip().lower() in text
+
+    this_hits = sum(1 for c, n in sample if mentions(partner, c, n))
+    for org in others:
+        hits = sum(1 for c, n in sample if mentions(org, c, n))
+        if hits / len(sample) >= _MISMATCH_SHARE and this_hits / len(sample) < 0.2:
+            raise SyncError(
+                f"This looks like a {org.name} sheet ({hits} of {len(sample)} rows mention {org.name}), but you chose "
+                f"{partner.name}. Pick {org.name} instead. Nothing was imported."
+            )
+
+    codes = [c for c, _ in sample]
+    mine = set(db.execute(
+        select(Store.external_code).where(Store.partner_organization_id == partner.id, Store.external_code.in_(codes))
+    ).scalars())
+    for org in others:
+        theirs = set(db.execute(
+            select(Store.external_code).where(Store.partner_organization_id == org.id, Store.external_code.in_(codes))
+        ).scalars()) - mine
+        if len(theirs) >= 3 and len(theirs) / len(sample) >= _MISMATCH_SHARE:
+            raise SyncError(
+                f"{len(theirs)} of {len(sample)} Outlet IDs in this sheet already exist as {org.name} stores, but you chose "
+                f"{partner.name}. This is probably the {org.name} sheet. Nothing was imported."
+            )
 
 
 def _import_rows(
@@ -309,6 +359,7 @@ def _import_rows(
     rows: list[dict[str, str]],
     *,
     source: str,
+    allow_mismatch: bool = False,
 ) -> SyncResult:
     result = SyncResult(platform=partner_slug, rows_read=len(rows))
     if not rows:
@@ -320,6 +371,9 @@ def _import_rows(
         raise SyncError(
             "Could not find the 'Outlet ID' and 'Outlet Name' columns in the sheet header."
         )
+
+    if not allow_mismatch:
+        _check_platform_match(db, partner, cols, rows)
 
     regions_by_name = {
         r.name.strip().lower(): r
@@ -395,6 +449,7 @@ def _import_rows(
             result.created += 1
         else:
             changed = False
+            old_status = existing.status
             for k, v in fields.items():
                 # don't wipe a manually-filled field when the sheet cell is blank
                 if v is None and getattr(existing, k) is not None and k != "status":
@@ -402,10 +457,18 @@ def _import_rows(
                 if getattr(existing, k) != v:
                     setattr(existing, k, v)
                     changed = True
+            if existing.status != old_status:
+                store_service.record_status_change(db, actor, existing, old_status)
             if changed:
                 result.updated += 1
             else:
                 result.unchanged += 1
+
+    if result.created:
+        db.flush()
+        restored = store_service.restore_archived_history(db, actor.organization_id, partner.id)
+        if restored:
+            result.warnings.append(f"{restored} archived order days were restored to re-added stores.")
 
     if bad_dates:
         result.warnings.append(

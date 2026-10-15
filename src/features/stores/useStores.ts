@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { closeStore, createStore, importStoresFile, listStores, syncStores, updateStore } from "@/services/stores";
+import { closeStore, createStore, deleteAllStores, movePlatform, importStoresFile, listStores, syncStores, updateStore } from "@/services/stores";
 import { listPartners } from "@/services/partners";
 import { pushToast } from "@/lib/toast";
 import type { StoreInput } from "@/types/store";
@@ -68,7 +68,8 @@ export function useStoreMutations() {
   });
 
   const importFile = useMutation({
-    mutationFn: ({ platform, file }: { platform: string; file: File }) => importStoresFile(platform, file),
+    mutationFn: ({ platform, file, allowMismatch }: { platform: string; file: File; allowMismatch?: boolean }) =>
+      importStoresFile(platform, file, allowMismatch),
     onSuccess: (r) => {
       // refetch every store list + dashboard numbers so the new stores show up immediately
       invalidate();
@@ -78,5 +79,27 @@ export function useStoreMutations() {
     },
   });
 
-  return { create, update, close, sync, importFile };
+  const removeAll = useMutation({
+    mutationFn: ({ platform, confirm }: { platform: string; confirm: string }) => deleteAllStores(platform, confirm),
+    onSuccess: (r) => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["order-insights"] });
+      qc.invalidateQueries({ queryKey: ["pending"] });
+      pushToast(`${r.storesDeleted} ${r.platform} stores removed.`, "success");
+    },
+  });
+
+  const move = useMutation({
+    mutationFn: ({ from, to, contains, dryRun }: { from: string; to: string; contains: string; dryRun: boolean }) =>
+      movePlatform(from, to, contains, dryRun),
+    onSuccess: (r) => {
+      if (r.dryRun) return;
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["order-insights"] });
+      qc.invalidateQueries({ queryKey: ["pending"] });
+      pushToast(`${r.moved} stores moved from ${r.from} to ${r.to}.`, "success");
+    },
+  });
+
+  return { create, update, close, sync, importFile, removeAll, move };
 }

@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/Button";
 import { IconRefresh, IconUpload } from "@/components/ui/icons";
 import { ImportOrdersModal } from "@/features/orders/ImportOrdersModal";
 import { useSyncOrders } from "@/features/orders/useOrders";
+import { DeleteAllStoresModal } from "@/features/stores/DeleteAllStoresModal";
+import { MovePlatformModal } from "@/features/stores/MovePlatformModal";
 import { ImportStoresModal } from "@/features/stores/ImportStoresModal";
 import { useStoreMutations } from "@/features/stores/useStores";
 
@@ -59,6 +61,8 @@ function Card({ title, description, children }: { title: string; description: st
 /** Bulk sheet tools. Only the developer role reaches this page; the server enforces it (`sheets.sync`). */
 export function DataSyncPage() {
   const [importStores, setImportStores] = useState(false);
+  const [removingStores, setRemovingStores] = useState(false);
+  const [movingStores, setMovingStores] = useState(false);
   const [importOrders, setImportOrders] = useState(false);
   const { sync: syncStores } = useStoreMutations();
   const syncOrders = useSyncOrders();
@@ -77,6 +81,12 @@ export function DataSyncPage() {
               <IconUpload className="h-4 w-4" aria-hidden="true" />
               Import file
             </Button>
+            <Button variant="secondary" onClick={() => setMovingStores(true)}>
+              Fix wrong platform
+            </Button>
+            <Button variant="danger" onClick={() => setRemovingStores(true)}>
+              Remove all stores
+            </Button>
           </div>
           {syncStores.data && <Results title="Last store sync" results={syncStores.data} onDismiss={() => syncStores.reset()} />}
         </Card>
@@ -94,6 +104,8 @@ export function DataSyncPage() {
           {syncOrders.data && <Results title="Last order sync" results={syncOrders.data} onDismiss={() => syncOrders.reset()} />}
         </Card>
       </div>
+      {movingStores && <MovePlatformModal onClose={() => setMovingStores(false)} />}
+      {removingStores && <DeleteAllStoresModal onClose={() => setRemovingStores(false)} />}
       {importStores && <ImportStoresModal onClose={() => setImportStores(false)} />}
       {importOrders && <ImportOrdersModal onClose={() => setImportOrders(false)} />}
     </div>
