@@ -162,3 +162,17 @@ def test_restore_never_overwrites_a_day_the_store_already_has(db, make_store):
     db.commit()
     got = {e.order_date.day: e.bottle_count for e in db.query(OrderEntry).filter_by(store_id=s.id)}
     assert got == {1: 99, 2: 5, 3: 5}                                # the existing day (99) is untouched
+
+
+def test_import_works_with_info_logging_enabled(client, dev, db, caplog):
+    """The progress log lines use `extra=`; a reserved LogRecord key (e.g. `created`) raises KeyError, but only when INFO is enabled,
+    which the test config normally turns off. Run an import with INFO on so that can never slip through again."""
+    import logging
+    caplog.set_level(logging.INFO, logger="veekay.store_import")
+    data = _xlsx(_rows(5, "LOGT"))
+    r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.xlsx", data, "application/octet-stream")}, headers=dev)
+    assert r.status_code == 200, r.text
+    msgs = [rec.getMessage() for rec in caplog.records if rec.name == "veekay.store_import"]
+    assert any("written" in m for m in msgs) and any("parsed" in m for m in msgs)
+    db.query(Store).filter(Store.external_code.like("LOGT-%")).delete(synchronize_session=False)
+    db.commit()

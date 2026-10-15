@@ -545,7 +545,7 @@ def _import_rows(
                 result.unchanged += 1
 
     db.flush()
-    log.info("store import written", extra={"platform": partner_slug, "created": result.created, "rss_mb": _rss_mb()})
+    log.info("store import written", extra={"platform": partner_slug, "stores_created": result.created, "rss_mb": _rss_mb()})
     store_service.record_status_changes(db, actor, status_changes)
     if result.created:
         restored = store_service.restore_archived_history(db, actor.organization_id, partner.id)
