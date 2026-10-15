@@ -166,3 +166,51 @@ def decode_claims(token: str, expected_type: TokenType) -> TokenClaims:
         )
     except (KeyError, ValueError) as exc:
         raise InvalidTokenError("Token is malformed") from exc
+
+
+# --------------------------------------------------------------------------
+# admin password reset (CLI)
+#   run from backend/:  python -m app.core.security
+# --------------------------------------------------------------------------
+
+def reset_admin_password() -> None:
+    """Prompt for a new password and reset ADMIN001's. DB/model imports are local so
+    importing this module never pulls in the database layer (no import cycles)."""
+    from getpass import getpass
+
+    from app.db.session import SessionLocal
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    new_password = getpass("Enter new admin password: ")
+    confirm_password = getpass("Confirm new admin password: ")
+
+    if not new_password or new_password != confirm_password:
+        print("Passwords are empty or do not match.")
+        return
+
+    db = SessionLocal()
+    try:
+        org = db.query(Organization).filter_by(slug="veekay").first()
+        if org is None:
+            print("Organization 'veekay' not found.")
+            return
+
+        user = db.query(User).filter_by(organization_id=org.id, employee_code="ADMIN001").first()
+        if user is None:
+            print("ADMIN001 does not exist. No changes made.")
+            return
+
+        user.password_hash = hash_password(new_password)
+        user.must_change_password = True
+        db.commit()
+        print("ADMIN001 password reset successfully.")
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    reset_admin_password()

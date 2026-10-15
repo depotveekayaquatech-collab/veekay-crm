@@ -6,10 +6,21 @@ import { IconAlertTriangle } from "@/components/ui/icons";
 import { useAuth } from "@/features/auth/useAuth";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 
+const REMEMBER_KEY = "aquatrack.rememberedEmployeeId";
+
+function readRemembered(): string {
+  try {
+    return localStorage.getItem(REMEMBER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [employeeCode, setEmployeeCode] = useState("");
+  const [employeeCode, setEmployeeCode] = useState(readRemembered);
+  const [remember, setRemember] = useState(() => readRemembered() !== "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +32,12 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(employeeCode, password);
+      try {
+        if (remember) localStorage.setItem(REMEMBER_KEY, employeeCode);
+        else localStorage.removeItem(REMEMBER_KEY);
+      } catch {
+        /* storage unavailable: just don't remember */
+      }
       navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
@@ -109,6 +126,16 @@ export function LoginPage() {
                 </button>
               }
             />
+
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 accent-brand-600"
+              />
+              Remember my Employee ID
+            </label>
 
             {error && (
               <div

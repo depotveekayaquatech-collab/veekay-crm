@@ -412,6 +412,13 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
         .order_by(Organization.name)
     ).all()
     by_platform: dict[uuid.UUID, dict] = {}
+    # Every active partner is listed, even one with no stores yet (e.g. a freshly deployed Zepto).
+    for pid, slug, label in db.execute(
+        select(Organization.id, Organization.slug, Organization.name)
+        .where(Organization.kind == OrganizationKind.PARTNER.value, Organization.is_active.is_(True))
+        .order_by(Organization.name)
+    ).all():
+        by_platform[pid] = {"slug": slug, "label": label, "LIVE": 0, "PENDING": 0, "CLOSE": 0}
     for pid, slug, label, st, n in plat_rows:
         d = by_platform.setdefault(pid, {"slug": slug, "label": label, "LIVE": 0, "PENDING": 0, "CLOSE": 0})
         d[st] = int(n)
