@@ -41,13 +41,17 @@ export function VendorRatesPanel() {
   const [platform, setPlatform] = useState("blinkit");
   const [file, setFile] = useState<File | null>(null);
   const [effective, setEffective] = useState("");
+  // the exact file that was checked is re-sent when the admin confirms
+  const [pending, setPending] = useState<File | null>(null);
   const [result, setResult] = useState<RateUploadResult | null>(null);
+  const [city, setCity] = useState("");
+  const [cityRate, setCityRate] = useState("");
   const [showCurrent, setShowCurrent] = useState(false);
 
   const current = useQuery({ queryKey: ["vendor-rates", platform], queryFn: () => listVendorRates(platform), enabled: showCurrent });
 
   const upload = useMutation({
-    mutationFn: (confirm: boolean) => uploadVendorRates(file!, platform, confirm, effective || undefined),
+    mutationFn: ({ f, confirm }: { f: File; confirm: boolean }) => uploadVendorRates(f, platform, confirm, effective || undefined),
     onSuccess: (r) => {
       setResult(r);
       if (r.applied) {
@@ -60,7 +64,7 @@ export function VendorRatesPanel() {
   return (
     <section className="rounded-xl border border-surface-border bg-surface shadow-card">
       <header className="border-b border-surface-border/80 px-5 py-4">
-        <h3 className="text-sm font-bold text-gray-900">Vendor rates (city-wise)</h3>
+        <h3 className="text-sm font-bold text-gray-900">Set vendor rates (city-wise)</h3>
         <p className="mt-0.5 text-xs text-gray-500">
           What Veekay charges per bottle. Upload a sheet with <b>City</b> and <b>Rate</b> columns, plus <b>Outlet ID</b> or <b>Store Name</b> for a store with its own rate.
           New rates are added; a change to an existing rate is shown to you first.
@@ -88,10 +92,37 @@ export function VendorRatesPanel() {
           </div>
         </div>
 
+        <div className="rounded-xl border border-surface-border bg-surface-subtle/60 p-4">
+          <p className="mb-2 text-[13px] font-bold text-gray-800">One city</p>
+          <form
+            className="grid gap-3 sm:grid-cols-[1fr_9rem_auto] sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const c = city.trim();
+              const r = cityRate.trim();
+              if (!c || r === "" || Number.isNaN(Number(r))) return;
+              const f = new File([`City,Rate\n"${c.replace(/"/g, '""')}",${r}\n`], "single-city-rate.csv", { type: "text/csv" });
+              setPending(f);
+              upload.mutate({ f, confirm: false });
+            }}
+          >
+            <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
+              City
+              <input className="h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm" value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Gurugram" />
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
+              Rate per bottle (₹)
+              <input className="h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm" inputMode="decimal" value={cityRate} onChange={(e) => setCityRate(e.target.value.replace(/[^\d.]/g, ""))} placeholder="4.50" />
+            </label>
+            <Button type="submit" disabled={!city.trim() || cityRate.trim() === "" || Number.isNaN(Number(cityRate))} isLoading={upload.isPending && pending?.name === "single-city-rate.csv" && !result?.needsConfirmation}>Check and save</Button>
+          </form>
+        </div>
+
+        <p className="text-[13px] font-bold text-gray-800">Or many cities / stores at once (Excel or CSV)</p>
         <FileDropzone file={file} onPick={(f) => { setFile(f ?? null); setResult(null); }} accept=".csv,.xlsx,.xlsm" hint="Rate sheet (.csv or .xlsx, up to 5 MB)" />
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => upload.mutate(false)} disabled={!file} isLoading={upload.isPending && !result?.needsConfirmation}>Check and upload</Button>
+          <Button onClick={() => { setPending(file); upload.mutate({ f: file!, confirm: false }); }} disabled={!file} isLoading={upload.isPending && !result?.needsConfirmation}>Check and upload sheet</Button>
           <Button variant="secondary" onClick={() => setShowCurrent((v) => !v)}>{showCurrent ? "Hide" : "Show"} current rates</Button>
         </div>
 
@@ -105,7 +136,7 @@ export function VendorRatesPanel() {
             <Lines lines={result.changes} />
             {result.new > 0 && <p className="text-xs text-gray-600">{result.new} new rate{result.new === 1 ? "" : "s"} will also be added.</p>}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => upload.mutate(true)} isLoading={upload.isPending}>Yes, update these rates</Button>
+              <Button onClick={() => pending && upload.mutate({ f: pending, confirm: true })} isLoading={upload.isPending}>Yes, update these rates</Button>
               <Button variant="secondary" onClick={() => setResult(null)}>Cancel</Button>
             </div>
           </div>
