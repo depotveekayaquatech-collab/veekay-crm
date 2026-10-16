@@ -45,6 +45,12 @@ if (!fs.existsSync(props.storeFile)) die(`Keystore file not found: ${props.store
 const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || path.join(process.env.LOCALAPPDATA || "", "Android", "Sdk");
 if (!fs.existsSync(path.join(sdk, "platforms"))) die(`Android SDK not found (looked in ${sdk}). Set ANDROID_HOME.`);
 
+// ---- 2b. the production API address that gets baked into the APK (Expo reads the shell first, then mobile/.env)
+const apiUrl = (process.env.EXPO_PUBLIC_API_URL ||
+  (fs.existsSync(path.join(mobile, ".env")) ? (fs.readFileSync(path.join(mobile, ".env"), "utf8").match(/^EXPO_PUBLIC_API_URL=(.+)$/m)?.[1] ?? "") : "")).trim().replace(/\/+$/, "");
+if (!/^https:\/\/.+\/api\/v1$/.test(apiUrl)) die(`EXPO_PUBLIC_API_URL must be an https address ending in /api/v1 (got "${apiUrl || "nothing"}"). Fix mobile/.env.`);
+console.log(`API address in this build: ${apiUrl}`);
+
 // ---- 3. version code (a phone only accepts an APK as an update if this number is higher than the installed one)
 const versionCode = process.env.ANDROID_VERSION_CODE || "5";
 console.log(`Building version ${versionCode}, signed with ${path.basename(props.storeFile)} (alias ${props.keyAlias}), SDK ${sdk}`);
