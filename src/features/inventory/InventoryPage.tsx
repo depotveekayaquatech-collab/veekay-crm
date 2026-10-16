@@ -26,7 +26,7 @@ const CHIPS: { id: Chip; label: string }[] = [
 function Phone({ value }: { value: string | null }) {
   if (!value) return <span className="text-gray-400">—</span>;
   return (
-    <a href={`tel:${value}`} className="font-medium text-brand-600 hover:text-brand-700" onClick={(e) => e.stopPropagation()}>
+    <a href={`tel:${value}`} className="-my-2.5 inline-block py-2.5 font-medium text-brand-600 hover:text-brand-700" onClick={(e) => e.stopPropagation()}>
       {value}
     </a>
   );
@@ -120,21 +120,22 @@ export function InventoryPage() {
         }
       />
 
-      {s && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { l: "Stores", v: s.stores, t: "brand" },
-            { l: "Behind schedule", v: s.behind, t: "warning" },
-            { l: "Marked today", v: `${s.markedToday} / ${s.stores}`, t: "success" },
-            { l: "Total pending days", v: s.totalPendingDays, t: "aqua" },
-          ].map((k) => (
-            <div key={k.l} className={`tile tile-${k.t} rounded-xl border border-surface-border bg-surface p-5 shadow-card`}>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.l}</p>
-              <p className="mt-1.5 text-[1.7rem] font-bold leading-none tabular-nums text-heading">{k.v}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Always rendered (placeholders until the data arrives) so the content below never jumps down when it loads. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { l: "Stores", v: s?.stores, t: "brand" },
+          { l: "Behind schedule", v: s?.behind, t: "warning" },
+          { l: "Marked today", v: s ? `${s.markedToday} / ${s.stores}` : undefined, t: "success" },
+          { l: "Total pending days", v: s?.totalPendingDays, t: "aqua" },
+        ].map((k) => (
+          <div key={k.l} className={`tile tile-${k.t} rounded-xl border border-surface-border bg-surface p-5 shadow-card`}>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.l}</p>
+            <p className="mt-1.5 flex h-[1.7rem] items-center text-[1.7rem] font-bold leading-none tabular-nums text-heading">
+              {k.v ?? <Skeleton className="h-6 w-16" />}
+            </p>
+          </div>
+        ))}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {CHIPS.map((c) => (

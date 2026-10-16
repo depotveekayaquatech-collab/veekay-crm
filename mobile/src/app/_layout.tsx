@@ -10,14 +10,16 @@ import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { configError } from "@/api/client";
 import { registerPush } from "@/lib/push";
 import { startAutoFlush } from "@/lib/scanQueue";
-import { connectOnlineManager, useDailyRefresh } from "@/lib/dailyRefresh";
+import { useDailyRefresh } from "@/lib/dailyRefresh";
+import { ConnectivityBanner, startConnectivity } from "@/lib/connectivity";
+import { shouldRetryQuery } from "@/lib/connectivityCore";
 import { installGlobalErrorHandler, reportError } from "@/lib/crash";
 import { Pressable } from "react-native";
 import { UpdateGate } from "@/components/UpdateGate";
 import { colors } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
-connectOnlineManager();
+startConnectivity();
 installGlobalErrorHandler();
 
 /** Shown instead of a blank screen when a screen crashes. Expo Router uses this export automatically. */
@@ -121,7 +123,7 @@ function Navigator() {
 }
 
 export default function RootLayout() {
-  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } }));
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: shouldRetryQuery, retryDelay: (n) => Math.min(1000 * 2 ** n, 8000), refetchOnWindowFocus: false } } }));
 
   if (configError) {
     return (
@@ -140,6 +142,7 @@ export default function RootLayout() {
           <UpdateGate enabled>
             <Navigator />
           </UpdateGate>
+          <ConnectivityBanner />
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

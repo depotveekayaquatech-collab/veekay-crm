@@ -8,8 +8,7 @@
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import NetInfo from "@react-native-community/netinfo";
-import { onlineManager, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 const KEY = "veekay.lastRefresh";
 const SYNC_UTC_MINUTES = 4 * 60 + 30;
@@ -18,11 +17,6 @@ const SYNC_UTC_MINUTES = 4 * 60 + 30;
 export function lastSyncBoundary(now = new Date()): number {
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, SYNC_UTC_MINUTES);
   return today <= now.getTime() ? today : today - 86_400_000;
-}
-
-/** Tells React Query when the phone is offline, so it pauses instead of failing, and refetches on reconnect. */
-export function connectOnlineManager() {
-  onlineManager.setEventListener((setOnline) => NetInfo.addEventListener((s) => setOnline(!!s.isConnected)));
 }
 
 export function useDailyRefresh(enabled: boolean) {

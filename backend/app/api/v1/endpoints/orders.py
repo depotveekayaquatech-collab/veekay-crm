@@ -3,6 +3,7 @@ import uuid
 from datetime import date, timedelta
 
 from pydantic import TypeAdapter
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, Query, File, Form, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -207,8 +208,9 @@ async def import_orders(
     """Bulk-mark orders from an order sheet (one row per store, one column per date)."""
     content = await file.read(order_import_service.MAX_UPLOAD_BYTES + 1)
     try:
-        result = order_import_service.import_orders(
-            db, user, platform, file.filename or "", content, overwrite=overwrite
+        # Blocking parse + database work: a worker thread, so every other request keeps being served meanwhile.
+        result = await run_in_threadpool(
+            order_import_service.import_orders, db, user, platform, file.filename or "", content, overwrite=overwrite
         )
     except order_import_service.OrderImportError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc

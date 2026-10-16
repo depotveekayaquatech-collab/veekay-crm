@@ -1,7 +1,6 @@
 import { useMemo, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { getCalendar } from "@/services/orders";
+import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/feedback/Skeleton";
@@ -659,17 +658,8 @@ function EmployeeDashboard() {
   const { user } = useAuth();
   const { data: stores = [], isLoading } = useMyStores();
 
-  const calendars = useQueries({
-    queries: stores.map((s) => ({
-      queryKey: ["calendar", s.id, undefined, undefined],
-      queryFn: () => getCalendar(s.id),
-    })),
-  });
-
-  const rows = stores.map((s, i) => {
-    const today = calendars[i]?.data?.days.find((d) => d.isToday);
-    return { store: s, marked: Boolean(today?.marked), count: today?.count ?? 0, loading: calendars[i]?.isLoading };
-  });
+  // my-stores already says, per store, whether today is marked and how many bottles: one request, not one per store.
+  const rows = stores.map((s) => ({ store: s, marked: s.todayCount !== null, count: s.todayCount ?? 0, loading: false }));
   const markedToday = rows.filter((r) => r.marked).length;
   const bottlesToday = rows.reduce((sum, r) => sum + (r.marked ? r.count : 0), 0);
   const pct = stores.length ? Math.round((markedToday / stores.length) * 100) : 0;

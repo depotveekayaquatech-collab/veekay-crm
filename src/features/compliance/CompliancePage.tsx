@@ -193,14 +193,13 @@ export function CompliancePage() {
       />
 
       {/* KPI tiles */}
-      {k && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Tile title="Total stores" value={k.total} tone="brand" />
-          <Tile title="Card logged" value={k.cardLogged} tone="aqua" />
-          <Tile title="Invoice logged" value={k.invoiceLogged} tone="brand" />
-          <Tile title="Payment proof logged" value={k.paymentLogged} tone="success" />
-        </div>
-      )}
+      {/* Always rendered (placeholders until the data arrives) so the filters below never jump down when it loads. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Tile title="Total stores" value={k?.total ?? "—"} tone="brand" />
+        <Tile title="Card logged" value={k?.cardLogged ?? "—"} tone="aqua" />
+        <Tile title="Invoice logged" value={k?.invoiceLogged ?? "—"} tone="brand" />
+        <Tile title="Payment proof logged" value={k?.paymentLogged ?? "—"} tone="success" />
+      </div>
 
       {/* filters */}
       <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">

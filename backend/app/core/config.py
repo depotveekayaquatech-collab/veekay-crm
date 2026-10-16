@@ -127,6 +127,13 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = Field(default=10, ge=1, le=50)
     DB_MAX_OVERFLOW: int = Field(default=20, ge=0, le=100)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=30)
+    # How long a request waits for a free pooled connection / a new connection to the database before giving up.
+    # Without a bound an overloaded pool makes every request hang for a minute or more instead of failing fast.
+    DB_POOL_TIMEOUT_SECONDS: int = Field(default=15, ge=1, le=120)
+    DB_CONNECT_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=60)
+    # TCP keepalives on database connections: an idle pooled connection that a NAT / proxy silently dropped is noticed
+    # after about idle + interval*count seconds, instead of the first query after the pause hanging on a dead socket.
+    DB_KEEPALIVE_IDLE_SECONDS: int = Field(default=30, ge=5, le=600)
 
     # Dashboard cache
     DASHBOARD_CACHE_SECONDS: int = Field(default=30, ge=0, le=600)

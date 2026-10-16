@@ -4,6 +4,7 @@
  */
 import { fetch as expoFetch } from "expo/fetch";
 import * as SecureStore from "expo-secure-store";
+import { connectivity, MESSAGES, type FailureKind } from "@/lib/connectivityCore";
 
 const DEV_DEFAULT = "http://10.0.2.2:8000/api/v1"; // Android emulator -> your computer
 const RAW_URL = (process.env.EXPO_PUBLIC_API_URL ?? (__DEV__ ? DEV_DEFAULT : "")).replace(/\/+$/, "");
@@ -34,10 +35,13 @@ let onExpired: (() => void) | null = null;
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Set when the request never got an answer (status 0): why, so screens and the banner can word it correctly. */
+  kind?: FailureKind;
+  constructor(status: number, message: string, kind?: FailureKind) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.kind = kind;
   }
 }
 
@@ -78,10 +82,16 @@ async function timedFetch(url: string, init: RequestInit, ms: number): Promise<R
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
-    return (await expoFetch(url, { ...(init as object), signal: ctl.signal } as never)) as unknown as Response;
+    const res = (await expoFetch(url, { ...(init as object), signal: ctl.signal } as never)) as unknown as Response;
+    connectivity.reportSuccess(); // any answer, even an error status, proves the phone and the server can talk
+    return res;
   } catch (e) {
+    // Only the phone's own network state may say "no internet". With a network, a failure means the server was
+    // not reachable (or too slow), which is a different message and a different banner.
     const timedOut = e instanceof Error && e.name === "AbortError";
-    throw new ApiError(0, timedOut ? "The server took too long to answer. Please try again." : "No internet connection. Check your network and try again.");
+    const kind: FailureKind = connectivity.isDeviceOffline() ? "offline" : timedOut ? "timeout" : "unreachable";
+    connectivity.reportFailure(kind);
+    throw new ApiError(0, MESSAGES[kind], kind);
   } finally {
     clearTimeout(timer);
   }

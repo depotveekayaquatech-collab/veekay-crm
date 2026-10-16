@@ -160,3 +160,25 @@ def test_json_is_compressed_but_downloads_are_not(client, admin):
 def test_authenticated_routes_reject_missing_tokens(client):
     for path in ("/auth/me", "/orders/insights", "/compliance/stores", "/attendance/day", "/cards/vendors", "/employees"):
         assert client.get(f"{API}{path}").status_code == 401, path
+
+
+# ---- a database that cannot be reached is a temporary 503, never a bug-shaped 500 ----
+
+def test_pool_timeout_and_dropped_connections_are_503_with_retry_after():
+    import asyncio
+
+    from sqlalchemy.exc import DisconnectionError, OperationalError
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
+    from starlette.requests import Request
+
+    from app.main import database_unavailable, is_database_unavailable
+
+    req = Request({"type": "http", "method": "GET", "path": "/x", "headers": [], "query_string": b""})
+    for exc in (PoolTimeout("QueuePool limit of size 5 overflow 5 reached"), DisconnectionError("gone"),
+                OperationalError("select 1", {}, Exception("connection to server timed out"))):
+        resp = asyncio.run(database_unavailable(req, exc))
+        assert resp.status_code == 503 and resp.headers["retry-after"] == "5"
+    # a plain SQL error from the database is NOT dressed up as "busy"
+    assert not is_database_unavailable(OperationalError("select 1", {}, Exception("deadlock detected")))
+    resp = asyncio.run(database_unavailable(req, OperationalError("select 1", {}, Exception("deadlock detected"))))
+    assert resp.status_code == 500

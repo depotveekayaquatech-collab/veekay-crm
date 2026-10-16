@@ -5,9 +5,27 @@ import { importStoresFile } from "@/services/stores";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("network failures", () => {
-  it("uses the generic message by default", async () => {
+  it("blames the server, not the user's internet, when the browser is online", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-    await expect(apiRequest("/x", { silent: true })).rejects.toMatchObject({ status: 0, message: expect.stringContaining("check your connection") });
+    vi.stubGlobal("navigator", { onLine: true });
+    await expect(apiRequest("/x", { silent: true })).rejects.toMatchObject({ status: 0, message: expect.stringContaining("reach the Veekay server") });
+  });
+
+  it("says offline only when the browser reports it", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    vi.stubGlobal("navigator", { onLine: false });
+    await expect(apiRequest("/x", { silent: true })).rejects.toMatchObject({ status: 0, message: expect.stringContaining("offline") });
+  });
+
+  it("announces a burst of failures once", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    vi.stubGlobal("navigator", { onLine: true });
+    const { subscribeToasts } = await import("@/lib/toast");
+    let count = 0;
+    const off = subscribeToasts((t) => (count = t.length));
+    await Promise.all(Array.from({ length: 10 }, () => apiRequest("/x").catch(() => undefined)));
+    off();
+    expect(count).toBeLessThanOrEqual(1);
   });
 
   it("lets a long server job say what really happened", async () => {

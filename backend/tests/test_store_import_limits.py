@@ -176,3 +176,33 @@ def test_import_works_with_info_logging_enabled(client, dev, db, caplog):
     assert any("written" in m for m in msgs) and any("parsed" in m for m in msgs)
     db.query(Store).filter(Store.external_code.like("LOGT-%")).delete(synchronize_session=False)
     db.commit()
+
+
+# ---- the order and employee importers share the same bounds ----
+
+def test_bounded_rows_stops_after_a_long_blank_run_and_caps_total_rows():
+    data = [("a", 1)] * 3 + [(None, None)] * (svc.BLANK_ROWS_STOP + 10) + [("never", 9)]
+    assert list(svc.bounded_rows(iter(data))) == data[: 3 + svc.BLANK_ROWS_STOP - 1]
+    with pytest.raises(svc.SyncError, match="more than"):
+        list(svc.bounded_rows(iter([("x", 1)] * (svc.MAX_ROWS + svc.BLANK_ROWS_STOP + 1))))
+
+
+def test_order_and_employee_importers_refuse_a_zip_bomb(monkeypatch):
+    from app.services import employee_import_service as emp_svc
+    from app.services import order_import_service as ord_svc
+
+    monkeypatch.setattr(svc, "MAX_UNPACKED_BYTES", 1_000)   # any real workbook now "unpacks too large"
+    content = _xlsx([["S1", "Store", "LIVE", "Delhi", "New Delhi"]])
+    with pytest.raises(ord_svc.OrderImportError, match="too large"):
+        ord_svc._grids("orders.xlsx", content)
+    with pytest.raises(svc.SyncError, match="too large"):
+        emp_svc._read_tabs("employees.xlsx", content)
+
+
+def test_the_bulk_import_endpoints_do_not_block_the_event_loop():
+    from app.api.v1.endpoints import employees as emp_endpoint
+    from app.api.v1.endpoints import orders as ord_endpoint
+
+    for fn in (ord_endpoint.import_orders, emp_endpoint.import_employees):
+        src = inspect.getsource(fn)
+        assert "run_in_threadpool" in src, f"{fn.__name__} runs blocking work inside async def"

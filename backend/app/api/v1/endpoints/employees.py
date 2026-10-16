@@ -1,6 +1,7 @@
 """Employee routes — thin wrappers over employee_service."""
 import uuid
 
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -55,8 +56,10 @@ async def import_employees(
     """Bulk-create employees from the old EMPLOYEES sheet (and Zepto state assignments)."""
     content = await file.read(employee_import_service.MAX_UPLOAD_BYTES + 1)
     try:
-        result = employee_import_service.import_employees(
-            db, user, file.filename or "", content, keep_sheet_passwords=keep_sheet_passwords
+        # Blocking parse + bcrypt hashing + database work: a worker thread, so other requests keep being served.
+        result = await run_in_threadpool(
+            employee_import_service.import_employees, db, user, file.filename or "", content,
+            keep_sheet_passwords=keep_sheet_passwords,
         )
     except SyncError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc

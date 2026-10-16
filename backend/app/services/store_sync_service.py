@@ -212,6 +212,25 @@ def _collect_rows(keys: list[str], rows, to_text) -> list[dict[str, str]]:
     return out
 
 
+def bounded_rows(rows, error_cls=None):
+    """Yield rows from a worksheet iterator, but never an unbounded number: stop after a long run of blank rows (sheets
+    formatted down to the last row), and refuse a sheet with more than MAX_ROWS rows of data. Used by every importer."""
+    error_cls = error_cls or SyncError
+    count = 0
+    blank_run = 0
+    for row in rows:
+        if any(c is not None and str(c).strip() for c in row):
+            blank_run = 0
+        else:
+            blank_run += 1
+            if blank_run >= BLANK_ROWS_STOP:
+                return
+        count += 1
+        if count > MAX_ROWS + BLANK_ROWS_STOP:
+            raise error_cls(f"The sheet has more than {MAX_ROWS:,} rows. Split it into smaller files.")
+        yield row
+
+
 def _check_unpacked_size(content: bytes) -> None:
     """Refuse an .xlsx that unpacks far beyond its upload size, before anything is decompressed."""
     import zipfile

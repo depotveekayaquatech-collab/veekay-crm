@@ -3,6 +3,8 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 
+from sqlalchemy.exc import DisconnectionError, OperationalError
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -72,6 +74,35 @@ app = FastAPI(
     redoc_url="/redoc" if _docs_on else None,
     openapi_url="/openapi.json" if _docs_on else None,
 )
+
+
+_CONNECTION_HINTS = ("connect", "timeout", "timed out", "server closed", "ssl", "terminating connection", "network")
+
+
+def is_database_unavailable(exc: BaseException) -> bool:
+    """True for "could not get / keep a database connection" failures: a pool that stayed exhausted past
+    DB_POOL_TIMEOUT_SECONDS, a connect that timed out, a connection the server dropped. Not for SQL errors."""
+    if isinstance(exc, (SATimeoutError, DisconnectionError)):
+        return True
+    if isinstance(exc, OperationalError):
+        return bool(exc.connection_invalidated) or any(h in str(exc).lower() for h in _CONNECTION_HINTS)
+    return False
+
+
+@app.exception_handler(SATimeoutError)
+@app.exception_handler(DisconnectionError)
+@app.exception_handler(OperationalError)
+async def database_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    """The database could not be reached in time: a temporary 503 (clients may retry reads), not a bug-shaped 500."""
+    if not is_database_unavailable(exc):
+        return await unhandled_error(request, exc)
+    rid = request_id_var.get()
+    log.error("Database unavailable on %s %s: %s", request.method, request.url.path, type(exc).__name__)
+    return JSONResponse(
+        {"detail": "The server is busy right now. Please try again in a few seconds.", "request_id": rid},
+        status_code=503,
+        headers={"X-Request-ID": rid, "Retry-After": "5"},
+    )
 
 
 @app.exception_handler(Exception)

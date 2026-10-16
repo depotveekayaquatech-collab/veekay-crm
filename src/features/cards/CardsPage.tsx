@@ -157,19 +157,6 @@ export function CardsPage() {
         subtitle="A printable A4 card for every live store, one PDF per vendor. Choose one vendor for a PDF, or several for a ZIP."
       />
 
-      {data && data.isPublicAppUrlProductionReady === false && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm">
-          <span className="mt-0.5 text-lg">⚠️</span>
-          <div className="flex-1 text-xs sm:text-sm">
-            <span className="font-bold">QR Destination Warning:</span> The QR code printed on these cards currently points to{" "}
-            <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono font-semibold text-amber-950">
-              {data.publicAppUrl || "http://localhost:5173"}
-            </code>
-            . Before sending physical cards to the print shop for stores, ensure{" "}
-            <code className="font-mono font-semibold">PUBLIC_APP_URL</code> is set to your production frontend domain (starting with <code className="font-mono">https://</code>) in your deployment environment variables.
-          </div>
-        </div>
-      )}
 
       <section className="flex flex-wrap items-end gap-4 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
@@ -228,6 +215,20 @@ export function CardsPage() {
         list each day that has an entry (date and filled bottles, in order) and the TOTAL COUNT; Empty bottle and Signature always stay
         blank. Every card has a QR code that opens that store&apos;s bottle count.
       </p>
+
+      {data && data.isPublicAppUrlProductionReady === false && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm">
+          <span className="mt-0.5 text-lg">⚠️</span>
+          <div className="flex-1 text-xs sm:text-sm">
+            <span className="font-bold">QR Destination Warning:</span> The QR code printed on these cards currently points to{" "}
+            <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono font-semibold text-amber-950">
+              {data.publicAppUrl || "http://localhost:5173"}
+            </code>
+            . Before sending physical cards to the print shop for stores, ensure{" "}
+            <code className="font-mono font-semibold">PUBLIC_APP_URL</code> is set to your production frontend domain (starting with <code className="font-mono">https://</code>) in your deployment environment variables.
+          </div>
+        </div>
+      )}
 
       {isLoading && <Skeleton className="h-64" />}
       {isError && <ErrorState message="Couldn't load vendors." onRetry={() => refetch()} />}
@@ -292,7 +293,7 @@ export function CardsPage() {
                 <button
                   disabled={busy}
                   onClick={() => void download([v.vendor], v.stores)}
-                  className="rounded-md px-2.5 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-50"
+                  className="min-h-9 rounded-md px-3 text-xs font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-50 sm:min-h-0 sm:px-2.5 sm:py-1"
                 >
                   PDF
                 </button>

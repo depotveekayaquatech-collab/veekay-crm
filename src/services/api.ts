@@ -51,6 +51,30 @@ export function setOnPasswordChangeRequired(handler: () => void) {
 
 const PASSWORD_GATE = "PASSWORD_CHANGE_REQUIRED";
 
+const OFFLINE_MESSAGE = "You appear to be offline. Check your connection and try again.";
+const UNREACHABLE_MESSAGE = "Unable to reach the Veekay server. Please try again in a moment.";
+const NETWORK_TOAST_COOLDOWN_MS = 20_000;
+let lastNetworkToast = 0;
+
+/**
+ * A request never got an answer. Say whether the browser itself is offline or the server could not be reached, and
+ * announce it at most once per cooldown: a page that fires many requests at once must not stack one toast each.
+ */
+function networkFailure(options: RequestOptions): ApiError {
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const message = options.networkErrorMessage ?? (offline ? OFFLINE_MESSAGE : UNREACHABLE_MESSAGE);
+  announceNetworkFailure(message, options.silent);
+  return new ApiError(0, message);
+}
+
+function announceNetworkFailure(message: string, silent?: boolean) {
+  if (silent) return;
+  const now = Date.now();
+  if (now - lastNetworkToast < NETWORK_TOAST_COOLDOWN_MS) return;
+  lastNetworkToast = now;
+  pushToast(message, "error");
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -145,9 +169,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
           : undefined,
     });
   } catch {
-    const message = options.networkErrorMessage ?? "Unable to connect. Please check your connection and try again.";
-    if (!options.silent) pushToast(message, "error");
-    throw new ApiError(0, message);
+    throw networkFailure(options);
   }
 
   if (res.status === 401 && !options.isRetry && !options.skipAuthRefresh) {
@@ -196,9 +218,7 @@ export async function apiBlob(
       body: options.body ? (isForm ? (options.body as FormData) : JSON.stringify(options.body)) : undefined,
     });
   } catch {
-    const message = "Unable to connect. Please check your connection and try again.";
-    pushToast(message, "error");
-    throw new ApiError(0, message);
+    throw networkFailure({});
   }
 
   if (res.status === 401 && !options.isRetry) {

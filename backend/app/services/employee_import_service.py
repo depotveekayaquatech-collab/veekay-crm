@@ -31,7 +31,9 @@ from app.models.state_assignment import StateAssignment
 from app.models.user import User, UserRole, UserStatus
 from app.repositories.user_repository import UserRepository
 from app.services import activity_service
-from app.services.store_sync_service import MAX_UPLOAD_BYTES, SyncError, _create_region, _parse_csv_text
+from app.services.store_sync_service import (
+    MAX_UPLOAD_BYTES, SyncError, _check_unpacked_size, _create_region, _parse_csv_text, bounded_rows,
+)
 
 DEFAULT_EMPLOYEE_GRANTS = ["orders.view", "orders.mark", "compliance.upload", "cash.add"]
 _TRUE = {"true", "yes", "y", "1", "admin"}
@@ -76,6 +78,7 @@ def _read_tabs(filename: str, content: bytes) -> dict[str, list[list[object]]]:
         text = content.decode("utf-8-sig", "replace")
         return {"employees": [list(r) for r in csv.reader(io.StringIO(text))]}
     if name.endswith((".xlsx", ".xlsm")):
+        _check_unpacked_size(content)   # refuse a workbook that unpacks far beyond its upload size
         try:
             from openpyxl import load_workbook
             wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
@@ -83,7 +86,7 @@ def _read_tabs(filename: str, content: bytes) -> dict[str, list[list[object]]]:
             raise SyncError("That file could not be read as an Excel workbook.") from exc
         wanted = {"employees", "state_assignments"}
         return {
-            ws.title.strip().lower(): [list(r) for r in ws.iter_rows(values_only=True)]
+            ws.title.strip().lower(): [list(r) for r in bounded_rows(ws.iter_rows(values_only=True))]
             for ws in wb.worksheets
             if ws.title.strip().lower() in wanted  # other tabs are never read
         }

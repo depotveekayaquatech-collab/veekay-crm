@@ -35,6 +35,7 @@ from app.models.organization import Organization, OrganizationKind
 from app.models.store import Store
 from app.models.user import User
 from app.services import activity_service
+from app.services.store_sync_service import SyncError, _check_unpacked_size, bounded_rows
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _ID_HEADERS = ("outlet id", "outlet_id", "store id", "store code", "outlet code", "id")
@@ -131,10 +132,14 @@ def _grids(filename: str, content: bytes) -> list[tuple[str, list[tuple]]]:
         except ImportError as exc:  # pragma: no cover
             raise OrderImportError("Excel files need the 'openpyxl' package on the server.") from exc
         try:
+            _check_unpacked_size(content)   # refuse a workbook that unpacks far beyond its upload size
+        except SyncError as exc:
+            raise OrderImportError(str(exc)) from exc
+        try:
             wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         except Exception as exc:  # noqa: BLE001
             raise OrderImportError("That file could not be read as an Excel workbook.") from exc
-        return [(ws.title, list(ws.iter_rows(values_only=True))) for ws in wb.worksheets]
+        return [(ws.title, list(bounded_rows(ws.iter_rows(values_only=True), OrderImportError))) for ws in wb.worksheets]
     raise OrderImportError("Upload a .csv or .xlsx file.")
 
 

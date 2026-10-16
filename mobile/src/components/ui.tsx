@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { useEffect } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { isConnectivityMessage } from "@/lib/connectivityCore";
 import { colors, font, radius, shadow, space } from "@/theme";
 import type { Outcome, TicketStatus } from "@/api/api";
 import { titleCase } from "@/lib/format";
@@ -169,6 +170,8 @@ export function Empty({ title, text, action }: { title: string; text?: string; a
 }
 
 export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  // Connection problems are announced once by the global banner; each list only says it could not load.
+  if (isConnectivityMessage(message)) message = "Couldn't load this right now.";
   return (
     <View style={s.error} accessibilityRole="alert">
       <Text style={{ color: colors.danger, flex: 1, fontSize: 14 }}>{message}</Text>

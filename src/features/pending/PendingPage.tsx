@@ -13,6 +13,8 @@ import { pushToast } from "@/lib/toast";
 import { usePending } from "@/services/reports";
 import type { PendingStore } from "@/types/report";
 
+const PAGE_SIZE = 60;
+
 type Urgency = "all" | "late" | "recent" | "today";
 
 const urgencyOf = (s: PendingStore): Exclude<Urgency, "all"> => (s.pendingDays >= 3 ? "late" : s.pendingDays > 0 ? "recent" : "today");
@@ -29,7 +31,7 @@ function CallButton({ label, name, phone }: { label: string; name: string | null
         <a
           href={`tel:${phone}`}
           aria-label={`Call ${name ?? label} on ${phone}`}
-          className="shrink-0 rounded-lg bg-brand-500/10 px-2.5 py-1.5 text-xs font-bold tabular-nums text-brand-600 transition-colors hover:bg-brand-500 hover:text-white"
+          className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-brand-500/10 px-3 text-xs font-bold tabular-nums sm:min-h-8 text-brand-600 transition-colors hover:bg-brand-500 hover:text-white"
         >
           {phone}
         </a>
@@ -85,6 +87,8 @@ export function PendingPage() {
   const [dayOffset, setDayOffset] = useState(0);
   const [query, setQuery] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("all");
+  // Cards are shown a page at a time (a platform can have well over a thousand pending stores); "Copy" and "Export" still use all of them.
+  const [shown, setShown] = useState({ n: PAGE_SIZE, sig: "" });
   const { data, isLoading, isError, refetch, isFetching } = usePending(dayOffset, partner);
   const regions = useMemo(() => distinctOptions(data?.items ?? [], (s) => (s.regionName ? { value: s.regionName, label: s.regionName } : null)), [data]);
 
@@ -107,6 +111,8 @@ export function PendingPage() {
     [scoped, urgency],
   );
 
+  const sig = `${partner}|${region}|${dayOffset}|${query}|${urgency}`;
+  const visibleCount = shown.sig === sig ? shown.n : PAGE_SIZE;
   const pct = data && data.liveStores ? Math.round((data.marked / data.liveStores) * 100) : 0;
 
   async function copyList() {
@@ -207,10 +213,17 @@ export function PendingPage() {
                 <p className="rounded-2xl border border-dashed border-surface-border bg-surface px-6 py-12 text-center text-sm text-gray-500">No stores match your filters.</p>
               ) : (
                 <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                  {items.map((s) => (
+                  {items.slice(0, visibleCount).map((s) => (
                     <StoreCard key={s.id} s={s} />
                   ))}
                 </ul>
+              )}
+              {items.length > visibleCount && (
+                <div className="flex justify-center">
+                  <Button variant="secondary" onClick={() => setShown({ n: visibleCount + PAGE_SIZE, sig })}>
+                    Show {Math.min(PAGE_SIZE, items.length - visibleCount)} more ({items.length - visibleCount} left)
+                  </Button>
+                </div>
               )}
             </>
           )}
