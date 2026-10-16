@@ -1,9 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 1,
-    "latestVersionName": "1.0.0",
+    "latestVersionCode": 8,
+    "latestVersionName": "1.0.1",
     "minVersionCode": 0,
-    "downloadUrl": "",
-    "notes": ""
+    "downloadUrl": "https://drive.usercontent.google.com/download?id=1wsAFl6KX_UyNK5KAQj2T2TsYRkv9PkLM&export=download&confirm=t",
+    "notes": "Location fix, Insights home, expense totals, in-app updates",
+    "apkSizeBytes": 56372297,
+    "apkSha256": "3e32e90f3b33c9e72bf443cb170a61882787b2414ed520887cf03bbec78dae3d"
   }
 }
