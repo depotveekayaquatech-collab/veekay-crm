@@ -21,7 +21,7 @@ import urllib.request
 import uuid
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,7 +31,7 @@ from app.models.organization import Organization, OrganizationKind
 from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.user import User
-from app.services import activity_service, assignment_service, store_service
+from app.services import activity_service, assignment_service, store_service, vendor_history_service
 
 _CSV_URL = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
@@ -90,11 +90,13 @@ class SyncResult:
     updated: int = 0
     unchanged: int = 0
     rows_read: int = 0
+    vendor_changes: int = 0     # stores whose vendor changed (the old vendor is kept as history)
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
             "platform": self.platform,
+            "vendor_changes": self.vendor_changes,
             "created": self.created,
             "updated": self.updated,
             "unchanged": self.unchanged,
@@ -109,6 +111,13 @@ class SyncResult:
 def fetch_csv_text(sheet_id: str, gid: str) -> str:
     """Download one tab of a public Google Sheet as CSV text. Raises SyncError with a readable reason."""
     url = _CSV_URL.format(sheet_id=sheet_id, gid=gid)
+    from app.services import google_sheets
+
+    if google_sheets.configured():   # private sheet shared with our service account
+        try:
+            return google_sheets.fetch_csv(url)
+        except google_sheets.SheetsAccessError as exc:
+            raise SyncError(str(exc)) from None
     req = urllib.request.Request(url, headers={"User-Agent": "veekay-crm-store-sync/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed docs.google.com host
@@ -480,6 +489,7 @@ def _import_rows(
     seen_codes: set[str] = set()
     trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
     bad_dates: list[int] = []            # rows whose start date couldn't be read
+    vendor_touched: list[Store] = []     # stores whose vendor was set or changed by this import
 
     for i, row in enumerate(rows, start=2):  # sheet row number (1 = header)
         code = _clean(row.get(cols["external_code"]))
@@ -543,12 +553,15 @@ def _import_rows(
             )
             db.add(new_store)
             by_code[code] = new_store
+            if (new_store.vendor_name or "").strip():
+                vendor_touched.append(new_store)
             result.created += 1
             if result.created % STORE_FLUSH_EVERY == 0:
                 db.flush()   # bounded batches instead of one giant statement; still one transaction, committed at the end
         else:
             changed = False
             old_status = existing.status
+            old_vendor = existing.vendor_name
             for k, v in fields.items():
                 # don't wipe a manually-filled field when the sheet cell is blank
                 if v is None and getattr(existing, k) is not None and k != "status":
@@ -558,12 +571,20 @@ def _import_rows(
                     changed = True
             if existing.status != old_status:
                 status_changes.append((existing, old_status))
+            if (existing.vendor_name or "").strip() and not vendor_history_service.same_vendor(old_vendor, existing.vendor_name):
+                vendor_touched.append(existing)
             if changed:
                 result.updated += 1
             else:
                 result.unchanged += 1
 
     db.flush()
+    result.vendor_changes = vendor_history_service.record_vendors(db, vendor_touched, source=source, today=datetime.now(timezone.utc).date())
+    if result.vendor_changes:
+        result.warnings.append(
+            f"{result.vendor_changes} store{'s' if result.vendor_changes > 1 else ''} changed vendor; the previous vendor is kept "
+            "in the store's history. The new vendor's start date is set from the first order sheet import."
+        )
     log.info("store import written", extra={"platform": partner_slug, "stores_created": result.created, "rss_mb": _rss_mb()})
     store_service.record_status_changes(db, actor, status_changes)
     if result.created:

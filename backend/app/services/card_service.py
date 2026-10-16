@@ -42,7 +42,7 @@ from app.models.region import Region
 from app.models.state_assignment import StateAssignment
 from app.models.store import Store, StoreStatus
 from app.models.user import User
-from app.services import assignment_service
+from app.services import assignment_service, store_activity
 
 NO_VENDOR = "No vendor"
 MAX_STORES_PER_PDF = 600
@@ -622,7 +622,7 @@ def build_pdf(
     month: date | None, store_id: uuid.UUID | None = None, region: uuid.UUID | None = None,
 ) -> tuple[bytes, int, str]:
     """One PDF: a card per live store of the vendor (or a single store). month=None -> blank cards."""
-    stores = _stores(db, user, is_admin=is_admin, partner=partner, region=region)
+    stores = store_activity.filter_active_in_month(_stores(db, user, is_admin=is_admin, partner=partner, region=region), month)
     if store_id is not None:
         stores = [s for s in stores if s.id == store_id]
         vendor = vendor or (_vendor_key(stores[0]) if stores else "")
@@ -649,7 +649,7 @@ def build_zip(
     if not wanted:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one vendor.")
     groups: dict[str, list[Store]] = {}
-    for s in _stores(db, user, is_admin=is_admin, partner=partner, region=region):
+    for s in store_activity.filter_active_in_month(_stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
         if _vendor_key(s).lower() in wanted:
             groups.setdefault(_vendor_key(s), []).append(s)
     if not groups:

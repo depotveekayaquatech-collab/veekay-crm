@@ -15,6 +15,9 @@ interface Result {
   updated: number;
   unchanged: number;
   rowsRead: number;
+  vendorChanges?: number;
+  startDatesSet?: number;
+  vendorStartsSet?: number;
   warnings: string[];
 }
 
@@ -32,6 +35,9 @@ function Results({ title, results, onDismiss }: { title: string; results: Result
         {results.map((r) => (
           <li key={r.platform}>
             <span className="font-bold capitalize text-gray-900">{r.platform}</span>: +{r.created} new · {r.updated} updated · {r.unchanged} unchanged · {r.rowsRead} rows read
+            {r.startDatesSet ? ` · ${r.startDatesSet} start dates set` : ""}
+            {r.vendorChanges ? ` · ${r.vendorChanges} vendor changes` : ""}
+            {r.vendorStartsSet ? ` · ${r.vendorStartsSet} new-vendor start dates set` : ""}
           </li>
         ))}
       </ul>

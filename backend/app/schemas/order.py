@@ -181,6 +181,8 @@ class OrderImportResult(BaseModel):
     unknown_stores: int
     invalid_values: int
     future_skipped: int
+    start_dates_set: int = 0
+    vendor_starts_set: int = 0
     warnings: list[str]
 
 

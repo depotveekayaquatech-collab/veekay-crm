@@ -34,7 +34,7 @@ from app.models.order_entry import EntrySource, OrderEntry
 from app.models.organization import Organization, OrganizationKind
 from app.models.store import Store
 from app.models.user import User
-from app.services import activity_service
+from app.services import activity_service, vendor_history_service
 from app.services.store_sync_service import SyncError, _check_unpacked_size, bounded_rows
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -57,6 +57,8 @@ class OrderImportResult:
     unknown_stores: int = 0     # distinct Outlet IDs not found on this platform
     invalid_values: int = 0
     future_skipped: int = 0
+    start_dates_set: int = 0    # stores whose empty start date was filled from their first order
+    vendor_starts_set: int = 0  # new vendors whose start date was fixed from their first order
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
@@ -318,11 +320,22 @@ def _import_grids(
             "(turn on 'Overwrite existing entries' to replace them)."
         )
 
+    # The orders now in the database decide when each store (and each new vendor) started being supplied.
+    db.flush()
+    result.start_dates_set = vendor_history_service.set_start_dates_from_orders(db, partner.id)
+    result.vendor_starts_set = vendor_history_service.confirm_vendor_starts(db, partner.id)
+    waiting = vendor_history_service.unconfirmed_count(db, partner.id)
+    if result.start_dates_set:
+        result.warnings.append(f"Start date set for {result.start_dates_set} store{'s' if result.start_dates_set > 1 else ''} from their first order.")
+    if waiting:
+        result.warnings.append(f"{waiting} new vendor{'s' if waiting > 1 else ''} will get a start date when their first order is imported.")
+
     activity_service.record(
         db, actor=actor, action="order.imported", entity_type="order_entry", entity_id=partner.id,
         metadata={
             "platform": partner_slug, "sheets": result.sheets, "created": result.created,
             "updated": result.updated, "overwrite": overwrite, "source": source,
+            "start_dates_set": result.start_dates_set, "vendor_starts_set": result.vendor_starts_set,
         },
     )
     db.commit()

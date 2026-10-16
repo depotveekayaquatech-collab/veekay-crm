@@ -16,6 +16,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { codeFromFileName, nextVersionCode } from "./release-lib.mjs";
 
 const mobile = path.resolve(import.meta.dirname, "..");
 const android = path.join(mobile, "android");
@@ -52,7 +53,17 @@ if (!/^https:\/\/.+\/api\/v1$/.test(apiUrl)) die(`EXPO_PUBLIC_API_URL must be an
 console.log(`API address in this build: ${apiUrl}`);
 
 // ---- 3. version code (a phone only accepts an APK as an update if this number is higher than the installed one)
-const versionCode = process.env.ANDROID_VERSION_CODE || "5";
+const apkOut = path.join(mobile, "build", "apk");
+const builtCodes = fs.existsSync(apkOut) ? fs.readdirSync(apkOut).map((f) => codeFromFileName(f)).filter(Boolean) : [];
+let published = 0;
+try { published = Number(JSON.parse(fs.readFileSync(path.resolve(mobile, "..", "public", "app-update.json"), "utf8")).android?.latestVersionCode) || 0; } catch { /* none yet */ }
+const highest = Math.max(0, published, ...builtCodes);
+const versionCode = process.env.ANDROID_VERSION_CODE || String(nextVersionCode(builtCodes, published));
+// A phone only accepts an APK as an update when its code is HIGHER than the installed one. Never rebuild a number that
+// was already built or announced (set VEEKAY_ALLOW_REUSE_CODE=1 only for a throw-away test build).
+if (Number(versionCode) <= highest && !process.env.VEEKAY_ALLOW_REUSE_CODE) {
+  die(`Version code ${versionCode} is not higher than ${highest} (already built or published). Use ANDROID_VERSION_CODE=${highest + 1} or leave it unset.`);
+}
 console.log(`Building version ${versionCode}, signed with ${path.basename(props.storeFile)} (alias ${props.keyAlias}), SDK ${sdk}`);
 
 // ---- 4. regenerate the native project from app.config.ts (android/ is generated and git-ignored)
@@ -106,6 +117,7 @@ const apk = path.join(android, "app", "build", "outputs", "apk", "release", "app
 if (!fs.existsSync(apk)) die("Gradle finished but app-release.apk was not produced.");
 const out = path.join(mobile, "build", "apk");
 fs.mkdirSync(out, { recursive: true });
-const dest = path.join(out, `Veekay-Partner-1.0.0-code${versionCode}.apk`);
+const versionName = /^\s{2}version:\s*"([^"]+)"/m.exec(fs.readFileSync(path.join(mobile, "app.config.ts"), "utf8"))?.[1] ?? "1.0.0";
+const dest = path.join(out, `Veekay-Partner-${versionName}-code${versionCode}.apk`);
 fs.copyFileSync(apk, dest);
 console.log(`\nDONE: ${dest}\nSize: ${(fs.statSync(dest).size / 1e6).toFixed(1)} MB`);

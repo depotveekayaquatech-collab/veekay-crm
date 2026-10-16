@@ -12,8 +12,8 @@ from app.core.cached_json import cached_json_response
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
-from app.schemas.store import StoreCreate, StoreOut, StoreSyncResult, StoreUpdate
-from app.services import store_service, store_sync_service
+from app.schemas.store import StoreCreate, StoreOut, StoreSyncResult, StoreUpdate, VendorPeriodOut
+from app.services import store_service, store_sync_service, vendor_history_service
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 _ALL_STORES = TypeAdapter(list[StoreOut])
@@ -153,6 +153,20 @@ def delete_all_stores(
     result = store_service.delete_all_stores(db, user, platform)
     read_cache.invalidate()
     return result
+
+
+@router.get(
+    "/{store_id}/vendors", response_model=list[VendorPeriodOut],
+    dependencies=[Depends(require_permission("stores.view"))],
+)
+def store_vendors(store_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[VendorPeriodOut]:
+    """Every vendor that has supplied this store, newest first; the current one has no end date."""
+    store_service.require_store(db, user, store_id)
+    return [
+        VendorPeriodOut(vendor_name=p.vendor_name, vendor_number=p.vendor_number, start_date=p.start_date, end_date=p.end_date,
+                        start_confirmed=p.start_confirmed, current=p.end_date is None)
+        for p in vendor_history_service.history(db, store_id)
+    ]
 
 
 @router.get(

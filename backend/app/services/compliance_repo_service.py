@@ -34,6 +34,7 @@ from app.schemas.compliance import (
     ComplianceStorePage, DocBrief, RegionOption,
 )
 from app.services import activity_service, assignment_service
+from app.services import store_activity
 from app.services.compliance_service import (
     MAX_FILES_PER_UPLOAD, _brief, _can_manage, _CONTENT_TYPES, _err, _key_for, _prepare, _today, save_document,
     allowed_months, bill_due_date, month_label, parse_month,
@@ -96,7 +97,8 @@ def repository(
     month = parse_month(month_str)
     today = _today()
 
-    everyone = _accessible_stores(db, user, perms, live_only=True)
+    # Only stores that had started being supplied by the end of the chosen month (see store_activity).
+    everyone = store_activity.filter_active_in_month(_accessible_stores(db, user, perms, live_only=True), month)
     # The "delivery manager" of a store is its vendor — the person/firm that actually delivers to it.
     managers = {s.id: ((s.vendor_name or "").strip() or None) for s in everyone}
 

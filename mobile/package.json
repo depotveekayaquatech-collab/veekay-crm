@@ -48,12 +48,13 @@
     "start": "expo start",
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/lib/connectivityCore.test.ts",
+    "test": "node --test src/lib/connectivityCore.test.ts src/lib/versionPolicy.test.ts scripts/release-lib.test.mjs",
     "doctor": "expo-doctor",
     "build:aab": "eas build --platform android --profile production",
     "build:apk": "eas build --platform android --profile preview",
     "build:apk-local": "node scripts/build-local-apk.mjs",
-    "build:lan": "eas build --platform android --profile lan-test"
+    "build:lan": "eas build --platform android --profile lan-test",
+    "release:publish": "node scripts/publish-release.mjs"
   },
   "private": true
 }

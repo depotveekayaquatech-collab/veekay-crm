@@ -184,6 +184,10 @@ class Settings(BaseSettings):
     # Store sync from Google Sheets
     STORE_SYNC_SHEETS: list[str] = Field(default_factory=list)
     STORE_SYNC_ENABLED: bool = Field(default=True)
+    # False = the daily job does NOT pull the sheets (a developer's "Sync now" still does). Bill reminders keep running.
+    SHEET_AUTO_SYNC: bool = Field(default=True)
+    # Service-account key (JSON text) for PRIVATE sheets. Secret: set it with `fly secrets set`, never in a file.
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = Field(default="", repr=False)
     SYNC_TRIGGER_KEY: str = Field(default="")
     STORE_SYNC_HOUR: int = Field(default=10)
     STORE_SYNC_MINUTE: int = Field(default=0)

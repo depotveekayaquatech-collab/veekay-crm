@@ -405,6 +405,8 @@ export interface OrderImportResult {
   unknownStores: number;
   invalidValues: number;
   futureSkipped: number;
+  startDatesSet: number;
+  vendorStartsSet: number;
   warnings: string[];
 }
 
@@ -419,6 +421,8 @@ export function toOrderImportResult(w: {
   unknown_stores: number;
   invalid_values: number;
   future_skipped: number;
+  start_dates_set?: number;
+  vendor_starts_set?: number;
   warnings: string[];
 }): OrderImportResult {
   return {
@@ -432,6 +436,8 @@ export function toOrderImportResult(w: {
     unknownStores: w.unknown_stores,
     invalidValues: w.invalid_values,
     futureSkipped: w.future_skipped,
+    startDatesSet: w.start_dates_set ?? 0,
+    vendorStartsSet: w.vendor_starts_set ?? 0,
     warnings: w.warnings,
   };
 }

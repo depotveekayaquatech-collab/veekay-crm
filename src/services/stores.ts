@@ -3,6 +3,8 @@ import { mapPage, type Page, type PageWire } from "@/types/common";
 import {
   toStore,
   toSyncResult,
+  toVendorPeriod,
+  type VendorPeriod,
   type Store,
   type StoreInput,
   type StoreSyncResult,
@@ -110,4 +112,10 @@ export async function movePlatform(
     { method: "POST", body: { from_platform: fromPlatform, to_platform: toPlatform, contains, dry_run: dryRun } },
   );
   return { from: w.from, to: w.to, matched: w.matched, moved: w.moved, skippedDuplicates: w.skipped_duplicates, dryRun: w.dry_run };
+}
+
+/** Every vendor that has supplied a store (newest first); the current vendor has no end date. */
+export async function getStoreVendors(id: string): Promise<VendorPeriod[]> {
+  const rows = await apiRequest<Parameters<typeof toVendorPeriod>[0][]>(`/stores/${id}/vendors`);
+  return rows.map(toVendorPeriod);
 }

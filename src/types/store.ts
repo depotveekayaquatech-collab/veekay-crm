@@ -71,6 +71,7 @@ export interface StoreSyncResult {
   updated: number;
   unchanged: number;
   rowsRead: number;
+  vendorChanges: number;
   warnings: string[];
 }
 
@@ -80,6 +81,7 @@ export function toSyncResult(w: {
   updated: number;
   unchanged: number;
   rows_read: number;
+  vendor_changes?: number;
   warnings: string[];
 }): StoreSyncResult {
   return {
@@ -88,7 +90,35 @@ export function toSyncResult(w: {
     updated: w.updated,
     unchanged: w.unchanged,
     rowsRead: w.rows_read,
+    vendorChanges: w.vendor_changes ?? 0,
     warnings: w.warnings,
+  };
+}
+
+export interface VendorPeriod {
+  vendorName: string;
+  vendorNumber: string | null;
+  startDate: string | null;
+  endDate: string | null; // null = the current vendor
+  startConfirmed: boolean;
+  current: boolean;
+}
+
+export function toVendorPeriod(w: {
+  vendor_name: string;
+  vendor_number: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  start_confirmed: boolean;
+  current: boolean;
+}): VendorPeriod {
+  return {
+    vendorName: w.vendor_name,
+    vendorNumber: w.vendor_number,
+    startDate: w.start_date,
+    endDate: w.end_date,
+    startConfirmed: w.start_confirmed,
+    current: w.current,
   };
 }
 

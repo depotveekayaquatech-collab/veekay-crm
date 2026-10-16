@@ -15,7 +15,7 @@ import { apkUpdateState, parseManifest, parseVersionCode, type ApkManifest, type
 
 /** Where the version file lives. Override per build with EXPO_PUBLIC_UPDATE_MANIFEST_URL. */
 const MANIFEST_URL = process.env.EXPO_PUBLIC_UPDATE_MANIFEST_URL || "https://veekay-crm.vercel.app/app-update.json";
-const CHECK_EVERY_MS = 30 * 60_000; // never check more often than this, however often the app is opened
+const CHECK_EVERY_MS = 10 * 60_000; // never check more often than this, however often the app is opened (one tiny file)
 const FETCH_TIMEOUT_MS = 10_000;
 const DISMISSED_KEY = "veekay.apkUpdateDismissed";
 
@@ -47,38 +47,83 @@ function useThrottledChecks(fn: () => Promise<void>, enabled: boolean) {
   }, [enabled]);
 }
 
+// ---- the newest-APK information, shared by the update banner and the "Check for updates" row ----
+let manifestNow: ApkManifest | null = null;
+let dismissedCode = 0;
+const subscribers = new Set<() => void>();
+const publish = () => subscribers.forEach((f) => f());
+let dismissedLoaded = false;
+
+async function loadDismissed() {
+  if (dismissedLoaded) return;
+  dismissedLoaded = true;
+  try {
+    dismissedCode = Number(await AsyncStorage.getItem(DISMISSED_KEY)) || 0;
+    publish();
+  } catch {
+    /* storage unavailable: "Later" just will not be remembered */
+  }
+}
+
+/** Reads the hosted version file. true = the file was read (even if it holds no update); false = could not be reached. */
+export async function refreshApkManifest(): Promise<boolean> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { signal: ctrl.signal, headers: { "Cache-Control": "no-cache" } });
+    if (!res.ok) return false;
+    manifestNow = parseManifest(await res.json());
+    publish();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** What the phone is running and what the version file currently says (used by the manual check). */
+export function installedVersionCode(): number {
+  return parseVersionCode(Application.nativeBuildVersion);
+}
+export function currentApkUpdate(): { state: ApkUpdateState; manifest: ApkManifest | null } {
+  return { state: apkUpdateState(installedVersionCode(), manifestNow), manifest: manifestNow };
+}
+/** A manual check should always show the update again, even if "Later" was tapped for it before. */
+export function showUpdateAgain() {
+  dismissedCode = 0;
+  AsyncStorage.removeItem(DISMISSED_KEY).catch(() => undefined);
+  publish();
+}
+
 export function useApkUpdate(enabled: boolean): { state: ApkUpdateState; manifest: ApkManifest | null; dismiss: () => void } {
-  const [manifest, setManifest] = useState<ApkManifest | null>(null);
-  const [dismissed, setDismissed] = useState<number>(0);
-  const installed = parseVersionCode(Application.nativeBuildVersion);
+  const installed = installedVersionCode();
+  const [, bump] = useState(0);
 
   useEffect(() => {
-    AsyncStorage.getItem(DISMISSED_KEY)
-      .then((v) => setDismissed(Number(v) || 0))
-      .catch(() => undefined);
+    const f = () => bump((n) => n + 1);
+    subscribers.add(f);
+    void loadDismissed();
+    return () => {
+      subscribers.delete(f);
+    };
   }, []);
 
   useThrottledChecks(async () => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-    try {
-      const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { signal: ctrl.signal, headers: { "Cache-Control": "no-cache" } });
-      if (res.ok) setManifest(parseManifest(await res.json()));
-    } finally {
-      clearTimeout(timer);
-    }
+    await refreshApkManifest();
   }, enabled && installed > 0);
 
-  const state = apkUpdateState(installed, manifest);
+  const state = apkUpdateState(installed, manifestNow);
   const dismiss = useCallback(() => {
-    if (!manifest) return;
-    setDismissed(manifest.latestVersionCode);
-    AsyncStorage.setItem(DISMISSED_KEY, String(manifest.latestVersionCode)).catch(() => undefined);
-  }, [manifest]);
+    if (!manifestNow) return;
+    dismissedCode = manifestNow.latestVersionCode;
+    AsyncStorage.setItem(DISMISSED_KEY, String(dismissedCode)).catch(() => undefined);
+    publish();
+  }, []);
 
   // "Later" hides an optional update until a NEWER one is published; a required update can never be dismissed.
-  const hidden = state === "optional" && manifest !== null && dismissed >= manifest.latestVersionCode;
-  return { state: hidden ? "none" : state, manifest, dismiss };
+  const hidden = state === "optional" && manifestNow !== null && dismissedCode >= manifestNow.latestVersionCode;
+  return { state: hidden ? "none" : state, manifest: manifestNow, dismiss };
 }
 
 export type OtaPhase = "idle" | "downloading" | "ready";

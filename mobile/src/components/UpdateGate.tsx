@@ -3,6 +3,7 @@ import { Linking, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui";
 import { useApkUpdate, useOtaUpdate } from "@/lib/appUpdates";
+import { downloadAndInstall, InstallError } from "@/lib/apkInstaller";
 import { colors, radius, shadow, space } from "@/theme";
 
 /**
@@ -17,33 +18,47 @@ export function UpdateGate({ children, enabled }: { children: ReactNode; enabled
   const insets = useSafeAreaInsets();
   const [otaLater, setOtaLater] = useState(false);
   const [opening, setOpening] = useState(false);
-  const [openFailed, setOpenFailed] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
 
+  /** Downloads the APK in the app and opens Android's installer. If that cannot work, the browser link is the fallback. */
   const download = async () => {
-    if (!apk.manifest?.downloadUrl) return;
+    if (!apk.manifest?.downloadUrl || opening) return;
     setOpening(true);
-    setOpenFailed(false);
+    setProblem(null);
+    setProgress(0);
     try {
-      await Linking.openURL(apk.manifest.downloadUrl);
-    } catch {
-      setOpenFailed(true);
+      await downloadAndInstall(apk.manifest, setProgress);
+    } catch (e) {
+      if (e instanceof InstallError) setProblem(e.message);
+      else {
+        // the in-app route failed (for example the phone's installer or file access): use the browser instead
+        try {
+          await Linking.openURL(apk.manifest.downloadUrl);
+          setProblem("Your browser will download the update. Open the downloaded file to install it.");
+        } catch {
+          setProblem("Could not download the update. Please check your connection and try again.");
+        }
+      }
     } finally {
       setOpening(false);
+      setProgress(null);
     }
   };
+  const label = opening ? (progress !== null && progress > 0 ? `Downloading… ${progress}%` : "Downloading…") : "Update now";
 
   if (apk.state === "required" && apk.manifest) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: space.xxl, gap: space.md, backgroundColor: colors.surface }}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: colors.text, textAlign: "center" }}>Update required</Text>
         <Text style={{ color: colors.textMuted, textAlign: "center", lineHeight: 22 }}>
-          A new version of Veekay Partner is required to continue. Download and install the latest version ({apk.manifest.latestVersionName}).
+          A new version of Veekay Partner is required to continue. Tap the button to download and install the latest version ({apk.manifest.latestVersionName}).
         </Text>
         {apk.manifest.notes ? <Text style={{ color: colors.textFaint, textAlign: "center" }}>{apk.manifest.notes}</Text> : null}
-        <Button title="Download update" onPress={() => void download()} loading={opening} style={{ alignSelf: "stretch", marginTop: space.sm }} />
-        {openFailed ? <Text style={{ color: colors.danger, textAlign: "center" }}>Could not open the download link. Please try again.</Text> : null}
+        <Button title={opening ? label : "Download and install"} onPress={() => void download()} loading={opening} style={{ alignSelf: "stretch", marginTop: space.sm }} />
+        {problem ? <Text style={{ color: colors.danger, textAlign: "center" }}>{problem}</Text> : null}
         <Text style={{ color: colors.textFaint, fontSize: 12, textAlign: "center", lineHeight: 18 }}>
-          Open the downloaded file to install. If Android asks, allow installing apps from this source. Your data stays on the phone.
+          If Android asks, allow this app to install updates, then tap Install. Your data stays on the phone.
         </Text>
       </View>
     );
@@ -66,9 +81,10 @@ export function UpdateGate({ children, enabled }: { children: ReactNode; enabled
                 <Text style={{ fontWeight: "800", color: colors.text }}>An update is available</Text>
                 <Text style={{ color: colors.textMuted }}>Install version {apk.manifest.latestVersionName} for the latest improvements.</Text>
                 <View style={{ flexDirection: "row", gap: space.sm }}>
-                  <Button title="Update now" onPress={() => void download()} loading={opening} style={{ flex: 1 }} />
-                  <Button title="Later" variant="secondary" onPress={apk.dismiss} style={{ flex: 1 }} />
+                  <Button title={label} onPress={() => void download()} loading={opening} style={{ flex: 1 }} />
+                  <Button title="Later" variant="secondary" onPress={apk.dismiss} disabled={opening} style={{ flex: 1 }} />
                 </View>
+                {problem ? <Text style={{ color: colors.danger }}>{problem}</Text> : null}
               </>
             ) : ota.phase === "downloading" ? (
               <>

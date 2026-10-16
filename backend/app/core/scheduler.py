@@ -43,9 +43,10 @@ def execute_sync(db, actor: User, source: str) -> dict:
     from app.services import activity_service, order_import_service, store_sync_service
 
     out: dict = {"stores": [], "orders": []}
-    if settings.sheet_sources():
+    pull_sheets = source != "scheduled" or settings.SHEET_AUTO_SYNC   # automatic runs may be switched off; "Sync now" never is
+    if pull_sheets and settings.sheet_sources():
         out["stores"] = [r.as_dict() for r in store_sync_service.sync_all(db, actor)]
-    if settings.ORDER_SYNC_ENABLED and settings.order_sheet_sources():
+    if pull_sheets and settings.ORDER_SYNC_ENABLED and settings.order_sheet_sources():
         out["orders"] = [o.as_dict() for o in order_import_service.sync_all(db, actor)]
     warnings = sum(len(x.get("warnings", [])) for x in out["stores"] + out["orders"])
     # Bill-due reminders to vendors and POCs ride on the same daily run. A failure here never undoes the sync.

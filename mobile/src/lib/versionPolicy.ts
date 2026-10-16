@@ -13,6 +13,8 @@ export type ApkManifest = {
   /** https link to the newest APK (a GitHub release asset, a Drive/S3 link, an EAS build page, ...). */
   downloadUrl: string;
   notes: string;
+  /** Size of the APK in bytes when the release script recorded it (0 = unknown). Used to reject a truncated download. */
+  apkSizeBytes: number;
 };
 
 export type ApkUpdateState = "none" | "optional" | "required";
@@ -31,6 +33,7 @@ export function parseManifest(json: unknown): ApkManifest | null {
     minVersionCode: min,
     downloadUrl: url.startsWith("https://") ? url : "", // only https links are ever opened
     notes: typeof a.notes === "string" ? a.notes : "",
+    apkSizeBytes: Number.isInteger(Number(a.apkSizeBytes)) && Number(a.apkSizeBytes) > 0 ? Number(a.apkSizeBytes) : 0,
   };
 }
 

@@ -51,12 +51,23 @@ Minimum before sending to everyone: run the full column on **one real phone** yo
 3. If Play Protect shows "App not scanned" / "Blocked": tap **More details > Install anyway** (the app is signed by Veekay, not by Google Play). Do not ask anyone to disable Play Protect.
 4. Open **Veekay Partner**, allow notifications when asked, sign in with the employee ID and password. Location and camera are requested at first use.
 
-## Updating (no data loss)
+## Publishing an update so every phone is alerted (from build 8 on)
 
-1. Edit code, then raise the number: `$env:ANDROID_VERSION_CODE=7` (always higher than any APK already shared; never reuse a number). Bump `version` in `app.config.ts` for a visible name (e.g. 1.0.1).
-2. From `mobile/`: `npm run build:apk-local`. It uses the same key and package, so Android treats it as an **update**: employees open the new APK and tap **Update**; login and queued scans are kept.
-3. Never ship a debug build, never change the package ID, never build with a different key.
-4. JavaScript-only fixes can instead go out as an OTA update through EAS Update (channel `production`) without a new APK; the build embeds that channel. Native changes always need a new APK.
+Phones with build 6 or newer check `https://veekay-crm.vercel.app/app-update.json` every time the app opens and whenever it returns to the foreground (at most once per 10 minutes). From build 8 the alert's **Update now** button downloads the APK inside the app (progress shown) and opens Android's installer; if that fails it falls back to the browser link. Every profile screen has **Check for updates** and shows `version X (build N)`.
+
+For each release:
+1. Change the code, then (optionally) raise `version` in `app.config.ts` (the visible name, e.g. 1.0.2).
+2. `cd mobile; npm run build:apk-local`. The version code is chosen automatically: always above every APK already built and above the one in `public/app-update.json`. The build refuses a code that is not higher.
+3. Host `mobile/build/apk/Veekay-Partner-<name>-code<N>.apk` at an https direct-download link (Google Drive: `https://drive.google.com/uc?export=download&id=FILE_ID`; or a public GitHub release).
+4. `npm run release:publish -- --url "<that link>" --notes "What changed"`. It reads the real version out of the APK, records its size and SHA-256, refuses a non-upgrading code, and downloads the first bytes of the link to prove it serves an APK and not a web page.
+5. Commit and push `public/app-update.json`. When Vercel has deployed, phones show "An update is available" on their next check. This push is what switches the alert on; do it last, after step 4 succeeded.
+6. Optional: add `--min <code>` to step 4 to block every build below that code behind a full-screen "Update required" page. Leave it at the default (nobody forced) unless an old build is dangerous.
+
+Rules that keep the chain unbroken: same package ID, same signing key, ever-higher version codes. Skip any of these and phones cannot update in place.
+
+Limits: Android always asks the person to confirm the install (nothing is silent), and the first time it asks to allow Veekay Partner to install apps. Builds older than 6 contain no update check at all (build 2 and earlier) or were signed by Expo's key (builds 3 and 4) and cannot update to a locally signed APK.
+
+JavaScript-only fixes can instead go out as an OTA update through EAS Update (channel `production`); that path has not been exercised.
 
 ## The signing key (critical)
 
@@ -71,4 +82,5 @@ Minimum before sending to everyone: run the full column on **one real phone** yo
 - **Target API:** the build targets API 36. Checked 2026-10-16 against Google's [target API level requirements](https://support.google.com/googleplay/android-developer/answer/11926878): since 31 Aug 2026, new apps and updates must target Android 16 (API 36) or higher, so this build meets it. Google raises the level every year; re-check at release time.
 - **Emulator testing on this PC is blocked** (2026-10-16): the Windows hypervisor is not active (the Android emulator reports no hypervisor driver), about 8 GB of disk is free, and the APK is ARM-only. Enabling "Windows Hypervisor Platform" needs administrator rights and a reboot. Until then, test on a real phone.
 - **Policy items to prepare** (none done or submitted): privacy policy URL (the app reads `EXPO_PUBLIC_PRIVACY_URL`), Data safety form (collects name/employee ID, location at check-in, photos, push token), permission declarations, content rating, app-access instructions for reviewers (a test login), store listing text/screenshots, and for new personal developer accounts the closed-testing requirement. Check the current Play Console rules then. `PLAY_STORE.md` has more notes.
+- The in-app APK updater needs the `REQUEST_INSTALL_PACKAGES` permission. Google Play restricts that permission and discourages apps that update themselves outside Play. For a Play build, remove it from `app.config.ts` and switch the updater off (let Play deliver updates).
 - Nothing has been published, uploaded or created in Play Console.

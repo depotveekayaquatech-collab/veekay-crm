@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button, Card, Screen, SectionTitle } from "@/components/ui";
 import { niceName } from "@/lib/format";
+import { UpdateCheckRow, versionLabel } from "@/components/UpdateCheckRow";
 import { colors, font } from "@/theme";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { privacyPolicyUrl?: string; supportEmail?: string; supportPhone?: string };
@@ -75,11 +76,12 @@ export default function Account() {
         {extra.supportPhone ? <LinkRow icon="call-outline" label={`Call support  ${extra.supportPhone}`} onPress={() => Linking.openURL(`tel:${extra.supportPhone}`)} /> : null}
         {extra.supportEmail ? <LinkRow icon="mail-outline" label="Email support" onPress={() => Linking.openURL(`mailto:${extra.supportEmail}`)} /> : null}
         {extra.privacyPolicyUrl ? <LinkRow icon="shield-checkmark-outline" label="Privacy policy" onPress={() => Linking.openURL(extra.privacyPolicyUrl!)} /> : null}
+        <UpdateCheckRow />
         <LinkRow icon="trash-outline" label="Request data deletion" onPress={requestDeletion} />
       </Card>
 
       <Button title="Sign out" variant="secondary" onPress={() => Alert.alert("Sign out?", "You will need your login and password to sign in again.", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", style: "destructive", onPress: () => void signOut() }])} style={{ marginTop: 28 }} />
-      <Text style={[font.tiny, { textAlign: "center", marginTop: 16 }]}>Veekay Partner · version {Constants.expoConfig?.version ?? "1.0.0"}</Text>
+      <Text style={[font.tiny, { textAlign: "center", marginTop: 16 }]}>Veekay Partner · {versionLabel()}</Text>
     </Screen>
   );
 }

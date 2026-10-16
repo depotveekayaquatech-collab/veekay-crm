@@ -23,13 +23,15 @@ const config: ExpoConfig = {
   name: "Veekay Partner",
   slug: "veekay-partner",
   scheme: "veekaypartner",
-  version: "1.0.0",
+  version: "1.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
   backgroundColor: "#FFFFFF",
   android: {
     package: ANDROID_PACKAGE,
+    // Lets the in-app updater hand the downloaded APK to Android's installer (Android still asks the person to confirm).
+    permissions: ["android.permission.REQUEST_INSTALL_PACKAGES"],
     // Cloud (EAS) builds take the number from EAS (appVersionSource: remote). A LOCAL build uses this one; raise it with
     // ANDROID_VERSION_CODE=5 so a phone accepts it as an update.
     versionCode: Number(process.env.ANDROID_VERSION_CODE) || 1,

@@ -70,4 +70,14 @@ class StoreSyncResult(BaseModel):
     updated: int
     unchanged: int
     rows_read: int
+    vendor_changes: int = 0
     warnings: list[str]
+
+
+class VendorPeriodOut(BaseModel):
+    vendor_name: str
+    vendor_number: str | None
+    start_date: date | None
+    end_date: date | None          # None = the current vendor
+    start_confirmed: bool          # False: start is provisional until the first order of this vendor is imported
+    current: bool

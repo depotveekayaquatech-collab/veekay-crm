@@ -35,7 +35,8 @@ def _stores(db: Session, admin: User, start: date, end: date, partner: str | Non
     has_entry = exists().where(OrderEntry.store_id == Store.id, OrderEntry.order_date >= start, OrderEntry.order_date <= end)
     stmt = (
         select(Store)
-        .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry))
+        .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry),
+               or_(Store.start_date.is_(None), Store.start_date <= end))   # not yet supplied by the end of this period: not shown
         .options(joinedload(Store.partner_organization), joinedload(Store.region))
         .order_by(Store.state, Store.city, Store.name)
     )
@@ -56,7 +57,8 @@ def _store_rows(db: Session, admin: User, start: date, end: date, partner: str |
         select(Store.id, Store.name, Store.external_code, Organization.name, Store.state, Store.city)
         .select_from(Store)
         .join(Organization, Organization.id == Store.partner_organization_id)
-        .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry))
+        .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry),
+               or_(Store.start_date.is_(None), Store.start_date <= end))   # not yet supplied by the end of this period: not shown
         .order_by(Store.state, Store.city, Store.name)
     )
     if partner:

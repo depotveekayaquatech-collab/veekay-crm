@@ -1,5 +1,6 @@
 """Store CRUD. Scoped to the caller's (Veekay) organization."""
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select, update
@@ -113,8 +114,13 @@ def update_store(db: Session, actor: User, store_id: uuid.UUID, payload: StoreUp
     if "status" in data and data["status"] is not None:
         data["status"] = data["status"].value if hasattr(data["status"], "value") else data["status"]
     old_status = store.status
+    old_vendor = store.vendor_name
     for field, value in data.items():
         setattr(store, field, value)
+    if ("vendor_name" in data or "vendor_number" in data) and (store.vendor_name or "").strip():
+        from app.services import vendor_history_service   # a hand-made vendor change is history too, effective today
+
+        vendor_history_service.record_vendors(db, [store], source="manual", today=datetime.now(timezone.utc).date())
     activity_service.record(
         db, actor=actor, action="store.updated", entity_type="store", entity_id=store.id,
         metadata={k: str(v) for k, v in data.items()},
