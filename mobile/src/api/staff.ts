@@ -72,9 +72,10 @@ export interface CashOptions {
 }
 export interface CashPurchase {
   id: string; kind: "OFFICE" | "STORE"; purchase_date: string; store_name: string | null; category_label: string;
-  other_reason: string | null; amount: string | number; notes: string | null; has_proof: boolean; created_at: string;
+  other_reason: string | null; amount: string | number; notes: string | null; has_proof: boolean; added_by?: string | null; created_at: string;
 }
-export interface CashList { items: CashPurchase[]; total: number; page: number; page_size: number; amount_total: string | number }
+export interface CashList { items: CashPurchase[]; total: number; page: number; page_size: number; amount_total: string | number; office_total: string | number; store_total: string | number }
+export type CashFilter = { kind?: "OFFICE" | "STORE"; start?: string; end?: string };
 
 export interface StaffAlert { id: string; kind: string; title: string; body: string; ref_id: string | null; read: boolean; created_at: string }
 export interface StaffAlertPage { items: StaffAlert[]; total: number; unread: number; page: number; page_size: number }
@@ -105,7 +106,9 @@ export const staffApi = {
   scan: (b: ScanBody) => request<ScanResult>("/bottles/scan", { method: "POST", body: b }),
 
   cashOptions: () => request<CashOptions>("/cash-purchases/options"),
-  cashList: (p: { page?: number; page_size?: number }) => request<CashList>(`/cash-purchases${qs(p)}`),
+  cashList: (p: { page?: number; page_size?: number } & CashFilter) => request<CashList>(`/cash-purchases${qs(p)}`),
+  /** Path of the Excel sheet for the same filters (needs the cash.view permission; the server enforces it). */
+  cashSheetPath: (f: CashFilter) => `/cash-purchases/export${qs(f)}`,
   addCash: (form: FormData, key?: string) => request<CashPurchase>("/cash-purchases", { method: "POST", body: form, idempotencyKey: key }),
 
   alerts: (page = 1) => request<StaffAlertPage>(`/me/notifications${qs({ page, page_size: 50 })}`),

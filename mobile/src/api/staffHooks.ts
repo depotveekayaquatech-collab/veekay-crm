@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "@/api/client";
-import { staffApi, type LeaveType } from "@/api/staff";
+import { staffApi, type CashFilter, type LeaveType } from "@/api/staff";
 
 const FRESH = 30_000;
 
@@ -28,8 +28,8 @@ export function useMarkStaffAlertsRead() {
 
 export const useScanStores = () => useQuery({ queryKey: ["s-scan-stores"], queryFn: staffApi.scanStores, staleTime: 5 * 60_000 });
 export const useCashOptions = () => useQuery({ queryKey: ["s-cash-options"], queryFn: staffApi.cashOptions, staleTime: 5 * 60_000 });
-export const useCashList = (page: number) =>
-  useQuery({ queryKey: ["s-cash", page], queryFn: () => staffApi.cashList({ page, page_size: 30 }), placeholderData: keepPreviousData, staleTime: FRESH });
+export const useCashList = (page: number, filter: CashFilter = {}) =>
+  useQuery({ queryKey: ["s-cash", page, filter], queryFn: () => staffApi.cashList({ page, page_size: 30, ...filter }), placeholderData: keepPreviousData, staleTime: FRESH });
 
 export interface MarkResult { saved: number; failed: number; results: { order_date: string; ok: boolean; error: string | null }[] }
 

@@ -20,8 +20,12 @@ export default function StaffTabs() {
   const waiting = useScanQueue().pending.length;
   const unread = useStaffAlerts().data?.unread ?? 0;
 
+  // People who can see the order overview land on Insights (the Admin tab); everyone else on Today.
+  const landsOnInsights = hasPermission("orders.overview");
+
   return (
     <Tabs
+      initialRouteName={landsOnInsights ? "admin" : "index"}
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
         headerShadowVisible: false,
@@ -57,7 +61,7 @@ export default function StaffTabs() {
       />
       <Tabs.Screen
         name="admin"
-        options={{ title: "Admin", href: ["orders.overview", "leave.review", "bottles.view", "accounts.view"].some(hasPermission) ? undefined : null, tabBarIcon: icon("stats-chart-outline", "stats-chart") }}
+        options={{ title: landsOnInsights ? "Insights" : "Admin", headerTitle: landsOnInsights ? "Insights" : "Admin", href: ["orders.overview", "leave.review", "bottles.view", "accounts.view"].some(hasPermission) ? undefined : null, tabBarIcon: icon("stats-chart-outline", "stats-chart") }}
       />
       <Tabs.Screen name="cash" options={{ title: "Expenses", href: hasPermission("cash.add") || hasPermission("cash.view") ? undefined : null, tabBarIcon: icon("wallet-outline", "wallet") }} />
     </Tabs>

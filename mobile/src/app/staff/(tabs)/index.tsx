@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Linking, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import * as Location from "expo-location";
 import { useQueryClient } from "@tanstack/react-query";
 import { staffApi, type Reading } from "@/api/staff";
+import { describeFailure, readLocation } from "@/lib/location";
 import { useAttendanceToday } from "@/api/staffHooks";
 import { useAuth } from "@/auth/AuthProvider";
 import { Badge, Card, ErrorNote, ListSkeleton, Screen, SectionTitle } from "@/components/ui";
@@ -15,27 +15,6 @@ import { colors, font, radius } from "@/theme";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 const hm = (min: number) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
-
-/** The phone's position at this moment, or why we don't have one. Asked only when the person taps Check in / out. */
-async function readLocation(): Promise<{ reading: Reading } | { skipped: "denied" | "unavailable" }> {
-  let perm = await Location.getForegroundPermissionsAsync();
-  if (!perm.granted && perm.canAskAgain) {
-    await new Promise<void>((resolve) =>
-      Alert.alert("Share your location?", "Veekay uses your location only at the moment you check in or out, to record where you were. It is never tracked in the background.", [{ text: "Continue", onPress: () => resolve() }]),
-    );
-    perm = await Location.requestForegroundPermissionsAsync();
-  }
-  if (!perm.granted) return { skipped: "denied" };
-  try {
-    const pos = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 15_000)),
-    ]);
-    return { reading: { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy ?? undefined } };
-  } catch {
-    return { skipped: "unavailable" };
-  }
-}
 
 function Action({ icon, label, onPress, tone }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; tone: [string, string] }) {
   return (
@@ -69,18 +48,29 @@ export default function Today() {
   async function press(kind: "in" | "out") {
     setBusy(true);
     try {
-      const got = await readLocation();
       let reading: Reading = {};
-      if ("reading" in got) reading = got.reading;
-      else {
-        const ok = await new Promise<boolean>((resolve) =>
+      for (;;) {
+        const got = await readLocation();
+        if ("reading" in got) { reading = got.reading; break; }
+        const why = describeFailure(got.skipped);
+        const choice = await new Promise<"retry" | "anyway" | "settings" | "cancel">((resolve) =>
           Alert.alert(
-            got.skipped === "denied" ? "Location is off" : "Couldn't get your location",
-            `You can still check ${kind} without it. It will be recorded as "location not shared".`,
-            [{ text: "Cancel", style: "cancel", onPress: () => resolve(false) }, { text: `Check ${kind} anyway`, onPress: () => resolve(true) }],
+            why.title,
+            `${why.text}
+
+You can still check ${kind}; it will be recorded as "location not shared".`,
+            [
+              { text: "Try again", onPress: () => resolve("retry") },
+              ...(why.settings ? [{ text: "Open settings", onPress: () => resolve("settings") }] : []),
+              { text: `Check ${kind} anyway`, onPress: () => resolve("anyway") },
+            ],
+            { cancelable: true, onDismiss: () => resolve("cancel") },
           ),
         );
-        if (!ok) return;
+        if (choice === "retry") continue;
+        if (choice === "settings") { void Linking.openSettings(); return; }
+        if (choice === "cancel") return;
+        break;   // "anyway"
       }
       await (kind === "in" ? staffApi.checkIn(reading) : staffApi.checkOut(reading));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
@@ -123,7 +113,7 @@ export default function Today() {
               <View style={{ flex: 1 }}><Text style={font.tiny}>CHECK OUT</Text><Text style={{ fontWeight: "700", color: colors.text, marginTop: 2 }}>{a.check_out_at ? time(a.check_out_at) : "–"}</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={font.tiny}>LOCATION</Text>
-                <Text numberOfLines={2} style={{ fontWeight: "700", color: a.check_in_location?.status === "office" ? colors.success : colors.warning, marginTop: 2 }}>{a.check_in_location?.status === "office" ? (a.check_in_location.label ?? "Office") : a.checked_in ? "Away (not from office)" : "–"}</Text>
+                <Text numberOfLines={2} style={{ fontWeight: "700", color: a.check_in_location?.status === "office" ? colors.success : colors.warning, marginTop: 2 }}>{a.check_in_location?.status === "office" ? (a.check_in_location.label ?? "Office") : a.checked_in ? (a.check_in_location?.status === "unknown" ? "Location not shared" : "Away (not from office)") : "–"}</Text>
               </View>
             </View>
 

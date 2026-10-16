@@ -47,7 +47,7 @@ export async function pickPdf(): Promise<Picked[]> {
   return res.canceled ? [] : res.assets.map((a) => ({ uri: a.uri, name: a.name, type: a.mimeType ?? "application/pdf" }));
 }
 
-const EXT: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const EXT: Record<string, string> = { "application/pdf": "pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 /** Downloads an authenticated file to the app's cache and hands it to the phone's own viewer ("Open with…"). */
 export async function openRemoteFile(path: string, baseName: string): Promise<void> {

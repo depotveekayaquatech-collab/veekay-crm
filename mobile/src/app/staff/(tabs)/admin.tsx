@@ -62,23 +62,6 @@ export default function AdminOverview() {
 
   return (
     <Screen onRefresh={refresh} refreshing={refreshing}>
-      <SyncCard />
-
-      {alerts.length > 0 && (
-        <>
-          <SectionTitle>Needs attention</SectionTitle>
-          <View style={{ gap: 10 }}>
-            {alerts.map((a) => <Alert key={a.key} icon={a.icon} tone={a.tone} title={a.title} sub={a.sub} onPress={() => router.push(a.to as never)} />)}
-          </View>
-        </>
-      )}
-      {alerts.length === 0 && (ins.data || pending.data) && (
-        <View style={{ marginTop: 16, padding: 14, borderRadius: radius.lg, backgroundColor: colors.successSoft, flexDirection: "row", gap: 10, alignItems: "center" }}>
-          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-          <Text style={{ color: colors.success, fontWeight: "700", flex: 1 }}>Nothing needs attention right now.</Text>
-        </View>
-      )}
-
       {canOrders && (
         <>
           <SectionTitle>Today</SectionTitle>
@@ -123,6 +106,21 @@ export default function AdminOverview() {
         </>
       )}
 
+      {alerts.length > 0 && (
+        <>
+          <SectionTitle>Needs attention</SectionTitle>
+          <View style={{ gap: 10 }}>
+            {alerts.map((a) => <Alert key={a.key} icon={a.icon} tone={a.tone} title={a.title} sub={a.sub} onPress={() => router.push(a.to as never)} />)}
+          </View>
+        </>
+      )}
+      {alerts.length === 0 && (ins.data || pending.data) && (
+        <View style={{ marginTop: 16, padding: 14, borderRadius: radius.lg, backgroundColor: colors.successSoft, flexDirection: "row", gap: 10, alignItems: "center" }}>
+          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+          <Text style={{ color: colors.success, fontWeight: "700", flex: 1 }}>Nothing needs attention right now.</Text>
+        </View>
+      )}
+
       <SectionTitle>Reports</SectionTitle>
       <Card style={{ padding: 0, overflow: "hidden" }}>
         {canOrders && <NavRow icon="clipboard-outline" label="Stores yet to mark" value={pending.data ? String(pending.data.pending) : undefined} onPress={() => router.push("/staff/admin/pending")} />}
@@ -130,6 +128,8 @@ export default function AdminOverview() {
         {canBottles && <NavRow icon="cube-outline" label="Overdue bottles" value={bottles.data ? String(bottles.data.overdue) : undefined} onPress={() => router.push("/staff/admin/bottles")} />}
         {canBills && <NavRow icon="receipt-outline" label="Bills past due" value={bills.data ? String(bills.data.total) : undefined} onPress={() => router.push("/staff/admin/bills")} />}
       </Card>
+
+      <SyncCard />
     </Screen>
   );
 }
