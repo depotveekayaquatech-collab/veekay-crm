@@ -127,9 +127,15 @@ def matrix(
     }
 
 
+def _rate_cells(book, store: Store, bottles: int) -> list:
+    """[vendor rate, amount]; blank when no rate is set for the store's city."""
+    rate = book.for_store(store) if book is not None else None
+    return [None, None] if rate is None else [float(rate), round(float(rate) * bottles, 2)]
+
+
 def matrix_xlsx(
     db: Session, admin: User, start: date, end: date, *, partner: str | None, state: str | None, city: str | None,
-    totals: bool = True,
+    totals: bool = True, with_rates: bool = False,
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, Side
@@ -137,6 +143,11 @@ def matrix_xlsx(
     dates = _validate(start, end)
     stores = _stores(db, admin, start, end, partner, state, city)
     entries = _entries(db, [s.id for s in stores], start, end)
+    book = None
+    if with_rates:   # admin report: vendor rate (per bottle, city-wise) in force at the end of the period, and the amount
+        from app.services.vendor_rate_service import RateBook
+
+        book = RateBook(db, list({s.partner_organization_id for s in stores}), end)
 
     wb = Workbook()
     ws = wb.active
@@ -145,6 +156,7 @@ def matrix_xlsx(
         "Region", "Channel", "Entity", "STATE", "City", "Outlet ID", "Outlet Name", "POC Name", "Contact No",
         "PRIMARY VENDOR NAME", "PRIMARY LICENSE NUMBER", "SECONDARY VENDOR NAME", "SECONDARY LICENSE NUMBER",
         *(["Total Count"] if totals else []),
+        *(["Vendor Rate", "Amount"] if with_rates else []),
         *[f"{d.day}-{d.strftime('%b')}" for d in dates],  # plain text, no leading zero
     ]
     ws.append(head)
@@ -175,6 +187,7 @@ def matrix_xlsx(
             None,
             None,
             *([sum(days)] if totals else []),
+            *(_rate_cells(book, s, sum(days)) if with_rates else []),
             *days,
         ])
     buf = io.BytesIO()

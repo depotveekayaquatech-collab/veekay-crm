@@ -195,6 +195,8 @@ class Settings(BaseSettings):
 
     # Order sync from Google Sheets
     ORDER_SYNC_SHEETS: list[str] = Field(default_factory=list)
+    # The Capping tab of the Zepto workbook, one entry: zepto=SHEET_ID:GID. Read only when a developer asks.
+    CAPPING_SYNC_SHEETS: list[str] = Field(default_factory=list)
     ORDER_SYNC_ENABLED: bool = Field(default=True)
     ORDER_SYNC_OVERWRITE: bool = Field(default=False)
 
@@ -296,6 +298,17 @@ class Settings(BaseSettings):
                 gid.strip() or "0",
             )
 
+        return out
+
+    def capping_sheet_sources(self) -> dict[str, tuple[str, str]]:
+        out: dict[str, tuple[str, str]] = {}
+        for raw in self.CAPPING_SYNC_SHEETS:
+            if "=" not in raw:
+                continue
+            slug, ref = raw.split("=", 1)
+            sheet_id, _, gid = ref.strip().partition(":")
+            if sheet_id.strip():
+                out[slug.strip().lower()] = (sheet_id.strip(), gid.strip() or "0")
         return out
 
     def order_sheet_sources(self) -> dict[str, list[tuple[str, str]]]:

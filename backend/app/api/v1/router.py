@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     attendance,
     auth,
     bottles,
+    capping,
     cards,
     cash_adjustments,
     client_errors,
@@ -29,6 +30,7 @@ from app.api.v1.endpoints import (
     sync,
     test_reports,
     tickets,
+    vendor_rates,
 )
 
 api_router = APIRouter()
@@ -41,6 +43,8 @@ api_router.include_router(employees.router)
 api_router.include_router(assignments.router)
 api_router.include_router(permissions.router)
 api_router.include_router(orders.router)
+api_router.include_router(capping.router)
+api_router.include_router(vendor_rates.router)
 api_router.include_router(activity.router)
 api_router.include_router(compliance.router)
 api_router.include_router(cards.router)

@@ -12,6 +12,7 @@ import { apiBlob, apiRequest } from "@/services/api";
 import { camelize } from "@/lib/camel";
 import { daysAgo } from "@/lib/dates";
 import { pushToast } from "@/lib/toast";
+import { useAuth } from "@/features/auth/useAuth";
 
 interface MatrixRow {
   storeId: string;
@@ -79,6 +80,9 @@ function DailyMatrix() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState(false);
+  const [exportingRate, setExportingRate] = useState(false);
+  const { hasPermission } = useAuth();
+  const canRates = hasPermission("rates.manage");
   const bad = draft.from > draft.to;
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
@@ -93,21 +97,21 @@ function DailyMatrix() {
     setPage(1);
   }
 
-  async function exportExcel() {
-    setExporting(true);
+  async function exportExcel(withRate = false) {
+    (withRate ? setExportingRate : setExporting)(true);
     try {
-      const blob = await apiBlob(`/orders/matrix/export?${qs(applied)}`);
+      const blob = await apiBlob(`/orders/matrix/export?${qs(applied)}${withRate ? "&include_rate=true" : ""}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `daily-distribution-${applied.from}_${applied.to}.xlsx`;
+      a.download = `daily-distribution${withRate ? "-with-rate" : ""}-${applied.from}_${applied.to}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
       pushToast("Excel downloaded.", "success");
     } finally {
-      setExporting(false);
+      (withRate ? setExportingRate : setExporting)(false);
     }
   }
 
@@ -187,10 +191,16 @@ function DailyMatrix() {
                 ))}
               </SelectField>
             </label>
-            <Button variant="secondary" size="sm" onClick={() => void exportExcel()} isLoading={exporting} disabled={!data?.total}>
+            <Button variant="secondary" size="sm" onClick={() => void exportExcel(false)} isLoading={exporting} disabled={!data?.total}>
               <IconDownload className="h-3.5 w-3.5" />
               Export Excel
             </Button>
+            {canRates && (
+              <Button variant="secondary" size="sm" onClick={() => void exportExcel(true)} isLoading={exportingRate} disabled={!data?.total}>
+                <IconDownload className="h-3.5 w-3.5" />
+                Export with vendor rate
+              </Button>
+            )}
           </div>
         }
       >

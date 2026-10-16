@@ -41,6 +41,8 @@ interface NavItem {
   excludeRole?: string | string[];
   /** Shown only to accounts holding this role (e.g. the partner delivery-report download). */
   requireRole?: string;
+  /** Shown to employees of this platform, or to anyone holding `orPermission` (admins). Display only: the API re-checks. */
+  platform?: { slug: string; orPermission: string };
 }
 
 interface NavGroup {
@@ -77,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Stores", to: "/stores", icon: IconStore, permission: "stores.view" },
       { label: "Vendors", to: "/inventory", icon: IconBox, permission: "orders.view" },
       { label: "Store cards", to: "/cards", icon: IconCard, permission: "orders.view" },
+      { label: "Zepto capping", to: "/capping", icon: IconShield, platform: { slug: "zepto", orPermission: "orders.correct" } },
     ],
   },
   {
@@ -113,12 +116,13 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[]) => {
+const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[], platformSlug: string | null = null) => {
   // A developer holds every permission, so they see everything an admin does: no developer-only trimming.
   const roles = allRoles.filter((r) => r !== "developer");
   return (
     !(item.excludeRole && [item.excludeRole].flat().some((r) => roles.includes(r))) &&
     !(item.requireRole && !roles.includes(item.requireRole)) &&
+    (item.platform ? platformSlug?.toLowerCase() === item.platform.slug || has(item.platform.orPermission) : true) &&
     (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission))
   );
 };
@@ -160,7 +164,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, hasPermission, logout } = useAuth();
   const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((item) => canSee(item, hasPermission, user?.roles ?? [])),
+    items: g.items.filter((item) => canSee(item, hasPermission, user?.roles ?? [], user?.platformSlug ?? null)),
   })).filter((g) => g.items.length > 0);
   const primaryRole = user?.roles[0];
 
@@ -265,7 +269,7 @@ export function AppLayout() {
   const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
-  const pages = NAV_ITEMS.filter((i) => canSee(i, hasPermission, user?.roles ?? []));
+  const pages = NAV_ITEMS.filter((i) => canSee(i, hasPermission, user?.roles ?? [], user?.platformSlug ?? null));
 
   // "g then o" style jumps, limited to pages this user can open.
   const goKeys: (GoShortcut & { to: string })[] = [

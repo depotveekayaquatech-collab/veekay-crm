@@ -308,12 +308,16 @@ def matrix_export(
     partner: str | None = None,
     state: str | None = None,
     city: str | None = None,
+    include_rate: bool = False,
     user: User = Depends(get_current_user),
+    perms: set[str] = Depends(get_current_permissions),
     db: Session = Depends(get_db),
 ) -> Response:
-    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city)
+    if include_rate and "rates.manage" not in perms:   # the vendor-rate columns are for admins only
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to the vendor rate report.")
+    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city, with_rates=include_rate)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="daily-distribution-{start}_{end}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="daily-distribution{"-with-rate" if include_rate else ""}-{start}_{end}.xlsx"'},
     )

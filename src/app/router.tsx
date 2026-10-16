@@ -24,6 +24,7 @@ const CashPurchasesPage = lazy(() => import("@/features/cash/CashPurchasesPage")
 const DataSyncPage = lazy(() => import("@/features/datasync/DataSyncPage").then((m) => ({ default: m.DataSyncPage })));
 const CashToolsPage = lazy(() => import("@/features/datasync/CashToolsPage").then((m) => ({ default: m.CashToolsPage })));
 const AccountsPage = lazy(() => import("@/features/accounts/AccountsPage").then((m) => ({ default: m.AccountsPage })));
+const CappingPage = lazy(() => import("@/features/capping/CappingPage").then((m) => ({ default: m.CappingPage })));
 const InventoryPage = lazy(() => import("@/features/inventory/InventoryPage").then((m) => ({ default: m.InventoryPage })));
 const PartnerHomePage = lazy(() => import("@/features/partner/PartnerHomePage").then((m) => ({ default: m.PartnerHomePage })));
 const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliveryReport").then((m) => ({ default: m.PartnerDeliveryReport })));
@@ -55,6 +56,13 @@ function Require({ permission, children }: { permission: string; children: React
 function RequireAny({ permissions, children }: { permissions: string[]; children: React.ReactNode }) {
   const { hasPermission } = useAuth();
   return permissions.some(hasPermission) ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/** Capping is for Zepto employees and admins (the API enforces the same rule). */
+function RequireCapping({ children }: { children: React.ReactNode }) {
+  const { user, hasPermission } = useAuth();
+  const ok = user?.platformSlug?.toLowerCase() === "zepto" || hasPermission("orders.correct");
+  return ok ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 /** "/" — the dashboard for staff; a partner login (Blinkit / Zepto) gets its own portal home. */
@@ -104,6 +112,7 @@ export function AppRoutes() {
         <Route path="/developer/card-sheet" element={<Require permission="cards.sheet"><CardSheetPage /></Require>} />
         <Route path="/developer/cash" element={<Require permission="cash.adjust"><CashToolsPage /></Require>} />
         <Route path="/accounts" element={<Require permission="accounts.view"><AccountsPage /></Require>} />
+        <Route path="/capping" element={<RequireCapping><CappingPage /></RequireCapping>} />
         <Route path="/inventory" element={<Require permission="orders.view"><InventoryPage /></Require>} />
         <Route path="/pending" element={<Navigate to="/orders/pending" replace />} />
         <Route path="/reports" element={<Require permission="orders.overview"><ReportsPage /></Require>} />

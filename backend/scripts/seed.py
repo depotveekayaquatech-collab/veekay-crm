@@ -65,6 +65,7 @@ PERMISSIONS = [
     ("reports.delivery", "Download delivery reports (partner accounts)"),
     ("cash.view", "See every cash purchase and download the sheet"),
     ("cash.add", "Record cash purchases (you see your own entries)"),
+    ("rates.manage", "Upload the vendor rate sheet and download reports with the vendor rate column"),
     ("sheets.sync", "Sheet sync and bulk sheet / file uploads of stores and orders (developer only)"),
     ("cash.adjust", "Cash-purchase adjustments to the order sheet and their history (developer only)"),
     ("bottles.view", "View bottle QR codes, their scan history and the overdue / lost list"),

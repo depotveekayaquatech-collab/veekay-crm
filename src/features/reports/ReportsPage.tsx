@@ -2,6 +2,8 @@ import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DeliveryReport } from "@/features/reports/DeliveryReport";
 import { TestReportsTab } from "@/features/reports/TestReportsTab";
+import { VendorRatesPanel } from "@/features/reports/VendorRatesPanel";
+import { useAuth } from "@/features/auth/useAuth";
 
 type Tab = "test" | "delivery";
 
@@ -12,6 +14,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function ReportsPage() {
   const [params, setParams] = useSearchParams();
+  const { hasPermission } = useAuth();
   const tab: Tab = params.get("tab") === "test" ? "test" : "delivery";
 
   return (
@@ -38,6 +41,7 @@ export function ReportsPage() {
         }
       />
       {tab === "test" ? <TestReportsTab /> : <DeliveryReport />}
+      {tab === "delivery" && hasPermission("rates.manage") && <VendorRatesPanel />}
     </div>
   );
 }

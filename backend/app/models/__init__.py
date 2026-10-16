@@ -6,6 +6,8 @@ from app.models.user_permission import UserPermission
 from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.store_vendor_period import StoreVendorPeriod
+from app.models.store_cap import StoreCap
+from app.models.vendor_rate import VendorRate
 from app.models.state_assignment import StateAssignment
 from app.models.idempotency_key import IdempotencyKey
 from app.models.order_archive import OrderEntryArchive
@@ -24,6 +26,8 @@ from app.models.external_activity import BillReminder, DeliveryConfirmation, Ext
 from app.models.employee_scope import EmployeeExclusion, EmployeeRegion
 
 __all__ = [
+    "StoreCap",
+    "VendorRate",
     "StoreVendorPeriod",
     "EmployeeExclusion",
     "EmployeeRegion",
