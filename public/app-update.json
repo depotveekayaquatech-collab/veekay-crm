@@ -2,7 +2,7 @@
   "android": {
     "latestVersionCode": 10,
     "latestVersionName": "1.1.0",
-    "minVersionCode": 10,
+    "minVersionCode": 0,
     "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code10.apk",
     "notes": "New: Compliance and Store cards on your phone (upload card photos, invoices, payment proofs), a clearer home screen, faster photo uploads. Please update to keep using the app.",
     "apkSizeBytes": 56429021,
