@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Linking, Text, View } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui";
 import { useApkUpdate, useOtaUpdate } from "@/lib/appUpdates";
@@ -46,8 +47,15 @@ export function UpdateGate({ children, enabled }: { children: ReactNode; enabled
     }
   };
   const label = opening ? (progress !== null && progress > 0 ? `Downloading… ${progress}%` : "Downloading…") : "Update now";
+  const blocked = apk.state === "required" && !!apk.manifest;
 
-  if (apk.state === "required" && apk.manifest) {
+  // The page below replaces the whole app, so the Navigator (which normally hides the native splash once sign-in has been
+  // checked) never runs. Without this the logo stays on top of the "Update required" page and the phone looks frozen.
+  useEffect(() => {
+    if (blocked) SplashScreen.hideAsync().catch(() => undefined);
+  }, [blocked]);
+
+  if (blocked && apk.manifest) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: space.xxl, gap: space.md, backgroundColor: colors.surface }}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: colors.text, textAlign: "center" }}>Update required</Text>
