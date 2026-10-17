@@ -1,12 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { getStoreVendors } from "@/services/stores";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { usePartners, useStoreMutations } from "@/features/stores/useStores";
+import { VendorHistory } from "@/features/stores/VendorHistory";
 import type { Store, StoreStatus } from "@/types/store";
 
 interface Props {
@@ -26,33 +25,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="mb-3 border-b border-surface-border pb-2 text-[11px] font-bold uppercase tracking-wider text-brand-700">{title}</h3>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </section>
-  );
-}
-
-function VendorHistory({ storeId }: { storeId: string }) {
-  const { data = [], isLoading } = useQuery({ queryKey: ["store-vendors", storeId], queryFn: () => getStoreVendors(storeId) });
-  const fmt = (d: string | null) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "unknown");
-  if (isLoading || data.length < 2) return null; // nothing to show until a vendor has changed at least once
-  return (
-    <div className="sm:col-span-2">
-      <p className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">Vendor history</p>
-      <ul className="flex flex-col divide-y divide-surface-border rounded-lg border border-surface-border text-sm">
-        {data.map((v, i) => (
-          <li key={i} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-            <span className="font-medium text-gray-900">
-              {v.vendorName}
-              {v.vendorNumber ? <span className="ml-2 font-normal text-gray-500">{v.vendorNumber}</span> : null}
-            </span>
-            <span className="text-xs text-gray-500">
-              {v.current ? "Current · since " : ""}
-              {fmt(v.startDate)}
-              {v.current ? "" : ` to ${fmt(v.endDate)}`}
-              {!v.startConfirmed ? " (start provisional)" : ""}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

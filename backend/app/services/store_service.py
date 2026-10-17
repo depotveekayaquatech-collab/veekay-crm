@@ -122,7 +122,9 @@ def update_store(db: Session, actor: User, store_id: uuid.UUID, payload: StoreUp
     if ("vendor_name" in data or "vendor_number" in data) and (store.vendor_name or "").strip():
         from app.services import vendor_history_service   # a hand-made vendor change is history too, effective today
 
-        vendor_history_service.record_vendors(db, [store], source="manual", today=datetime.now(timezone.utc).date())
+        vendor_history_service.record_vendors(
+            db, [store], source="manual", today=datetime.now(timezone.utc).date(), changed_by=actor.full_name
+        )
     activity_service.record(
         db, actor=actor, action="store.updated", entity_type="store", entity_id=store.id,
         metadata={k: str(v) for k, v in data.items()},

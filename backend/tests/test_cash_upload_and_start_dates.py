@@ -158,36 +158,80 @@ def test_start_date_sync_is_developer_only(client, admin, emp):
         assert client.post(SYNC, headers=who, json={}).status_code == 403
 
 
-def test_start_dates_are_filled_from_the_first_supply_and_replaced_only_on_request(client, dev, db, make_store):
-    empty, wrong, right, nothing = (make_store(code=f"SDS-{i}") for i in range(4))
+def test_start_dates_are_filled_or_moved_back_to_the_first_supply_and_hand_dates_kept_unless_replacing(client, dev, db, make_store):
+    empty, hand, right, nothing, late = (make_store(code=f"SDS-{i}") for i in range(5))
     first = date(2026, 3, 5)
-    for s in (empty, wrong, right):
+    for s in (empty, hand, right, late):
         _entry(db, s, first + timedelta(days=9), 4)
         _entry(db, s, first, 7)
     _entry(db, empty, first - timedelta(days=2), 0)           # 0 bottles is not a supply
     _entry(db, nothing, first, 0)
-    wrong.start_date, right.start_date = date(2026, 1, 1), first
+    hand.start_date, right.start_date, late.start_date = date(2026, 1, 1), first, date(2026, 9, 1)
     db.commit()
 
     def refresh():
         db.expire_all()
-        return [s.start_date for s in (empty, wrong, right, nothing)]
+        return [s.start_date for s in (empty, hand, right, nothing, late)]
 
     mine = {"platform": "blinkit"}
     preview = client.post(SYNC, headers=dev, json=mine).json()
-    assert preview["dry_run"] and preview["to_fill"] >= 1 and preview["differs"] >= 1
-    assert refresh() == [None, date(2026, 1, 1), first, None]       # a preview changes nothing
+    assert preview["dry_run"] and preview["to_fill"] >= 1 and preview["move_earlier"] >= 1 and preview["keep_hand_dates"] >= 1
+    assert preview["no_orders_by_status"]["LIVE"] >= 1                       # `nothing` (only 0-bottle days) is a live store without supply
+    assert refresh() == [None, date(2026, 1, 1), first, None, date(2026, 9, 1)]   # a preview changes nothing
 
     done = client.post(SYNC, headers=dev, json={**mine, "dry_run": False}).json()
-    assert done["to_change"] == done["to_fill"] >= 1
-    assert refresh() == [first, date(2026, 1, 1), first, None]       # empty filled; a date already set is left alone
+    assert done["to_change"] == done["to_fill"] + done["move_earlier"]
+    # empty filled; September moved back to March; a hand date EARLIER than our first order is kept
+    assert refresh() == [first, date(2026, 1, 1), first, None, first]
 
     done = client.post(SYNC, headers=dev, json={**mine, "overwrite": True, "dry_run": False}).json()
-    assert done["to_change"] == done["to_fill"] + done["differs"]
-    assert refresh() == [first, first, first, None]                  # now replaced; a store with no supply stays empty
+    assert done["to_change"] == done["keep_hand_dates"] >= 1
+    assert refresh() == [first, first, first, None, first]           # now replaced; a store with no supply stays empty
 
     again = client.post(SYNC, headers=dev, json={**mine, "overwrite": True, "dry_run": False}).json()
-    assert again["to_change"] == 0 and again["differs"] == 0
+    assert again["to_change"] == 0
+
+
+def test_importing_older_orders_moves_a_september_start_back_to_march_and_the_first_vendor_follows(client, dev, db, make_store):
+    from app.models.store_vendor_period import StoreVendorPeriod
+    from app.services import vendor_history_service
+
+    s = make_store(code="SDS-MV", vendor="V1")
+    hand = make_store(code="SDS-HAND", vendor="V2")
+    sept, march = date(2026, 9, 3), date(2026, 3, 9)
+    s.start_date, hand.start_date = sept, date(2026, 2, 1)
+    db.commit()
+    vendor_history_service.record_vendors(db, [s, hand], source="backfill", today=sept)
+    db.commit()
+    for st in (s, hand):
+        _entry(db, st, sept, 5)
+    # the March sheet arrives later
+    csv = "\n".join([f"Outlet ID,Outlet Name,{march},{sept}", "SDS-MV,x,6,5", "SDS-HAND,x,6,5"]).encode()
+    r = client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"}, files={"file": ("o.csv", csv, "text/csv")})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    assert s.start_date == march                                       # was September
+    assert hand.start_date == date(2026, 2, 1)                         # typed by hand, earlier than our data: kept
+    assert db.query(StoreVendorPeriod).filter_by(store_id=s.id).one().start_date == march    # the first vendor began with the store
+    assert db.query(StoreVendorPeriod).filter_by(store_id=hand.id).one().start_date == date(2026, 2, 1)
+    # a later import never pushes it forward again
+    csv = "\n".join([f"Outlet ID,Outlet Name,{sept}", "SDS-MV,x,5"]).encode()
+    client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"}, files={"file": ("o.csv", csv, "text/csv")})
+    db.expire_all()
+    assert s.start_date == march
+
+
+def test_a_vendor_change_records_who_made_it(client, admin, db, make_store):
+    s = make_store(code="SDS-WHO", vendor="FIRST")
+    from app.services import vendor_history_service
+
+    vendor_history_service.record_vendors(db, [s], source="backfill", today=date(2026, 1, 1))
+    db.commit()
+    assert client.patch(f"{API}/stores/{s.id}", headers=admin, json={"vendor_name": "SECOND"}).status_code == 200
+    hist = client.get(f"{API}/stores/{s.id}/vendors", headers=admin).json()
+    assert [h["vendor_name"] for h in hist] == ["SECOND", "FIRST"]
+    assert hist[0]["changed_by"] and hist[0]["source"] == "manual" and hist[0]["recorded_on"]
+    assert hist[1]["changed_by"] is None and hist[1]["source"] == "backfill"
 
 
 def test_start_date_sync_rejects_an_unknown_platform(client, dev):
@@ -215,23 +259,41 @@ def test_a_new_store_needs_a_start_date_and_it_cannot_be_removed_later(client, a
     db.commit()
 
 
-def test_file_import_skips_new_stores_without_a_start_date_but_still_updates_existing_ones(client, dev, db, make_store):
+def test_file_import_adds_new_stores_without_a_start_date_but_flags_them(client, dev, db, make_store):
     existing = make_store(code="SD-IMP-1", name="Old Name")
-    csv = (
-        "Outlet ID,Outlet Name,STATUS,Start date\n"
-        "SD-IMP-1,New Name,Live,\n"            # existing store, blank date: fine
-        "SD-IMP-2,Brand New With Date,Live,2026-03-01\n"
-        "SD-IMP-3,Brand New No Date,Live,\n"
-        "SD-IMP-4,Brand New Bad Date,Live,not a date\n"
-    ).encode()
+    csv = "\n".join([
+        "Outlet ID,Outlet Name,STATUS,Start date",
+        "SD-IMP-1,New Name,Live,",                      # existing store, blank date: fine
+        "SD-IMP-2,Brand New With Date,Live,2026-03-01",
+        "SD-IMP-3,Brand New No Date,Live,",
+        "SD-IMP-4,Brand New Bad Date,Live,not a date",
+    ]).encode()
     r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("s.csv", csv, "text/csv")}, headers=dev)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert (body["created"], body["updated"], body["skipped"]) == (1, 1, 2)
-    assert "NOT added" in body["warnings"][0] and "start date" in body["warnings"][0]
+    # nothing is dropped: employees must still see every live store
+    assert (body["created"], body["updated"], body["without_start_date"]) == (3, 1, 2)
+    assert "no start date" in body["warnings"][0] and "still added" in body["warnings"][0]
     db.expire_all()
     assert existing.name == "New Name"
-    assert db.query(Store).filter(Store.external_code.in_(["SD-IMP-2"])).count() == 1
-    assert db.query(Store).filter(Store.external_code.in_(["SD-IMP-3", "SD-IMP-4"])).count() == 0
-    db.query(Store).filter(Store.external_code == "SD-IMP-2").delete()
+    rows = {s.external_code: s for s in db.query(Store).filter(Store.external_code.like("SD-IMP-%"))}
+    assert rows["SD-IMP-2"].start_date == date(2026, 3, 1) and rows["SD-IMP-3"].start_date is None and rows["SD-IMP-3"].status == "LIVE"
+    db.query(Store).filter(Store.external_code.in_(["SD-IMP-2", "SD-IMP-3", "SD-IMP-4"])).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_an_import_never_turns_live_stores_into_pending_by_accident(client, dev, db, make_store):
+    """A sheet with no STATUS column, a blank status or unrecognised text must leave an existing store's status alone
+    (a PENDING store is invisible to employees); a recognised status still applies; a new store defaults to PENDING."""
+    a, b, c = (make_store(code=f"ST-KEEP-{i}") for i in range(3))
+    no_col = "Outlet ID,Outlet Name\nST-KEEP-0,A\nST-NEW-1,Brand New\n".encode()
+    assert client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.csv", no_col, "text/csv")}, headers=dev).status_code == 200
+    odd = "Outlet ID,Outlet Name,STATUS\nST-KEEP-0,A,\nST-KEEP-1,B,Supplying nicely\nST-KEEP-2,C,Close\n".encode()
+    r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("b.csv", odd, "text/csv")}, headers=dev)
+    assert r.status_code == 200, r.text
+    assert any("doesn't recognise" in w for w in r.json()["warnings"])
+    db.expire_all()
+    assert (a.status, b.status, c.status) == ("LIVE", "LIVE", "CLOSE")
+    assert db.query(Store).filter_by(external_code="ST-NEW-1").one().status == "PENDING"
+    db.query(Store).filter_by(external_code="ST-NEW-1").delete()
     db.commit()

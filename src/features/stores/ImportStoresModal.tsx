@@ -76,16 +76,16 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-3 rounded-xl bg-status-success-soft px-4 py-3 text-status-success">
             <IconCheckCircle className="h-6 w-6 shrink-0" />
             <div>
-              <p className="text-sm font-bold">{result.skipped ? "Import complete, with stores left out" : "Import complete"}</p>
+              <p className="text-sm font-bold">{result.withoutStartDate ? "Import complete, some stores need a start date" : "Import complete"}</p>
               <p className="text-xs opacity-80">{result.rowsRead} rows read from {file?.name}</p>
             </div>
           </div>
-          <div className={`grid gap-3 text-center ${result.skipped ? "grid-cols-4" : "grid-cols-3"}`}>
+          <div className={`grid gap-3 text-center ${result.withoutStartDate ? "grid-cols-4" : "grid-cols-3"}`}>
             {[
               { l: "Added", v: result.created, c: "text-status-success" },
               { l: "Updated", v: result.updated, c: "text-brand-600" },
               { l: "Unchanged", v: result.unchanged, c: "text-gray-600" },
-              ...(result.skipped ? [{ l: "No start date", v: result.skipped, c: "text-status-danger" }] : []),
+              ...(result.withoutStartDate ? [{ l: "Need start date", v: result.withoutStartDate, c: "text-status-warning" }] : []),
             ].map((x) => (
               <div key={x.l} className="rounded-xl border border-surface-border p-3">
                 <p className={`text-2xl font-bold tabular-nums ${x.c}`}>{x.v}</p>
@@ -135,7 +135,7 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
             <p>
               Use your outlet-sheet format (first row = headers). Read: <b>Outlet ID</b>, <b>Outlet Name</b>, ZONE, State, City,
               STATUS, <b>start Date</b>, Address, POC Name, POC Contact no, vendor, Contact Details. Other columns (and any login / password columns)
-              are ignored. A <b>start date is required for every new store</b>: rows without one are not added.
+              are ignored. New stores without a start date are still added, but flagged: fill the date in the store details or use Sync start dates.
             </p>
             <button onClick={downloadTemplate} className="flex shrink-0 items-center gap-1 font-semibold text-brand-600 hover:text-brand-700">
               <IconDownload className="h-3.5 w-3.5" /> Template

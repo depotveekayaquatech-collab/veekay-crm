@@ -29,3 +29,4 @@ class StoreVendorPeriod(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)     # NULL = current vendor
     start_confirmed: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     source: Mapped[str] = mapped_column(String(16), default="sheet")      # sheet | file | manual | backfill
+    changed_by_name: Mapped[str | None] = mapped_column(String(128), nullable=True)   # who made the change (a name, so it survives user changes)

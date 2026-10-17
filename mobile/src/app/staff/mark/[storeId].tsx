@@ -38,12 +38,12 @@ function Stepper({ value, onChange, error, label }: { value: string; onChange: (
 }
 
 export default function MarkMany() {
-  const { storeId } = useLocalSearchParams<{ storeId: string }>();
+  const { storeId, day } = useLocalSearchParams<{ storeId: string; day?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cal = useCalendar(storeId);
   const mark = useMarkMany();
-  const [selected, setSelected] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[] | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [same, setSame] = useState("");
@@ -52,6 +52,14 @@ export default function MarkMany() {
   const open = useMemo(() => (cal.data?.days ?? []).filter((d) => !d.marked && !d.is_future).map((d) => d.date), [cal.data]);
   const today = cal.data?.days.find((d) => d.is_today)?.date;
   const yesterday = daysAgo(1);
+
+  // Opened from the Orders list: the day that list was showing is already ticked, ready for its count.
+  const initial = useMemo(() => {
+    const d = day ? byDate.get(day) : undefined;
+    return day && d && !d.marked && !d.is_future ? [day] : [];
+  }, [day, byDate]);
+  const selected = picked ?? initial;
+  const setSelected = (next: string[] | ((s: string[]) => string[])) => setPicked((p) => (typeof next === "function" ? next(p ?? initial) : next));
 
   function toggle(iso: string) {
     Haptics.selectionAsync().catch(() => undefined);

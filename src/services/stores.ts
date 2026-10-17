@@ -117,23 +117,28 @@ export async function movePlatform(
 export interface StartDatesResult {
   stores: number;
   toFill: number;       // empty start dates that can be filled
-  differs: number;      // a date is set but isn't the first supply
+  moveEarlier: number;  // the date is later than the first supply: moves back to it (always applied)
+  keepHandDates: number; // the date is earlier than the first supply (typed by hand): kept unless replacing
   unchanged: number;    // already equals the first supply
   noOrders: number;     // no supplied day in the order sheet yet: left alone
   toChange: number;     // what this run changes (fills, plus replacements when `replaceExisting`)
   replaceExisting: boolean;
   dryRun: boolean;
+  noOrdersByStatus: Record<string, number>;
+  noOrdersLiveSample: { name: string; code: string; platform: string }[];
 }
 
 /** Developer only: set each store's start date to its first supplied day from the order sheet. `dryRun` only counts. */
 export async function syncStartDates(platform: string, replaceExisting: boolean, dryRun: boolean): Promise<StartDatesResult> {
   const w = await apiRequest<{
-    stores: number; to_fill: number; differs: number; unchanged: number; no_orders: number; to_change: number;
-    replace_existing: boolean; dry_run: boolean;
+    stores: number; to_fill: number; move_earlier: number; keep_hand_dates: number; unchanged: number; no_orders: number; to_change: number;
+    replace_existing: boolean; dry_run: boolean; no_orders_by_status?: Record<string, number>;
+    no_orders_live_sample?: { name: string; code: string; platform: string }[];
   }>("/stores/sync-start-dates", { method: "POST", body: { platform: platform || null, overwrite: replaceExisting, dry_run: dryRun } });
   return {
-    stores: w.stores, toFill: w.to_fill, differs: w.differs, unchanged: w.unchanged, noOrders: w.no_orders,
+    stores: w.stores, toFill: w.to_fill, moveEarlier: w.move_earlier, keepHandDates: w.keep_hand_dates, unchanged: w.unchanged, noOrders: w.no_orders,
     toChange: w.to_change, replaceExisting: w.replace_existing, dryRun: w.dry_run,
+    noOrdersByStatus: w.no_orders_by_status ?? {}, noOrdersLiveSample: w.no_orders_live_sample ?? [],
   };
 }
 

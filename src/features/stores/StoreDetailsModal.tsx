@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { VendorHistory } from "@/features/stores/VendorHistory";
 import type { Store } from "@/types/store";
 
 const STATUS_LABEL = { LIVE: "Live", PENDING: "Pending", CLOSE: "Closed" } as const;
@@ -40,6 +41,7 @@ export function StoreDetailsModal({ store, onClose, onEdit }: { store: Store; on
         <div className="sm:col-span-2"><Row label="Address" value={store.address} /></div>
         <Row label="Vendor" value={store.vendorName ? `${store.vendorName}${store.vendorNumber ? ` (${store.vendorNumber})` : ""}` : null} />
         <Row label="POC" value={store.pocName ? `${store.pocName}${store.pocNumber ? ` · ${store.pocNumber}` : ""}` : null} />
+        <VendorHistory storeId={store.id} minEntries={1} />
       </dl>
     </Modal>
   );

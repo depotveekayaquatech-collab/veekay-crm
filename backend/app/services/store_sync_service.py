@@ -43,7 +43,7 @@ _COLUMN_ALIASES: dict[str, list[str]] = {
     "region": ["zone", "region"],
     "entity": ["entity"],
     # Veekay's own start date wins; fall back to the partner's go-live date column.
-    "start_date": ["start date", "start_date", "start date by blinkit", "go-live date", "go live date", "live date"],
+    "start_date": ["start date", "start_date", "start date by blinkit", "supply start date", "go-live date", "go live date", "live date"],
     "state": ["state"],
     "city": ["city"],
     "address": ["address", "location"],
@@ -68,11 +68,10 @@ _CLOSE_RE = re.compile(
 _LIVE_RE = re.compile(r"\b(live|active|running|working|operational|go[- ]?live)\b")
 
 
-def normalize_status(raw: str | None) -> str:
-    """Free-text sheet status -> LIVE / PENDING / CLOSE. Unknown -> PENDING so
-    it surfaces for review rather than silently going live."""
-    if not raw:
-        return StoreStatus.PENDING.value
+def parse_status(raw: str | None) -> str | None:
+    """Free-text sheet status -> LIVE / PENDING / CLOSE, or None when the cell is blank or says something we don't know."""
+    if not raw or not raw.strip():
+        return None
     text = raw.strip().lower()
     if _PENDING_FIRST.search(text):
         return StoreStatus.PENDING.value
@@ -80,7 +79,12 @@ def normalize_status(raw: str | None) -> str:
         return StoreStatus.CLOSE.value
     if _LIVE_RE.search(text):
         return StoreStatus.LIVE.value
-    return StoreStatus.PENDING.value
+    return None
+
+
+def normalize_status(raw: str | None) -> str:
+    """Status for a NEW store. Blank / unknown -> PENDING so it surfaces for review rather than silently going live."""
+    return parse_status(raw) or StoreStatus.PENDING.value
 
 
 @dataclass
@@ -91,14 +95,14 @@ class SyncResult:
     unchanged: int = 0
     rows_read: int = 0
     vendor_changes: int = 0     # stores whose vendor changed (the old vendor is kept as history)
-    skipped: int = 0            # new stores not added (no start date in the sheet)
+    without_start_date: int = 0  # new stores added although the sheet had no readable start date
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
             "platform": self.platform,
             "vendor_changes": self.vendor_changes,
-            "skipped": self.skipped,
+            "without_start_date": self.without_start_date,
             "created": self.created,
             "updated": self.updated,
             "unchanged": self.unchanged,
@@ -492,7 +496,8 @@ def _import_rows(
     trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
     bad_dates: list[int] = []            # rows whose start date couldn't be read
     vendor_touched: list[Store] = []     # stores whose vendor was set or changed by this import
-    missing_start: list[int] = []        # NEW stores skipped because the sheet gave no readable start date
+    missing_start: list[int] = []        # NEW stores added without a start date (the sheet gave no readable one)
+    unknown_status: list[int] = []       # rows whose status text isn't recognised (existing stores keep their status)
 
     for i, row in enumerate(rows, start=2):  # sheet row number (1 = header)
         code = _clean(row.get(cols["external_code"]))
@@ -507,7 +512,10 @@ def _import_rows(
             continue
         seen_codes.add(code)
 
-        status = normalize_status(row.get(cols["status"]) if "status" in cols else None)
+        raw_status = row.get(cols["status"]) if "status" in cols else None
+        status = parse_status(raw_status)          # None: blank or unrecognised -> an existing store keeps its status
+        if status is None and _clean(raw_status):
+            unknown_status.append(i)
         region_id: uuid.UUID | None = None
         if "region" in cols:
             raw_region = _clean(row.get(cols["region"]))
@@ -536,6 +544,8 @@ def _import_rows(
             "status": status,
             "region_id": region_id,
         }
+        if status is None:
+            fields.pop("status")                   # not written for existing stores; a new store defaults to PENDING
 
         if "start_date" in cols and _clean(row.get(cols["start_date"])) and fields["start_date"] is None:
             bad_dates.append(i)
@@ -549,13 +559,12 @@ def _import_rows(
         existing = by_code.get(code)
         if existing is None:
             if fields["start_date"] is None:
-                missing_start.append(i)   # a new store must come with its start date
-                continue
+                missing_start.append(i)   # still added (employees must see it); flagged below so the date gets filled
             new_store = Store(
                 organization_id=actor.organization_id,
                 partner_organization_id=partner.id,
                 external_code=code,
-                **fields,
+                **{"status": StoreStatus.PENDING.value, **fields},
             )
             db.add(new_store)
             by_code[code] = new_store
@@ -585,7 +594,9 @@ def _import_rows(
                 result.unchanged += 1
 
     db.flush()
-    result.vendor_changes = vendor_history_service.record_vendors(db, vendor_touched, source=source, today=datetime.now(timezone.utc).date())
+    result.vendor_changes = vendor_history_service.record_vendors(
+        db, vendor_touched, source=source, today=datetime.now(timezone.utc).date(), changed_by=actor.full_name
+    )
     if result.vendor_changes:
         result.warnings.append(
             f"{result.vendor_changes} store{'s' if result.vendor_changes > 1 else ''} changed vendor; the previous vendor is kept "
@@ -597,16 +608,24 @@ def _import_rows(
         restored = store_service.restore_archived_history(db, actor.organization_id, partner.id)
         if restored:
             result.warnings.append(f"{restored} archived order days were restored to re-added stores.")
+            vendor_history_service.set_start_dates_from_orders(db, partner.id)   # restored history dates the new stores
 
     if missing_start:
+        # A store added without a date is not hidden or dropped (employees must still see it), but it is flagged.
         n = len(missing_start)
-        result.skipped = n
+        result.without_start_date = n
         rows_txt = ", ".join(str(r) for r in missing_start[:8]) + (" …" if n > 8 else "")
         result.warnings.insert(
             0,
-            f"{n} new store{'s were' if n > 1 else ' was'} NOT added because the sheet has no readable start date for "
-            f"{'them' if n > 1 else 'it'} (rows {rows_txt}). A start date is required for every new store: fill the "
-            "'Start date' column (e.g. 2026-03-15 or 15-Mar-2026) and import again.",
+            f"{n} new store{'s have' if n > 1 else ' has'} no start date in the sheet (rows {rows_txt}). "
+            f"{'They were' if n > 1 else 'It was'} still added so employees can see {'them' if n > 1 else 'it'}. Add the date in the "
+            "store's details, put it in the sheet's 'Start date' column, or use Data sync > Sync start dates once orders exist.",
+        )
+    if unknown_status:
+        n = len(unknown_status)
+        result.warnings.append(
+            f"{n} row{'s' if n > 1 else ''} had a status the CRM doesn't recognise (first: row {unknown_status[0]}). "
+            "Existing stores kept their current status; new stores were added as Pending. Use Live, Pending or Close."
         )
     if bad_dates:
         result.warnings.append(

@@ -49,7 +49,7 @@ export interface LeavesMe { year: number; items: LeaveItem[]; taken: Record<stri
 
 export interface MyStore {
   id: string; name: string; external_code: string; state: string | null; city: string | null; region_name: string | null;
-  status: string; partner_name: string | null; today: string; today_count: number | null;
+  status: string; partner_name: string | null; today: string; today_count: number | null; yesterday_count?: number | null;
 }
 
 export type Direction = "IN" | "OUT";

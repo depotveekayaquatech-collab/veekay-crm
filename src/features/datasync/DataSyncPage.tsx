@@ -19,7 +19,7 @@ interface Result {
   vendorChanges?: number;
   startDatesSet?: number;
   vendorStartsSet?: number;
-  skipped?: number;
+  withoutStartDate?: number;
   warnings: string[];
 }
 
@@ -38,7 +38,7 @@ function Results({ title, results, onDismiss }: { title: string; results: Result
           <li key={r.platform}>
             <span className="font-bold capitalize text-gray-900">{r.platform}</span>: +{r.created} new · {r.updated} updated · {r.unchanged} unchanged · {r.rowsRead} rows read
             {r.startDatesSet ? ` · ${r.startDatesSet} start dates set` : ""}
-            {r.skipped ? ` · ${r.skipped} NOT added (no start date)` : ""}
+            {r.withoutStartDate ? ` · ${r.withoutStartDate} new stores need a start date` : ""}
             {r.vendorChanges ? ` · ${r.vendorChanges} vendor changes` : ""}
             {r.vendorStartsSet ? ` · ${r.vendorStartsSet} new-vendor start dates set` : ""}
           </li>

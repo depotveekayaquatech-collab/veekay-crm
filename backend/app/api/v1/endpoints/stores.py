@@ -193,7 +193,8 @@ def store_vendors(store_id: uuid.UUID, user: User = Depends(get_current_user), d
     store_service.require_store(db, user, store_id)
     return [
         VendorPeriodOut(vendor_name=p.vendor_name, vendor_number=p.vendor_number, start_date=p.start_date, end_date=p.end_date,
-                        start_confirmed=p.start_confirmed, current=p.end_date is None)
+                        start_confirmed=p.start_confirmed, current=p.end_date is None,
+                        changed_by=p.changed_by_name, source=p.source, recorded_on=p.created_at)
         for p in vendor_history_service.history(db, store_id)
     ]
 

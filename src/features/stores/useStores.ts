@@ -28,6 +28,7 @@ export function useStoreMutations() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["stores"] });
     qc.invalidateQueries({ queryKey: ["regions"] });
+    qc.invalidateQueries({ queryKey: ["store-vendors"] });
   };
 
   const create = useMutation({
@@ -76,8 +77,8 @@ export function useStoreMutations() {
       qc.invalidateQueries({ queryKey: ["order-insights"] });
       qc.invalidateQueries({ queryKey: ["pending"] });
       pushToast(
-        r.skipped ? `Import done — ${r.created} added, ${r.updated} updated, ${r.skipped} NOT added (no start date).` : `Import done — ${r.created} added, ${r.updated} updated.`,
-        r.skipped ? "error" : "success",
+        r.withoutStartDate ? `Import done — ${r.created} added, ${r.updated} updated. ${r.withoutStartDate} new stores need a start date.` : `Import done — ${r.created} added, ${r.updated} updated.`,
+        "success",
       );
     },
   });

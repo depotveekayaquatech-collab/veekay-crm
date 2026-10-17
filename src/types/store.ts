@@ -72,8 +72,8 @@ export interface StoreSyncResult {
   unchanged: number;
   rowsRead: number;
   vendorChanges: number;
-  /** New stores left out because the sheet gave no readable start date. */
-  skipped: number;
+  /** New stores that were added although the sheet gave no readable start date. */
+  withoutStartDate: number;
   warnings: string[];
 }
 
@@ -84,7 +84,7 @@ export function toSyncResult(w: {
   unchanged: number;
   rows_read: number;
   vendor_changes?: number;
-  skipped?: number;
+  without_start_date?: number;
   warnings: string[];
 }): StoreSyncResult {
   return {
@@ -94,7 +94,7 @@ export function toSyncResult(w: {
     unchanged: w.unchanged,
     rowsRead: w.rows_read,
     vendorChanges: w.vendor_changes ?? 0,
-    skipped: w.skipped ?? 0,
+    withoutStartDate: w.without_start_date ?? 0,
     warnings: w.warnings,
   };
 }
@@ -106,6 +106,10 @@ export interface VendorPeriod {
   endDate: string | null; // null = the current vendor
   startConfirmed: boolean;
   current: boolean;
+  /** Who made the change; null for vendors recorded before this was tracked. */
+  changedBy: string | null;
+  source: string;
+  recordedOn: string | null;
 }
 
 export function toVendorPeriod(w: {
@@ -115,6 +119,9 @@ export function toVendorPeriod(w: {
   end_date: string | null;
   start_confirmed: boolean;
   current: boolean;
+  changed_by?: string | null;
+  source?: string;
+  recorded_on?: string | null;
 }): VendorPeriod {
   return {
     vendorName: w.vendor_name,
@@ -123,6 +130,9 @@ export function toVendorPeriod(w: {
     endDate: w.end_date,
     startConfirmed: w.start_confirmed,
     current: w.current,
+    changedBy: w.changed_by ?? null,
+    source: w.source ?? "",
+    recordedOn: w.recorded_on ?? null,
   };
 }
 

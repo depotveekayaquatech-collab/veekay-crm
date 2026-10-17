@@ -1,6 +1,6 @@
 """Store request/response contracts."""
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -72,7 +72,7 @@ class StoreSyncResult(BaseModel):
     unchanged: int
     rows_read: int
     vendor_changes: int = 0
-    skipped: int = 0
+    without_start_date: int = 0
     warnings: list[str]
 
 
@@ -83,3 +83,6 @@ class VendorPeriodOut(BaseModel):
     end_date: date | None          # None = the current vendor
     start_confirmed: bool          # False: start is provisional until the first order of this vendor is imported
     current: bool
+    changed_by: str | None = None  # who made the change (None for vendors that pre-date this record)
+    source: str = ""               # manual | file | sheet | backfill
+    recorded_on: datetime | None = None

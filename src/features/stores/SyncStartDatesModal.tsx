@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
@@ -13,7 +13,11 @@ export function SyncStartDatesModal({ onClose }: { onClose: () => void }) {
 
   const preview = startDates.data?.dryRun ? startDates.data : null;
   const done = startDates.data && !startDates.data.dryRun ? startDates.data : null;
-  const run = (dryRun: boolean) => startDates.mutate({ platform, replaceExisting: replace, dryRun });
+  const run = (dryRun: boolean, p = platform, r = replace) => startDates.mutate({ platform: p, replaceExisting: r, dryRun });
+
+  // Show what would change as soon as the window opens, and again whenever an option changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { run(true); }, []);
 
   return (
     <Modal
@@ -27,10 +31,7 @@ export function SyncStartDatesModal({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant="secondary" onClick={() => run(true)} isLoading={startDates.isPending && !preview}>
-              Preview
-            </Button>
-            <Button onClick={() => run(false)} disabled={!preview || preview.toChange === 0} isLoading={startDates.isPending && !!preview}>
+            <Button onClick={() => run(false)} disabled={!preview || preview.toChange === 0 || startDates.isPending} isLoading={startDates.isPending && !startDates.variables?.dryRun}>
               Update {preview?.toChange ?? 0} stores
             </Button>
           </>
@@ -41,7 +42,7 @@ export function SyncStartDatesModal({ onClose }: { onClose: () => void }) {
         <Select
           label="Platform"
           value={platform}
-          onChange={(e) => { setPlatform(e.target.value); startDates.reset(); }}
+          onChange={(e) => { setPlatform(e.target.value); run(true, e.target.value); }}
           placeholder="All platforms"
           options={partners.map((p) => ({ value: p.slug, label: p.name }))}
         />
@@ -50,25 +51,49 @@ export function SyncStartDatesModal({ onClose }: { onClose: () => void }) {
             type="checkbox"
             className="mt-0.5 h-4 w-4"
             checked={replace}
-            onChange={(e) => { setReplace(e.target.checked); startDates.reset(); }}
+            onChange={(e) => { setReplace(e.target.checked); run(true, platform, e.target.checked); }}
           />
           <span>
-            Also replace start dates that are already set
-            <span className="block text-xs text-gray-500">Off: only stores with an empty start date are filled; dates entered by hand are kept.</span>
+            Also replace start dates that are earlier than the first supply
+            <span className="block text-xs text-gray-500">
+              Off: dates are filled or moved back to the first supply, but a date you typed that is earlier than our first order is kept
+              (the store may have started before the order sheets begin).
+            </span>
           </span>
         </label>
-        {preview && (
+        {startDates.isPending && startDates.variables?.dryRun && <p role="status" className="text-sm text-gray-500">Checking the order sheet…</p>}
+        {preview && !startDates.isPending && (
           <div className="rounded-lg bg-surface-subtle px-3 py-2.5 text-sm text-gray-700">
             <p>
               <b>{preview.toFill}</b> store{preview.toFill === 1 ? "" : "s"} with an empty start date will be filled.
             </p>
             <p className="mt-1">
-              <b>{preview.differs}</b> already {preview.differs === 1 ? "has" : "have"} a different date
-              {preview.replaceExisting ? " and will be replaced." : " and will be left as they are."}
+              <b>{preview.moveEarlier}</b> {preview.moveEarlier === 1 ? "has" : "have"} a date later than the first supply and will move back to it.
+            </p>
+            <p className="mt-1">
+              <b>{preview.keepHandDates}</b> {preview.keepHandDates === 1 ? "has" : "have"} a date earlier than the first supply in the order sheet
+              {preview.replaceExisting ? " and will be replaced with it." : " and will be kept as they are."}
             </p>
             <p className="mt-1 text-xs text-gray-500">
               {preview.unchanged} already match · {preview.noOrders} have no supplied day in the order sheet yet (left empty) · {preview.stores} stores checked.
             </p>
+            {preview.noOrders > 0 && (
+              <details className="mt-2 text-xs text-gray-600">
+                <summary className="cursor-pointer font-semibold">
+                  Which stores have no supplied day?{" "}
+                  {Object.entries(preview.noOrdersByStatus).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(" · ")}
+                </summary>
+                <p className="mt-1">
+                  Pending and closed stores normally have no orders. A <b>live</b> store here means no bottles are recorded for it in the order sheet
+                  (check its Outlet ID matches the order sheet).
+                </p>
+                {preview.noOrdersLiveSample.length > 0 && (
+                  <ul className="mt-1 max-h-32 list-disc overflow-auto pl-4">
+                    {preview.noOrdersLiveSample.map((s) => <li key={`${s.platform}-${s.code}`}>{s.name} <span className="text-gray-400">({s.platform} · {s.code})</span></li>)}
+                  </ul>
+                )}
+              </details>
+            )}
           </div>
         )}
         {done && (
