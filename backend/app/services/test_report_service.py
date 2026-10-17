@@ -223,7 +223,7 @@ def upload(
         f"Test reports/{storage.safe_segment(partner.name)}/{storage.safe_segment(display.upper())}/"
         f"{start:%Y-%m}-to-{end:%Y-%m}-v{version}.{ext}"
     )
-    storage.save(storage_key, body)
+    storage.save_verified(storage_key, body)
     report = TestReport(
         organization_id=user.organization_id, partner_organization_id=partner.id, state=display,
         period_start=start, period_end=end, file_key=storage_key,
@@ -263,6 +263,7 @@ def remove(db: Session, user: User, report_id: uuid.UUID) -> None:
 def _ref(db: Session, user: User, report_id: uuid.UUID) -> tuple[str, str, str]:
     r = _get(db, user, report_id)
     if not storage.exists(r.file_key):
+        storage.log_missing(r.file_key, "test_reports", r.id)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "The file is missing from storage. Please upload it again.")
     return r.file_key, r.content_type, r.file_name
 

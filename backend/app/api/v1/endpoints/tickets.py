@@ -128,7 +128,10 @@ def attachment(
     kind = _kind(perms, user, db, need=("tickets.view", "tickets.manage"))
     ticket_service.get_ticket(db, user, kind, ticket_id)  # 403/404 exactly as for the ticket
     a = db.get(TicketAttachment, attachment_id)
-    if a is None or a.ticket_id != ticket_id or not storage.exists(a.file_key):
+    if a is None or a.ticket_id != ticket_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo not found.")
+    if not storage.exists(a.file_key):
+        storage.log_missing(a.file_key, "ticket_attachments", a.id)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo not found.")
     return Response(
         content=storage.read(a.file_key), media_type=a.content_type,

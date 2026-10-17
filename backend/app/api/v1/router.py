@@ -30,6 +30,7 @@ from app.api.v1.endpoints import (
     sync,
     test_reports,
     tickets,
+    uploads,
     vendor_rates,
 )
 
@@ -62,6 +63,7 @@ api_router.include_router(external_accounts.router)
 api_router.include_router(external_portal.router)
 api_router.include_router(external_data.router)
 api_router.include_router(external_actions.router)
+api_router.include_router(uploads.router)
 api_router.include_router(sync.router)
 api_router.include_router(client_errors.router)
 api_router.include_router(my_notifications.router)

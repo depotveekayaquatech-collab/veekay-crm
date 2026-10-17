@@ -121,6 +121,8 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   isRetry?: boolean;
+  /** Sent as `Idempotency-Key`: the same key again returns the first result instead of creating a second record. */
+  idempotencyKey?: string;
   /** Suppress the automatic error toast — for calls where the caller
    * wants to show its own inline error instead (e.g. the login form). */
   silent?: boolean;
@@ -155,6 +157,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   // Let the browser set the multipart boundary itself for FormData.
   if (!isForm) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
 
   let res: Response;
   try {

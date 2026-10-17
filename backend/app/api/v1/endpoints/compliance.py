@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_permissions, get_current_user, require_permission
 from app.core.cached_json import cached_json_response
 from app.core.config import settings
+from app.core.idempotency import idempotency_key_header, run_once
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.compliance import (
@@ -70,7 +71,7 @@ def stores(
 
 
 @router.post("/bulk", response_model=BulkUploadResult)
-async def bulk(
+def bulk(
     month: str = Form(...),
     kind: str = Form(...),
     files: list[UploadFile] = File(...),
@@ -82,7 +83,7 @@ async def bulk(
     store code at the start of its name (e.g. 9451.pdf, 9451_page2.jpg); photos for one store are merged."""
     _require_any(perms, "compliance.upload", "compliance.manage")
     cap = settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1
-    blobs = [(f.filename or "file", await f.read(cap)) for f in files]
+    blobs = [(f.filename or "file", f.file.read(cap)) for f in files]
     return compliance_repo_service.bulk_upload(db, user, perms, month, kind, blobs)
 
 
@@ -104,7 +105,7 @@ def summary_pdf(
 
 
 @router.post("/upload", response_model=DocBrief)
-async def upload(
+def upload(
     store_id: uuid.UUID = Form(...),
     month: str = Form(...),
     kind: str = Form(...),
@@ -112,12 +113,17 @@ async def upload(
     perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    idem: str | None = Depends(idempotency_key_header),
 ) -> DocBrief:
-    """One file is stored as-is; 2+ photos are merged into one PDF; a PDF goes alone."""
+    """One photo is shrunk (a PDF is kept as uploaded); 2+ photos are merged into one PDF; a PDF goes alone.
+    Resending with the same Idempotency-Key (a lost response, a double tap) returns the first result and adds no second version."""
     _require_any(perms, "compliance.upload", "compliance.manage")
     cap = settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1
-    blobs = [(f.filename or "file", await f.read(cap)) for f in files]
-    return compliance_service.upload(db, user, perms, store_id, month, kind, blobs)
+    blobs = [(f.filename or "file", f.file.read(cap)) for f in files]
+    return run_once(
+        db, owner=str(user.id), endpoint="compliance.upload", key=idem,
+        produce=lambda: compliance_service.upload(db, user, perms, store_id, month, kind, blobs),
+    )
 
 
 @router.delete("/{doc_id}", status_code=204)

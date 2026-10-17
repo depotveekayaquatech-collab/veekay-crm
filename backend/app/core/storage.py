@@ -14,14 +14,22 @@ storage root / prefix.
 """
 from __future__ import annotations
 
+import logging
 import re
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol
+from typing import Iterator, Protocol
 
 from app.core.config import settings
 
+log = logging.getLogger("veekay.storage")
+
 _SAFE = re.compile(r"[^A-Za-z0-9 ._()&+-]+")
+
+
+class StorageUnavailable(Exception):
+    """The file store could not be reached or did not confirm a write. Nothing was saved; the caller may retry."""
 
 
 def safe_segment(value: str | None, fallback: str = "Unknown") -> str:
@@ -44,6 +52,8 @@ class _Backend(Protocol):
     def delete(self, key: str) -> None: ...
     def healthcheck(self) -> None: ...
     def signed_url(self, key: str, *, filename: str, content_type: str, expires: int) -> str | None: ...
+    def list_objects(self) -> Iterator[tuple[str, int, datetime]]: ...
+    def stat(self, key: str) -> int | None: ...
 
 
 # --------------------------------------------------------------------------
@@ -88,6 +98,22 @@ class LocalBackend:
 
     def signed_url(self, key: str, *, filename: str, content_type: str, expires: int) -> str | None:
         return None  # a folder on this machine has no public address: the API streams the file instead
+
+    def stat(self, key: str) -> int | None:
+        try:
+            p = self._path(key)
+            return p.stat().st_size if p.is_file() else None
+        except (OSError, ValueError):
+            return None
+
+    def list_objects(self) -> Iterator[tuple[str, int, datetime]]:
+        root = self._root()
+        if not root.is_dir():
+            return
+        for p in root.rglob("*"):
+            if p.is_file() and not p.name.startswith(".health-") and not p.name.endswith(".part"):
+                st = p.stat()
+                yield p.relative_to(root).as_posix(), st.st_size, datetime.fromtimestamp(st.st_mtime, timezone.utc)
 
     def healthcheck(self) -> None:
         root = self._root()
@@ -166,6 +192,24 @@ class S3Backend:
             ExpiresIn=expires,
         )
 
+    def stat(self, key: str) -> int | None:
+        """The stored size in bytes (one HEAD request), or None when the object is not there."""
+        from botocore.exceptions import ClientError
+
+        try:
+            return int(self._c().head_object(Bucket=settings.S3_BUCKET, Key=self._k(key))["ContentLength"])
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                return None
+            raise
+
+    def list_objects(self) -> Iterator[tuple[str, int, datetime]]:
+        """Every object under our prefix as (key, size, last modified). One request per 1,000 objects."""
+        prefix = settings.S3_PREFIX.lstrip("/")
+        for page in self._c().get_paginator("list_objects_v2").paginate(Bucket=settings.S3_BUCKET, Prefix=prefix):
+            for o in page.get("Contents", []):
+                yield o["Key"][len(prefix):], int(o["Size"]), o["LastModified"]
+
     def healthcheck(self) -> None:
         self._c().head_bucket(Bucket=settings.S3_BUCKET)
 
@@ -210,12 +254,39 @@ def exists(key: str) -> bool:
     return backend().exists(key)
 
 
+def save_verified(key: str, data: bytes) -> None:
+    """Write `data` and confirm the store holds exactly that many bytes before anyone records the file as available.
+    Any failure raises StorageUnavailable: the caller creates no database record, so a record never points at a file that
+    was not stored. A half-written object is left alone (never deleted here); the audit report lists it as an orphan."""
+    try:
+        backend().save(key, data)
+        stored = backend().stat(key)
+    except ValueError:
+        raise                                            # an invalid key is a programming error, not an outage
+    except Exception as exc:  # noqa: BLE001 — network, credentials, provider errors
+        log.error("storage write failed", extra={"file_key": key, "size_out": len(data), "error": type(exc).__name__})
+        raise StorageUnavailable(type(exc).__name__) from exc
+    if stored != len(data):
+        log.error("storage write not confirmed", extra={"file_key": key, "size_out": len(data), "size_stored": stored})
+        raise StorageUnavailable("size mismatch after write")
+
+
+def log_missing(key: str, where: str, record_id: object = None) -> None:
+    """A database row points at a file the store does not have. Logged (key only, never a link) so it can be alerted on."""
+    log.warning("stored file missing", extra={"file_key": key, "where": where, "record_id": str(record_id) if record_id else None})
+
+
 def delete(key: str) -> None:
     backend().delete(key)
 
 
 def healthcheck() -> None:
     backend().healthcheck()
+
+
+def list_objects() -> Iterator[tuple[str, int, datetime]]:
+    """Read-only inventory of what is stored: (key, size in bytes, last modified). Used by the audit report only."""
+    return backend().list_objects()
 
 
 def signed_url(key: str, *, filename: str, content_type: str) -> str | None:

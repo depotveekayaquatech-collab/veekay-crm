@@ -143,7 +143,8 @@ def create(
     row.proof_name = f"cash-purchase-{body.purchase_date.isoformat()}-{str(row.id)[:8]}.{ext}"
     row.proof_content_type = _CONTENT_TYPES[ext]
     row.proof_size_bytes = len(proof_bytes)
-    storage.save(row.proof_key, proof_bytes)
+    storage.save_verified(row.proof_key, proof_bytes)
+    storage.log.info("file stored", extra={"category": "cash.proof", "file_key": row.proof_key, "size_out": len(proof_bytes)})
     activity_service.record(
         db, actor=user, action="cash_purchase.created", entity_type="cash_purchase", entity_id=row.id,
         metadata={"kind": row.kind, "category": row.category, "amount": str(row.amount),
@@ -267,5 +268,7 @@ def read_proof(db: Session, user: User, perms: set[str], purchase_id: uuid.UUID)
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Purchase not found.")
     if not row.proof_key or not storage.exists(row.proof_key):
+        if row.proof_key:
+            storage.log_missing(row.proof_key, "cash_purchases", row.id)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No payment proof is stored for this purchase.")
     return storage.read(row.proof_key), row.proof_content_type or "application/octet-stream", row.proof_name or "proof"

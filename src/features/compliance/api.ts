@@ -187,13 +187,13 @@ export function useDueBills() {
 export function useUploadDoc() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { storeId: string; month: string; kind: DocKind; files: File[] }) => {
+    mutationFn: async (v: { storeId: string; month: string; kind: DocKind; files: File[]; idempotencyKey?: string }) => {
       const body = new FormData();
       body.append("store_id", v.storeId);
       body.append("month", v.month);
       body.append("kind", v.kind);
       v.files.forEach((f) => body.append("files", f));
-      return camelize<DocBrief>(await apiRequest("/compliance/upload", { method: "POST", body }));
+      return camelize<DocBrief>(await apiRequest("/compliance/upload", { method: "POST", body, idempotencyKey: v.idempotencyKey }));
     },
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: ["compliance"] });

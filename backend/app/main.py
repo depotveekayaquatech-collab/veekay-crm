@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.router import api_router
 from app.core import scheduler
 from app.core.config import settings
+from app.core.storage import StorageUnavailable
 from app.db.session import get_db
 from app.services import card_service
 from app.core.logging_config import request_id_var, setup_logging
@@ -100,6 +101,18 @@ async def database_unavailable(request: Request, exc: Exception) -> JSONResponse
     log.error("Database unavailable on %s %s: %s", request.method, request.url.path, type(exc).__name__)
     return JSONResponse(
         {"detail": "The server is busy right now. Please try again in a few seconds.", "request_id": rid},
+        status_code=503,
+        headers={"X-Request-ID": rid, "Retry-After": "5"},
+    )
+
+
+@app.exception_handler(StorageUnavailable)
+async def storage_unavailable(request: Request, exc: StorageUnavailable) -> JSONResponse:
+    """The file store did not confirm a write. Nothing was saved and no record was created, so a retry is always safe."""
+    rid = request_id_var.get()
+    log.error("File storage unavailable on %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(
+        {"detail": "The file could not be saved right now and nothing was recorded. Please try again in a moment.", "request_id": rid},
         status_code=503,
         headers={"X-Request-ID": rid, "Retry-After": "5"},
     )

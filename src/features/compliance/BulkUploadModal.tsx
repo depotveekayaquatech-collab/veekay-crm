@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/Button";
 import { IconCheckCircle, IconClose } from "@/components/ui/icons";
 import { DOC_LABEL, useBulkUpload, type BulkResult, type DocKind } from "@/features/compliance/api";
 import { monthLabel } from "@/lib/months";
+import { prepareMany, useUploadPolicy } from "@/lib/uploads";
 
 const MAX_FILES = 300;
-const MAX_MB = 12;
 const KINDS: DocKind[] = ["card", "bill", "payment"];
 const OPTION_LABEL: Record<DocKind, string> = {
   card: "Compliance cards",
@@ -26,11 +26,18 @@ export function BulkUploadModal({ month, months, onClose }: { month: string; mon
   const [dragging, setDragging] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
 
-  const tooBig = files.find((f) => f.size > MAX_MB * 1024 * 1024);
-  const error = files.length > MAX_FILES ? `Choose at most ${MAX_FILES} files at once.` : tooBig ? `“${tooBig.name}” is larger than ${MAX_MB} MB.` : null;
+  const [preparing, setPreparing] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const policy = useUploadPolicy();
+  const error = files.length > MAX_FILES ? `Choose at most ${MAX_FILES} files at once.` : null;
 
-  function add(list: FileList | null | undefined) {
-    if (list?.length) setFiles((prev) => [...prev, ...Array.from(list)]);
+  async function add(list: FileList | null | undefined) {
+    if (!list?.length) return;
+    setPreparing(true);
+    const { ok, problems } = await prepareMany(Array.from(list), policy);   // photos are shrunk here; files that cannot be used are listed, not dropped silently
+    setFiles((prev) => [...prev, ...ok]);
+    setSkipped(problems);
+    setPreparing(false);
   }
   function onDrop(e: DragEvent) {
     e.preventDefault();
@@ -51,8 +58,8 @@ export function BulkUploadModal({ month, months, onClose }: { month: string; mon
           <>
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button
-              disabled={files.length === 0 || error !== null}
-              isLoading={bulk.isPending}
+              disabled={files.length === 0 || error !== null || preparing}
+              isLoading={bulk.isPending || preparing}
               onClick={() => bulk.mutate({ month: m, kind, files }, { onSuccess: setResult })}
             >
               Upload {files.length > 0 ? `${files.length} file${files.length > 1 ? "s" : ""}` : ""}
@@ -141,7 +148,7 @@ export function BulkUploadModal({ month, months, onClose }: { month: string; mon
               }}
             />
             <p className="text-sm font-semibold text-gray-800">Drop files here, or click to browse</p>
-            <p className="text-xs text-gray-500">JPG, PNG, WEBP or PDF · up to {MAX_MB} MB each · {MAX_FILES} files at a time</p>
+            <p className="text-xs text-gray-500">JPG, PNG, WEBP or PDF · photos are shrunk automatically · PDFs up to {policy.pdfMaxMb} MB each · {MAX_FILES} files at a time</p>
           </div>
 
           {files.length > 0 && (
@@ -168,6 +175,16 @@ export function BulkUploadModal({ month, months, onClose }: { month: string; mon
           )}
 
           {error && <p role="alert" className="rounded-lg bg-status-danger-soft px-3 py-2 text-sm text-status-danger">{error}</p>}
+          {skipped.length > 0 && (
+            <div role="alert" className="rounded-lg bg-status-warning-soft px-3 py-2 text-sm text-status-warning">
+              <p className="font-semibold">{skipped.length} file{skipped.length > 1 ? "s were" : " was"} not added:</p>
+              <ul className="mt-1 max-h-28 list-disc overflow-auto pl-5 text-xs">
+                {skipped.slice(0, 20).map((m, i) => <li key={i}>{m}</li>)}
+              </ul>
+              {skipped.length > 20 && <p className="mt-1 text-xs">… and {skipped.length - 20} more.</p>}
+            </div>
+          )}
+          {preparing && <p role="status" className="text-sm text-gray-500">Preparing photos…</p>}
           {bulk.error && !error && (
             <p role="alert" className="rounded-lg bg-status-danger-soft px-3 py-2 text-sm text-status-danger">
               {bulk.error instanceof Error ? bulk.error.message : "Upload failed."}

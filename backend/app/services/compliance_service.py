@@ -3,7 +3,7 @@ Store compliance cards and monthly bills.
 
 Rules (from the original system):
   - Months selectable from COMPLIANCE_EARLIEST_MONTH, at most 12 back, never future.
-  - One file is stored as-is; two or more photos are merged into one PDF;
+  - One photo is shrunk and stored (a PDF as uploaded); two or more photos are merged into one PDF;
     a PDF must be uploaded alone. Max COMPLIANCE_MAX_FILE_MB per file.
   - One current document per (store, month, kind). A new upload becomes the current file as a
     new VERSION; earlier files stay in storage and in the version table. Nothing is ever deleted:
@@ -26,7 +26,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.core import storage
+from app.core import images, storage
 from app.core.config import settings
 from app.models.compliance_document import (
     VALID_KINDS, BillStatus, ComplianceDocument, ComplianceDocumentVersion, DocKind,
@@ -43,7 +43,6 @@ _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
            "August", "September", "October", "November", "December"]
 MAX_FILES_PER_UPLOAD = 20
 MAX_IMAGE_PIXELS = 60_000_000
-MAX_DIMENSION = 2400  # photos are downscaled so merged PDFs stay small
 
 
 def _today() -> date:
@@ -142,38 +141,46 @@ def _doc_for_access(db: Session, user: User, perms: set[str], doc_id: uuid.UUID,
 # file handling
 # --------------------------------------------------------------------------
 
-def _sniff(data: bytes) -> str | None:
-    if data.startswith(b"%PDF"):
-        return "pdf"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
-    return None
+_sniff = images.sniff   # the real file type from its first bytes (kept under this name for the other services)
 
 
 _CONTENT_TYPES = {"pdf": "application/pdf", "jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 
 
-def _merge_images_to_pdf(images: list[bytes]) -> bytes:
+def _merge_images_to_pdf(photos: list[bytes]) -> bytes:
     try:
         from PIL import Image, ImageOps
     except ImportError as exc:  # pragma: no cover
         raise _err(status.HTTP_500_INTERNAL_SERVER_ERROR, "Image support (Pillow) is not installed.") from exc
     Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
-    pages = []
+    uprights = []
     try:
-        for raw in images:
-            img = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
-            img.thumbnail((MAX_DIMENSION, MAX_DIMENSION))
-            pages.append(img.convert("RGB"))
-        out = io.BytesIO()
-        pages[0].save(out, "PDF", save_all=True, append_images=pages[1:], resolution=150.0)
-        return out.getvalue()
+        for raw in photos:
+            uprights.append(ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB"))
     except (OSError, ValueError, Image.DecompressionBombError) as exc:
         raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, "One of the photos could not be read.") from exc
+    # The PDF we build obeys the same PDF size limit as an uploaded one: the pages are shrunk until it fits.
+    cap = settings.PDF_MAX_FILE_MB * 1024 * 1024
+    dim, quality = settings.IMAGE_MAX_DIMENSION, settings.IMAGE_JPEG_QUALITY
+    while True:
+        pages = []
+        for img in uprights:
+            page = img.copy()
+            page.thumbnail((dim, dim))
+            pages.append(page)
+        out = io.BytesIO()
+        pages[0].save(out, "PDF", save_all=True, append_images=pages[1:], resolution=150.0, quality=quality)
+        if out.tell() <= cap:
+            return out.getvalue()
+        if quality > 55:
+            quality -= 8
+        elif dim > 900:
+            dim = int(dim * 0.85)
+        else:
+            raise _err(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                f"These {len(photos)} photos cannot be combined into a PDF under {settings.PDF_MAX_FILE_MB} MB. Upload fewer photos at a time.",
+            )
 
 
 def _prepare(files: list[tuple[str, bytes]]) -> tuple[bytes, str]:
@@ -192,24 +199,42 @@ def _prepare(files: list[tuple[str, bytes]]) -> tuple[bytes, str]:
         kind = _sniff(data)
         if kind is None:
             raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, f"'{name}' must be a JPG, PNG, WEBP photo or a PDF.")
+        if kind == "pdf" and len(data) > settings.PDF_MAX_FILE_MB * 1024 * 1024:
+            raise _err(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                f"'{name}' is a PDF larger than {settings.PDF_MAX_FILE_MB} MB. Make the PDF smaller, or upload photos of the pages instead "
+                "(photos are shrunk automatically).",
+            )
         kinds.append(kind)
     if "pdf" in kinds and len(files) > 1:
         raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, "A PDF must be uploaded on its own (not together with other files).")
     if len(files) == 1:
-        return files[0][1], kinds[0]
+        data, kind = files[0][1], kinds[0]
+        if kind == "pdf":
+            return data, kind                               # a PDF is stored exactly as uploaded
+        try:
+            return images.optimize(data, kind)              # resized, upright, GPS-free (or untouched if already small)
+        except images.UnreadableImage as exc:
+            raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, f"'{files[0][0]}' is not a photo we can read. Take it again or choose another.") from exc
+        except images.ImageTooLarge as exc:
+            raise _err(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                f"'{files[0][0]}' is still larger than {settings.PHOTO_MAX_STORED_KB} KB after shrinking. Take the photo again with less detail in view.",
+            ) from exc
     return _merge_images_to_pdf([d for _, d in files]), "pdf"
 
 
 def _key_for(store: Store, month: date, kind: str, ext: str, version: int = 1) -> str:
     """<Month Year>/<STATE>/<ENTITY>/<code>-<kind>-v<N>.<ext>; bills under Bills/; Zepto has no entity level.
-    The version is in the name, so a new upload can never overwrite an earlier file."""
+    The version AND a random suffix are in the name, so no upload can ever overwrite an earlier file, even when two
+    uploads for the same store, month and kind arrive at the same moment and compute the same version number."""
     segs = [month_label(month), (store.state or "Unknown").upper()]
     platform_slug = store.partner_organization.slug if store.partner_organization else None
     if store.entity and not assignment_service.is_employee_model(platform_slug):
         segs.append(store.entity.upper())
     folder = "/".join(storage.safe_segment(x) for x in segs)
     prefix = {DocKind.BILL.value: "Bills/", DocKind.PAYMENT.value: "Payments/"}.get(kind, "")
-    return f"{prefix}{folder}/{storage.safe_segment(store.external_code)}-{kind}-v{version}.{ext}"
+    return f"{prefix}{folder}/{storage.safe_segment(store.external_code)}-{kind}-v{version}-{uuid.uuid4().hex[:8]}.{ext}"
 
 
 # --------------------------------------------------------------------------
@@ -239,7 +264,8 @@ def save_document(
     ).scalar_one_or_none()
     version = (max((v.version for v in doc.versions), default=0) if doc else 0) + 1
     key = _key_for(store, month, kind, ext, version)
-    storage.save(key, data)
+    storage.save_verified(key, data)   # the record below is only created once the store has confirmed the file
+    storage.log.info("file stored", extra={"category": f"compliance.{kind}", "file_key": key, "size_out": len(data)})
     fields = dict(
         file_key=key, file_name=f"{store.external_code}_{kind}_{month:%Y-%m}.{ext}", content_type=_CONTENT_TYPES[ext],
         size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), storage_backend=settings.STORAGE_BACKEND,
@@ -345,6 +371,7 @@ def _file_ref(
             raise _err(status.HTTP_404_NOT_FOUND, "That version does not exist.")
         key, content_type, name = v.file_key, v.content_type, f"v{v.version}-{v.file_name}"
     if not storage.exists(key):
+        storage.log_missing(key, "compliance_documents", doc.id)
         raise _err(status.HTTP_404_NOT_FOUND, "The file is missing from storage. Please upload it again.")
     return key, content_type, name
 

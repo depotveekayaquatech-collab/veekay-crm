@@ -30,7 +30,7 @@ def overview(
     "", response_model=TestReportOut, status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission("compliance.manage"))],
 )
-async def upload(
+def upload(
     partner: str = Form(...),
     state: str = Form(...),
     period_start: str = Form(..., description="YYYY-MM: the month the 6-month period starts in"),
@@ -38,7 +38,7 @@ async def upload(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TestReportOut:
-    data = await file.read(settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1)
+    data = file.file.read(settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1)
     return test_report_service.upload(db, user, partner, state, period_start, file.filename or "", data)
 
 

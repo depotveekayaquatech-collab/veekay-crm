@@ -93,7 +93,20 @@ class Settings(BaseSettings):
 
     # Compliance / bill file storage
     UPLOAD_DIR: str = Field(default="storage")
-    COMPLIANCE_MAX_FILE_MB: int = Field(default=12)
+    # --- Upload policy (all enforced by the server; the web app reads them from GET /uploads/policy) ---
+    # What the server will ACCEPT from a client. A raw phone photo is 2-8 MB and the installed Android app does not shrink
+    # photos before sending, so this stays generous; the real limit is what gets STORED (below).
+    COMPLIANCE_MAX_FILE_MB: int = Field(default=12, ge=1, le=100)
+    PHOTO_MAX_STORED_KB: int = Field(default=1024, ge=100, le=10_240)   # a stored photo is never larger than this (it is re-encoded to fit)
+    PDF_MAX_FILE_MB: int = Field(default=2, ge=1, le=100)               # a PDF is stored exactly as uploaded, so this is a hard limit
+    # Photos are resized and re-encoded before they are stored (~300 KB typical).
+    IMAGE_OPTIMIZE: bool = Field(default=True)
+    IMAGE_MAX_DIMENSION: int = Field(default=1600, ge=600, le=4000)     # longest side, pixels
+    IMAGE_JPEG_QUALITY: int = Field(default=80, ge=50, le=95)
+    IMAGE_KEEP_BELOW_KB: int = Field(default=350, ge=0)                 # an image this small, upright and without GPS is not recompressed
+    # Only used to WARN in the logs and the audit report. It is not enforced and not the price list.
+    STORAGE_QUOTA_GB: float = Field(default=5.0, gt=0)
+    STORAGE_WARN_PERCENT: int = Field(default=80, ge=1, le=100)
     FIREBASE_CREDENTIALS_FILE: str = Field(default="")
     BILL_DUE_DAYS_AFTER_MONTH_END: int = Field(default=45)
     COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")

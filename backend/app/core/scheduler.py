@@ -108,6 +108,9 @@ def run_daily_store_sync() -> None:
             log.warning("store sync skipped: no admin user to attribute it to")
             return
         result = execute_sync(db, actor, "scheduled")
+        from app.services import storage_monitor
+
+        storage_monitor.check_and_log()           # one read-only usage line a day; never raises
         for kind in ("stores", "orders"):
             for x in result[kind]:
                 log.info(

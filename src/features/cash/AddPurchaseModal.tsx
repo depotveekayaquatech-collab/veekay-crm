@@ -7,11 +7,11 @@ import { FileDropzone } from "@/components/ui/FileDropzone";
 import { SegmentedControl } from "@/features/orders/ui";
 import { useAddCashPurchase, type CashOptions, type PurchaseKind } from "@/features/cash/api";
 import { daysAgo } from "@/lib/dates";
-
-const MAX_PROOF_MB = 10;
+import { policyHint, prepareUpload, useUploadPolicy } from "@/lib/uploads";
 
 export function AddPurchaseModal({ options, onClose }: { options: CashOptions; onClose: () => void }) {
   const add = useAddCashPurchase();
+  const policy = useUploadPolicy();
   const today = daysAgo(0);
   const [kind, setKind] = useState<PurchaseKind>("OFFICE");
   const [storeId, setStoreId] = useState("");
@@ -37,13 +37,14 @@ export function AddPurchaseModal({ options, onClose }: { options: CashOptions; o
     setError(null);
   }
 
-  function pickProof(f: File | undefined) {
+  async function pickProof(f: File | undefined) {
     if (!f) return;
-    const ok = /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(f.type);
-    if (!ok) return setError("Payment proof must be a JPG, PNG or WEBP photo, or a PDF.");
-    if (f.size > MAX_PROOF_MB * 1024 * 1024) return setError(`The file is larger than ${MAX_PROOF_MB} MB.`);
     setError(null);
-    setProof(f);
+    try {
+      setProof(await prepareUpload(f, policy));   // a photo is shrunk here first; a PDF over the limit is refused with advice
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That file can't be used.");
+    }
   }
 
   async function submit(e: FormEvent) {
@@ -119,7 +120,7 @@ export function AddPurchaseModal({ options, onClose }: { options: CashOptions; o
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-semibold text-gray-700">Payment proof</span>
-          <FileDropzone file={proof} onPick={pickProof} accept="image/jpeg,image/png,image/webp,application/pdf" hint={`Bill, receipt or payment screenshot · photo or PDF · up to ${MAX_PROOF_MB} MB`} />
+          <FileDropzone file={proof} onPick={pickProof} accept="image/jpeg,image/png,image/webp,application/pdf" hint={`Bill, receipt or payment screenshot · photo or PDF · ${policyHint(policy)}`} />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="cash-notes" className="text-[13px] font-semibold text-gray-700">

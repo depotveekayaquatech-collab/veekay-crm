@@ -53,7 +53,7 @@ def listing(
 
 
 @router.post("", response_model=CashPurchaseOut, status_code=status.HTTP_201_CREATED)
-async def create(
+def create(
     kind: Literal["OFFICE", "STORE"] = Form(...),
     purchase_date: date = Form(...),
     category: str = Form(...),
@@ -76,7 +76,7 @@ async def create(
         )
     except (InvalidOperation, ValueError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Enter a valid amount (up to 2 decimals).") from exc
-    data = await proof.read(settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1)
+    data = proof.file.read(settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1)
     return run_once(
         db, owner=str(user.id), endpoint="cash.purchase.create", key=idem,
         produce=lambda: svc.create(db, user, perms, body, proof.filename or "", data),

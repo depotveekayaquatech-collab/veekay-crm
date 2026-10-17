@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { IconAlertTriangle, IconCheckCircle, IconClipboard, IconReport } from "@/components/ui/icons";
 import { usePermission } from "@/hooks/usePermission";
+import { policyHint, prepareUpload, useUploadPolicy } from "@/lib/uploads";
 import { Panel, StatCard } from "@/features/orders/ui";
 import {
   openTestReport,
@@ -23,7 +24,6 @@ import {
 } from "@/features/reports/testReports";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
-const MAX_MB = 8;
 const TONE: Record<ReportStatus, "success" | "warning" | "danger" | "neutral"> = {
   VALID: "success",
   EXPIRING: "warning",
@@ -55,6 +55,7 @@ export function TestReportsTab() {
   const [state, setState] = useState("");
   const [period, setPeriod] = useState(monthValue(0));
   const [file, setFile] = useState<File | null>(null);
+  const policy = useUploadPolicy();
   const [localError, setLocalError] = useState<string | null>(null);
   const [openHistory, setOpenHistory] = useState<Set<string>>(new Set());
   const formRef = useRef<HTMLDivElement>(null);
@@ -65,12 +66,14 @@ export function TestReportsTab() {
   const end = periodEndOf(period);
   const problems = (summary?.expired ?? 0) + (summary?.expiring ?? 0);
 
-  function pick(f: File | undefined) {
+  async function pick(f: File | undefined) {
     setLocalError(null);
     if (!f) return;
-    if (!/\.(pdf|jpe?g|png|webp)$/i.test(f.name)) return setLocalError("Please choose a PDF or a JPG / PNG / WEBP photo.");
-    if (f.size > MAX_MB * 1024 * 1024) return setLocalError(`That file is larger than ${MAX_MB} MB.`);
-    setFile(f);
+    try {
+      setFile(await prepareUpload(f, policy));   // a photo is shrunk first; a PDF over the limit is refused with advice
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "That file can't be used.");
+    }
   }
 
   function submit() {
@@ -201,7 +204,7 @@ export function TestReportsTab() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <FileDropzone file={file} onPick={pick} accept={ACCEPT} hint={`PDF or photo · up to ${MAX_MB} MB`} />
+                    <FileDropzone file={file} onPick={pick} accept={ACCEPT} hint={`PDF or photo · ${policyHint(policy)}`} />
                     {(localError || upload.error) && (
                       <p role="alert" className="rounded-lg bg-status-danger-soft px-3 py-2 text-sm text-status-danger">
                         {localError ?? (upload.error instanceof Error ? upload.error.message : "Upload failed.")}

@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { useStores } from "@/features/vendor/useVendorData";
 import { titleCase } from "@/features/vendor/format";
 import type { Outcome, TicketStatus } from "@/features/vendor/vendorApi";
+import { DEFAULT_POLICY, prepareMany } from "@/lib/uploads";
 
 const STATUS_TONE: Record<TicketStatus, "info" | "warning" | "success" | "neutral"> = {
   OPEN: "warning", IN_PROGRESS: "info", RESOLVED: "success", CLOSED: "neutral",
@@ -150,6 +151,8 @@ function Thumb({ file }: { file: File }) {
 
 export function PhotoPicker({ files, onChange, max = 5, label = "Photos", accept = "image/*" }: { files: File[]; onChange: (f: File[]) => void; max?: number; label?: string; accept?: string }) {
   const input = useRef<HTMLInputElement>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[13px] font-semibold text-gray-700">{label} <span className="font-normal text-gray-500">(up to {max})</span></span>
@@ -187,11 +190,19 @@ export function PhotoPicker({ files, onChange, max = 5, label = "Photos", accept
         accept={accept}
         multiple
         className="hidden"
-        onChange={(e) => {
-          onChange([...files, ...Array.from(e.target.files ?? [])].slice(0, max));
+        onChange={async (e) => {
+          const picked = Array.from(e.target.files ?? []);
           e.target.value = "";
+          setPreparing(true);
+          // Vendors are not staff, so the limits are the server defaults; the server enforces the real ones anyway.
+          const { ok, problems } = await prepareMany(picked, DEFAULT_POLICY);
+          setProblem(problems[0] ?? null);
+          onChange([...files, ...ok].slice(0, max));
+          setPreparing(false);
         }}
       />
+      {preparing && <p role="status" className="text-xs text-gray-500">Preparing photos…</p>}
+      {problem && <p role="alert" className="text-xs text-status-danger">{problem}</p>}
     </div>
   );
 }

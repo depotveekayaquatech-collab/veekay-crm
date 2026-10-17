@@ -1,10 +1,10 @@
-import { useRef, useState, type DragEvent } from "react";
+import { useMemo, useRef, useState, type DragEvent } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconClose } from "@/components/ui/icons";
 import { DOC_LABEL, useUploadDoc, type DocKind } from "@/features/compliance/api";
+import { prepareMany, useUploadPolicy } from "@/lib/uploads";
 
-const MAX_MB = 12;
 const MAX_FILES = 20;
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf";
 
@@ -21,7 +21,6 @@ function validate(files: File[]): string | null {
   if (files.length > MAX_FILES) return `Choose at most ${MAX_FILES} files.`;
   for (const f of files) {
     if (!isPdf(f) && !isImage(f)) return `“${f.name}” must be a JPG, PNG or WEBP photo, or a PDF.`;
-    if (f.size > MAX_MB * 1024 * 1024) return `“${f.name}” is larger than ${MAX_MB} MB.`;
   }
   if (files.some(isPdf) && files.length > 1) return "A PDF must be uploaded on its own — remove the other files.";
   return null;
@@ -48,13 +47,24 @@ export function UploadDocsModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [prepError, setPrepError] = useState<string | null>(null);
+  const policy = useUploadPolicy();
+  // One key per selection of files: clicking Upload again after a lost response returns the first result instead of adding a second version.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const submitKey = useMemo(() => crypto.randomUUID(), [files]);
 
-  const error = validate(files);
+  const error = validate(files) ?? prepError;
   const label = DOC_LABEL[kind];
 
-  function add(list: FileList | null | undefined) {
+  async function add(list: FileList | null | undefined) {
     if (!list?.length) return;
-    setFiles((prev) => [...prev, ...Array.from(list)]);
+    setPreparing(true);
+    setPrepError(null);
+    const { ok, problems } = await prepareMany(Array.from(list), policy);   // photos are shrunk here; a PDF over the limit is refused with advice
+    setFiles((prev) => [...prev, ...ok]);
+    setPrepError(problems[0] ?? null);
+    setPreparing(false);
   }
   function onDrop(e: DragEvent) {
     e.preventDefault();
@@ -72,9 +82,9 @@ export function UploadDocsModal({
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button
-            disabled={files.length === 0 || error !== null}
-            isLoading={upload.isPending}
-            onClick={() => upload.mutate({ storeId, month, kind, files }, { onSuccess: onClose })}
+            disabled={files.length === 0 || error !== null || preparing}
+            isLoading={upload.isPending || preparing}
+            onClick={() => upload.mutate({ storeId, month, kind, files, idempotencyKey: submitKey }, { onSuccess: onClose })}
           >
             {files.length > 1 ? `Merge ${files.length} pages & upload` : "Upload"}
           </Button>
@@ -140,10 +150,10 @@ export function UploadDocsModal({
         )}
 
         <ul className="list-disc space-y-0.5 rounded-lg bg-surface-subtle px-4 py-3 pl-8 text-xs text-gray-600">
-          <li>One file is saved as it is.</li>
+          <li>One photo is shrunk to a sharp, small copy; a PDF is saved as it is.</li>
           <li>Two or more photos are merged into a single PDF.</li>
           <li>A PDF must be uploaded on its own.</li>
-          <li>Up to {MAX_MB} MB per file.{replacing ? " This becomes the current file; the earlier one is kept in history." : ""}</li>
+          <li>Photos are resized automatically (up to {policy.photoMaxStoredKb >= 1024 ? `${policy.photoMaxStoredKb / 1024} MB` : `${policy.photoMaxStoredKb} KB`} stored); a PDF can be at most {policy.pdfMaxMb} MB.{replacing ? " This becomes the current file; the earlier one is kept in history." : ""}</li>
           {kind === "bill" && <li>The invoice is due 45 days after the month ends.</li>}
         </ul>
       </div>

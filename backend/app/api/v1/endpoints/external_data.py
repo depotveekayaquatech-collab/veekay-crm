@@ -147,7 +147,10 @@ def my_ticket_photo(
 ) -> Response:
     t = db.execute(select(Ticket.id).where(Ticket.id == ticket_id, Ticket.store_id.in_(_own_store_ids(account)))).first()
     a = db.get(TicketAttachment, attachment_id)
-    if t is None or a is None or a.ticket_id != ticket_id or not storage.exists(a.file_key):
+    if t is None or a is None or a.ticket_id != ticket_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo not found.")
+    if not storage.exists(a.file_key):
+        storage.log_missing(a.file_key, "ticket_attachments", a.id)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Photo not found.")
     return Response(content=storage.read(a.file_key), media_type=a.content_type, headers={"Content-Disposition": "inline", "Cache-Control": "private, no-store"})
 
@@ -188,7 +191,10 @@ def my_documents(
 @router.get("/documents/{doc_id}/file")
 def my_document_file(doc_id: uuid.UUID, account: ExternalAccount = Depends(get_current_external_account), db: Session = Depends(get_db)) -> Response:
     d = db.execute(select(ComplianceDocument).where(ComplianceDocument.id == doc_id, *_doc_conds(account))).scalar_one_or_none()
-    if d is None or not storage.exists(d.file_key):
+    if d is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found.")
+    if not storage.exists(d.file_key):
+        storage.log_missing(d.file_key, "compliance_documents", d.id)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found.")
     name = d.file_name.replace('"', "").replace("\r", "").replace("\n", "")
     return Response(
