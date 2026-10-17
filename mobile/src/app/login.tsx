@@ -80,7 +80,6 @@ export default function LoginScreen() {
               label="Email or Employee ID"
               value={email}
               onChangeText={setEmail}
-              placeholder="name@supplier.com or EMP001"
               keyboardType="default"
               autoCapitalize="none"
               autoCorrect={false}

@@ -17,13 +17,59 @@ import { colors, font, radius, shadow } from "@/theme";
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 const hm = (min: number) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
 
-/** A module tile: a clear icon, the name, and one live line about it. At least 112 points tall, so it is easy to hit. */
-function Action({ icon, label, sub, onPress, tone }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; sub?: string; onPress: () => void; tone: [string, string] }) {
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+/** The main job of the day: a full-width button, so the most common action is the easiest to hit. */
+function PrimaryAction({ icon, label, sub, badge, onPress }: { icon: IconName; label: string; sub: string; badge?: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={sub ? `${label}. ${sub}` : label} android_ripple={{ color: colors.brand100 }}
-      style={{ width: "48.5%", minHeight: 112, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10, ...shadow.card }}>
-      <View style={{ width: 42, height: 42, borderRadius: radius.md, backgroundColor: tone[0], alignItems: "center", justifyContent: "center" }}>
-        <Ionicons name={icon} size={22} color={tone[1]} />
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${badge ? `${badge}. ` : ""}${sub}`}
+      android_ripple={{ color: "rgba(255,255,255,0.18)" }}
+      style={({ pressed }) => ({ minHeight: 84, flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: radius.lg, backgroundColor: colors.brand600, opacity: pressed ? 0.92 : 1, ...shadow.card })}
+    >
+      <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name={icon} size={26} color={colors.white} />
+      </View>
+      <View style={{ flex: 1, gap: 3 }}>
+        <Text style={{ fontSize: 17, fontWeight: "800", color: colors.white }}>{label}</Text>
+        <Text numberOfLines={2} style={{ fontSize: 13, color: "rgba(255,255,255,0.82)" }}>{sub}</Text>
+      </View>
+      {badge ? (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.white }}>
+          <Text style={{ fontSize: 12, fontWeight: "800", color: colors.brand700 }}>{badge}</Text>
+        </View>
+      ) : null}
+      <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.85)" />
+    </Pressable>
+  );
+}
+
+/**
+ * A module tile: icon, name, one live line and an arrow that says "opens". Two to a row; a tile left on its own
+ * stretches across the row. At least 112 points tall, so it is easy to hit.
+ */
+function Action({ icon, label, sub, badge, onPress, tone }: { icon: IconName; label: string; sub?: string; badge?: string; onPress: () => void; tone: [string, string] }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${badge ? `${badge}. ` : ""}${sub ?? ""}`}
+      android_ripple={{ color: colors.brand100 }}
+      style={({ pressed }) => ({ flexGrow: 1, flexBasis: "45%", minHeight: 118, backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12, ...shadow.card })}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: tone[0], alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name={icon} size={22} color={tone[1]} />
+        </View>
+        {badge ? (
+          <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
+            <Text style={{ fontSize: 11, fontWeight: "800", color: colors.warning }}>{badge}</Text>
+          </View>
+        ) : (
+          <Ionicons name="arrow-forward" size={18} color={colors.textFaint} />
+        )}
       </View>
       <View style={{ gap: 2 }}>
         <Text style={{ fontSize: 15, fontWeight: "800", color: colors.text }}>{label}</Text>
@@ -154,18 +200,28 @@ You can still check ${kind}; it will be recorded as "location not shared".`,
       )}
 
       <SectionTitle>What do you want to do?</SectionTitle>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-        {hasPermission("orders.mark") && (
-          <Action icon="create-outline" label="Mark orders" sub={left === null ? "Enter today's bottle counts" : left === 0 ? "All stores marked today" : `${left} store${left === 1 ? "" : "s"} left today`} onPress={() => router.push("/staff/orders")} tone={[colors.brand50, colors.brand600]} />
-        )}
+      {hasPermission("orders.mark") && (
+        <PrimaryAction
+          icon="create-outline"
+          label="Mark orders"
+          sub={left === null ? "Enter today's bottle counts" : left === 0 ? "All stores are marked for today" : "Enter today's bottle counts"}
+          badge={left === null ? undefined : left === 0 ? "All done" : `${left} left`}
+          onPress={() => router.push("/staff/orders")}
+        />
+      )}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
         {canCompliance && (
           <Action icon="id-card-outline" label="Store cards" sub="Upload a card photo" onPress={() => router.push("/staff/cards")} tone={[colors.successSoft, colors.success]} />
         )}
         {canCompliance && (
           <Action icon="shield-checkmark-outline" label="Compliance" sub={kpis ? `${Math.round(kpis.kpis.compliance_percent)}% complete this month` : "Cards, invoices, payment proofs"} onPress={() => router.push("/staff/compliance")} tone={[colors.brand50, colors.brand700]} />
         )}
-        {hasPermission("bottles.scan") && <Action icon="qr-code-outline" label="Scan bottles" sub={queue.pending.length ? `${queue.pending.length} waiting to send` : "Bottles in and out"} onPress={() => router.push("/staff/scan")} tone={[colors.successSoft, colors.success]} />}
-        {hasPermission("cash.add") && <Action icon="wallet-outline" label="Add expense" sub="Record a cash purchase" onPress={() => router.push("/staff/expense/new")} tone={[colors.warningSoft, colors.warning]} />}
+        {hasPermission("bottles.scan") && (
+          <Action icon="qr-code-outline" label="Scan bottles" sub={queue.pending.length ? "Waiting to send" : "Bottles in and out"} badge={queue.pending.length ? `${queue.pending.length} waiting` : undefined} onPress={() => router.push("/staff/scan")} tone={[colors.successSoft, colors.success]} />
+        )}
+        {hasPermission("cash.add") && (
+          <Action icon="wallet-outline" label="Add expense" sub="Record a cash purchase" onPress={() => router.push("/staff/expense/new")} tone={[colors.warningSoft, colors.warning]} />
+        )}
         <Action icon="calendar-outline" label="Leave" sub="Apply or check your leave" onPress={() => router.push("/staff/leave")} tone={[colors.dangerSoft, colors.danger]} />
       </View>
     </Screen>
