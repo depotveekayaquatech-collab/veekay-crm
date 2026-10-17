@@ -20,6 +20,9 @@ export default function StaffTabs() {
   const waiting = useScanQueue().pending.length;
   const unread = useStaffAlerts().data?.unread ?? 0;
 
+  // The same permissions the web CRM's Compliance tab and the server use. The server checks them again on every request.
+  const canCompliance = hasPermission("compliance.upload") || hasPermission("compliance.manage");
+
   // People who can see the order overview land on Insights (the Admin tab); everyone else on Today.
   const landsOnInsights = hasPermission("orders.overview");
 
@@ -48,7 +51,7 @@ export default function StaffTabs() {
         ),
         tabBarActiveTintColor: colors.brand600,
         tabBarInactiveTintColor: colors.textFaint,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarLabelStyle: { fontSize: 10.5, fontWeight: "600" },
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 58 + insets.bottom, paddingBottom: insets.bottom + 4, paddingTop: 6 },
         sceneStyle: { backgroundColor: colors.surfaceSubtle },
       }}
@@ -58,6 +61,10 @@ export default function StaffTabs() {
       <Tabs.Screen
         name="scan"
         options={{ title: "Scan", href: hasPermission("bottles.scan") ? undefined : null, tabBarIcon: icon("qr-code-outline", "qr-code"), tabBarBadge: waiting ? waiting : undefined, tabBarBadgeStyle: { backgroundColor: colors.warning } }}
+      />
+      <Tabs.Screen
+        name="compliance"
+        options={{ title: "Compliance", headerTitle: "Compliance", href: canCompliance ? undefined : null, tabBarIcon: icon("shield-checkmark-outline", "shield-checkmark") }}
       />
       <Tabs.Screen
         name="admin"

@@ -9,6 +9,8 @@ export interface Picked {
   uri: string;
   name: string;
   type: string;
+  /** Bytes, when the picker reports them. */
+  size?: number;
 }
 
 /** Appends a picked file to a multipart form the way React Native expects. */
@@ -17,7 +19,7 @@ export function appendFile(form: FormData, field: string, f: Picked) {
 }
 
 function fromAsset(a: ImagePicker.ImagePickerAsset, i: number): Picked {
-  return { uri: a.uri, name: a.fileName ?? `photo-${Date.now()}-${i}.jpg`, type: a.mimeType ?? "image/jpeg" };
+  return { uri: a.uri, name: a.fileName ?? `photo-${Date.now()}-${i}.jpg`, type: a.mimeType ?? "image/jpeg", size: a.fileSize };
 }
 
 /** Photos from the system photo picker: needs no storage permission. */
@@ -44,22 +46,33 @@ export async function takePhoto(): Promise<Picked[]> {
 
 export async function pickPdf(): Promise<Picked[]> {
   const res = await DocumentPicker.getDocumentAsync({ type: "application/pdf", copyToCacheDirectory: true, multiple: false });
-  return res.canceled ? [] : res.assets.map((a) => ({ uri: a.uri, name: a.name, type: a.mimeType ?? "application/pdf" }));
+  return res.canceled ? [] : res.assets.map((a) => ({ uri: a.uri, name: a.name, type: a.mimeType ?? "application/pdf", size: a.size }));
 }
 
 const EXT: Record<string, string> = { "application/pdf": "pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
-/** Downloads an authenticated file to the app's cache and hands it to the phone's own viewer ("Open with…"). */
-export async function openRemoteFile(path: string, baseName: string): Promise<void> {
+/** Downloads an authenticated file into the app's cache (a temporary copy, replaced on the next download). */
+export async function cacheRemoteFile(path: string, baseName: string): Promise<{ uri: string; contentType: string }> {
   const { bytes, contentType } = await requestBytes(path);
   const ext = EXT[contentType.split(";")[0]] ?? "bin";
   const file = new File(Paths.cache, `${baseName.replace(/[^\w.-]+/g, "_")}.${ext}`);
   if (file.exists) file.delete();
   file.create();
   file.write(bytes);
+  return { uri: file.uri, contentType };
+}
+
+/** Hands a file to the phone's own viewer ("Open with…"). */
+export async function openWithPhone(uri: string, contentType: string): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) {
     Alert.alert("Can't open file", "This phone has no app that can open this file.");
     return;
   }
-  await Sharing.shareAsync(file.uri, { mimeType: contentType, dialogTitle: "Open with" });
+  await Sharing.shareAsync(uri, { mimeType: contentType, dialogTitle: "Open with" });
+}
+
+/** Downloads an authenticated file to the app's cache and hands it to the phone's own viewer ("Open with…"). */
+export async function openRemoteFile(path: string, baseName: string): Promise<void> {
+  const { uri, contentType } = await cacheRemoteFile(path, baseName);
+  await openWithPhone(uri, contentType);
 }

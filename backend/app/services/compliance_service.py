@@ -153,15 +153,21 @@ def _merge_images_to_pdf(photos: list[bytes]) -> bytes:
     except ImportError as exc:  # pragma: no cover
         raise _err(status.HTTP_500_INTERNAL_SERVER_ERROR, "Image support (Pillow) is not installed.") from exc
     Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+    dim, quality = settings.IMAGE_MAX_DIMENSION, settings.IMAGE_JPEG_QUALITY
     uprights = []
     try:
         for raw in photos:
-            uprights.append(ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB"))
+            img = Image.open(io.BytesIO(raw))
+            if img.format == "JPEG":
+                img.draft("RGB", (dim, dim))                 # decode at a reduced size: far less memory and time per photo
+            page = ImageOps.exif_transpose(img).convert("RGB")
+            page.thumbnail((dim, dim))                       # shrunk once here; later passes start from this smaller copy
+            uprights.append(page)
     except (OSError, ValueError, Image.DecompressionBombError) as exc:
         raise _err(status.HTTP_422_UNPROCESSABLE_ENTITY, "One of the photos could not be read.") from exc
-    # The PDF we build obeys the same PDF size limit as an uploaded one: the pages are shrunk until it fits.
+    # The PDF we build obeys the same PDF size limit as an uploaded one: the pages are shrunk until it fits. The size is
+    # estimated from the last attempt, so a 20-page document takes a few passes, not dozens.
     cap = settings.PDF_MAX_FILE_MB * 1024 * 1024
-    dim, quality = settings.IMAGE_MAX_DIMENSION, settings.IMAGE_JPEG_QUALITY
     while True:
         pages = []
         for img in uprights:
@@ -172,10 +178,12 @@ def _merge_images_to_pdf(photos: list[bytes]) -> bytes:
         pages[0].save(out, "PDF", save_all=True, append_images=pages[1:], resolution=150.0, quality=quality)
         if out.tell() <= cap:
             return out.getvalue()
-        if quality > 55:
-            quality -= 8
+        if quality > 65:
+            quality = max(65, quality - 10)
         elif dim > 900:
-            dim = int(dim * 0.85)
+            dim = max(900, int(dim * min(0.92, (cap / out.tell()) ** 0.5)))   # pixels scale with dim squared
+        elif quality > 55:
+            quality -= 5
         else:
             raise _err(
                 status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

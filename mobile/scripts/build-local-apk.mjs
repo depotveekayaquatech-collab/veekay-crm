@@ -85,6 +85,17 @@ if (jdk17) {
 run("npx", ["expo", "prebuild", "--platform", "android", "--no-install"], { env });
 fs.writeFileSync(path.join(android, "local.properties"), `sdk.dir=${sdk.replace(/\\/g, "\\\\").replace(":", "\\:")}\n`);
 
+// Expo's generated Gradle settings give the build daemon 2 GB of heap and 512 MB of metaspace. That is right at the edge for this
+// project: one build ran for 15 minutes and then died with "OutOfMemoryError: Metaspace" (even a successful build warns about it).
+// Give the daemon room. Override with VEEKAY_GRADLE_JVMARGS on a machine with less memory.
+const jvmArgs = process.env.VEEKAY_GRADLE_JVMARGS || "-Xmx3072m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8";
+const gradleProps = path.join(android, "gradle.properties");
+const propsText = fs.readFileSync(gradleProps, "utf8");
+fs.writeFileSync(gradleProps, /^org\.gradle\.jvmargs=/m.test(propsText)
+  ? propsText.replace(/^org\.gradle\.jvmargs=.*$/m, `org.gradle.jvmargs=${jvmArgs}`)
+  : `${propsText.trimEnd()}\norg.gradle.jvmargs=${jvmArgs}\n`);
+console.log(`Gradle daemon memory: ${jvmArgs}`);
+
 // ---- 5. sign the release build with the private key (credentials come from the environment, never written to disk)
 const gradleFile = path.join(android, "app", "build.gradle");
 let g = fs.readFileSync(gradleFile, "utf8");

@@ -23,7 +23,7 @@ const config: ExpoConfig = {
   name: "Veekay Partner",
   slug: "veekay-partner",
   scheme: "veekaypartner",
-  version: "1.0.1",
+  version: "1.1.0",   // 1.1.0: adds expo-image-manipulator (a native module), so this needs a new APK, not an over-the-air update
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",

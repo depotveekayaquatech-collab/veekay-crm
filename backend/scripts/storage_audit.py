@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 
 from app.core import storage  # noqa: E402
 from app.core.config import settings  # noqa: E402
@@ -77,6 +77,8 @@ def main() -> int:
 
     db = SessionLocal()
     try:
+        # Enforced by PostgreSQL itself, not just by this script's code: any write in this session is refused.
+        db.execute(text("SET TRANSACTION READ ONLY"))
         refs = references(db)
     finally:
         db.close()

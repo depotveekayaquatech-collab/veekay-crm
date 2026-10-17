@@ -71,6 +71,48 @@ Limits: Android always asks the person to confirm the install (nothing is silent
 
 JavaScript-only fixes can instead go out as an OTA update through EAS Update (channel `production`); that path has not been exercised.
 
+## Build and install a TEST APK (nothing is published, no employee sees it)
+
+```powershell
+cd mobile
+npm ci                                               # uses mobile\.npmrc (legacy-peer-deps=true): the lean install every local build uses
+# Do NOT add --no-legacy-peer-deps to this: it also installs optional libraries the app does not use (reanimated, worklets,
+# gesture-handler), which makes the build slower and the APK bigger. The strict flag is only for CHECKING the lockfile:
+#   npm ci --include=dev --dry-run --no-legacy-peer-deps      (must end without errors)
+npm run typecheck ; npm test                         # type-check and the 28 unit tests
+npm run build:apk-local                              # 20-30 minutes the first time; picks the next version code by itself
+# the APK appears in mobile\build\apk\Veekay-Partner-<version>-code<N>.apk
+```
+Install it on a phone (it is signed with the same key as every earlier build, so it installs over the current app and keeps the sign-in; an older EAS-signed build 3 or 4 must be uninstalled first):
+```powershell
+# Option A: USB cable. On the phone: Settings > About phone > tap "Build number" 7 times > Developer options > USB debugging ON.
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" devices                      # the phone must be listed (accept the prompt on the phone)
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r build\apk\Veekay-Partner-1.1.0-code10.apk
+# Option B: no cable. Send the .apk file to the phone as a document (WhatsApp, email, Drive), open it, allow "Install unknown apps"
+# for that one app when Android asks, then Install. If Play Protect warns: More details > Install anyway.
+```
+**If the build fails:**
+- `OutOfMemoryError: Metaspace` / "Could not receive a message from the daemon": Gradle ran out of memory. The build script already gives it 3 GB of heap and 1 GB of metaspace; on a machine with less RAM set `VEEKAY_GRADLE_JVMARGS` (for example `-Xmx2048m -XX:MaxMetaspaceSize=768m`).
+- "There is not enough space on the disk": a build writes about 1.5 GB of working files plus caches, and fails when the drive is full (it did, with 0.3 GB free). Keep at least 4 GB free on the drive that holds the project. If that drive is short, move the build output folders to another drive and leave a junction behind (Gradle sees the same paths; nothing is rebuilt): for each of `android\app\build`, `android\app\.cxx`, and the `android\build` / `android\.cxx` folders of `node_modules\expo-modules-core`, `react-native-screens`, `expo-updates` and `expo`: `robocopy <folder> D:\veekay-build\<name> /MOVE /E` then `New-Item -ItemType Junction -Path <folder> -Target D:\veekay-build\<name>`. Stop the Gradle daemon first (`android\gradlew.bat --stop`).
+- A failed build leaves Gradle and Kotlin background processes running (they hold files open). `android\gradlew.bat --stop` ends them.
+
+Check the file before sending: `npm run release:check -- --manifest ../public/app-update.json --apk build/apk/<file>.apk --no-download` (its version, signature and checksum).
+To give it to everyone later, follow "Publishing an update" below (`npm run release -- --notes "..."`, then push).
+
+## Checking an update locally (no phone needed)
+
+```
+cd mobile
+npm run release:check                                   # the LIVE update file: link, size, SHA-256, the APK's own version and signature
+npm run release:check -- --manifest ../public/app-update.json --apk build/apk/Veekay-Partner-1.0.1-code9.apk --no-download
+                                                        # BEFORE you push: a local update file and a local APK
+npm run release:check -- --installed 6,8,9              # what a phone with each build number would see
+```
+It prints, for each installed build, whether the phone sees nothing, "An update is available" or the full-screen "Update required" page (the same rules the app uses), then downloads the APK and compares size and checksum. Exit code 1 means a problem (a link that returns a web page, a wrong checksum, a version code that differs from the update file).
+
+**On a phone** (the real test): install the previous build, open **Profile > Check for updates**. You should see the newer build offered; **Update now** downloads it inside the app with a progress bar and opens Android's installer; after installing, the app should keep its sign-in (the install-over-the-top step is still untested on a real phone: check it once). To see the **"Update required"** page, publish a test file whose `minVersionCode` is above the installed build (never on the live file while employees are using it).
+**Pointing a test build at a different update file:** build with `EXPO_PUBLIC_UPDATE_MANIFEST_URL=https://<your test host>/app-update.json` (compiled into that APK). It must be **https** (the app never opens an http link), so for a file on your own PC use an https tunnel to the web dev server, which serves `public/` (for example `npx localtunnel --port 5173`). Do not use the live URL for experiments.
+
 ## The signing key (critical)
 
 - Location: `%USERPROFILE%\.veekay-signing\` (`veekay-release.jks` plus `keystore.properties`). It is outside the repository and is never printed or committed.

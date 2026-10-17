@@ -1,9 +1,10 @@
-import { forwardRef, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet,
   Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle,
 } from "react-native";
 import { useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isConnectivityMessage } from "@/lib/connectivityCore";
 import { colors, font, radius, shadow, space } from "@/theme";
@@ -159,9 +160,14 @@ export function Chips<T extends string>({ options, value, onChange }: { options:
   );
 }
 
-export function Empty({ title, text, action }: { title: string; text?: string; action?: ReactNode }) {
+export function Empty({ title, text, action, icon }: { title: string; text?: string; action?: ReactNode; icon?: React.ComponentProps<typeof Ionicons>["name"] }) {
   return (
     <View style={s.empty}>
+      {icon ? (
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand50, alignItems: "center", justifyContent: "center", marginBottom: space.md }}>
+          <Ionicons name={icon} size={28} color={colors.brand600} />
+        </View>
+      ) : null}
       <Text style={[font.h2, { textAlign: "center" }]}>{title}</Text>
       {text ? <Text style={[font.small, { textAlign: "center", marginTop: 4 }]}>{text}</Text> : null}
       {action ? <View style={{ marginTop: space.lg }}>{action}</View> : null}
@@ -181,7 +187,7 @@ export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () 
 }
 
 export function Skeleton({ height = 64 }: { height?: number }) {
-  const o = useRef(new Animated.Value(0.45)).current;
+  const [o] = useState(() => new Animated.Value(0.45));
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
       Animated.timing(o, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -195,6 +201,21 @@ export function Skeleton({ height = 64 }: { height?: number }) {
 
 export function ListSkeleton({ rows = 4 }: { rows?: number }) {
   return <View accessibilityLabel="Loading">{Array.from({ length: rows }, (_, i) => <Skeleton key={i} />)}</View>;
+}
+
+/** A thin progress bar. `value` is 0..1; it announces its percentage to screen readers. */
+export function ProgressBar({ value, tone = "brand" }: { value: number; tone?: "brand" | "success" | "danger" }) {
+  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  const fill = tone === "success" ? colors.success : tone === "danger" ? colors.danger : colors.brand500;
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: pct }}
+      style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceMuted, overflow: "hidden" }}
+    >
+      <View style={{ height: 8, borderRadius: 4, width: `${pct}%`, backgroundColor: fill }} />
+    </View>
+  );
 }
 
 export function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
@@ -212,13 +233,13 @@ export function Pager({ page, pageSize, total, onPage }: { page: number; pageSiz
 const s = StyleSheet.create({
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: space.xl, marginBottom: space.sm },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, padding: space.lg, ...shadow.card },
-  button: { minHeight: 50, borderRadius: radius.md, paddingHorizontal: space.xl, alignItems: "center", justifyContent: "center" },
+  button: { minHeight: 52, borderRadius: radius.md, paddingHorizontal: space.xl, alignItems: "center", justifyContent: "center" },
   buttonText: { fontSize: 16, fontWeight: "700" },
   label: { fontSize: 13, fontWeight: "600", color: colors.text },
   inputWrap: { flexDirection: "row", alignItems: "center", minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14 },
   input: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 12 },
   badge: { alignSelf: "flex-start", borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
-  chip: { minHeight: 40, paddingHorizontal: 16, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: 24, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border },
   error: { flexDirection: "row", alignItems: "center", gap: 12, padding: space.md, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
 });

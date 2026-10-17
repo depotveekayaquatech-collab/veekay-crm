@@ -9,7 +9,7 @@ export const useAttendanceToday = () =>
 
 export const useLeaves = () => useQuery({ queryKey: ["s-leaves"], queryFn: staffApi.leaves, staleTime: FRESH });
 
-export const useMyStores = () => useQuery({ queryKey: ["s-stores"], queryFn: staffApi.myStores, staleTime: FRESH });
+export const useMyStores = (enabled = true) => useQuery({ queryKey: ["s-stores"], queryFn: staffApi.myStores, staleTime: FRESH, enabled });
 
 export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; is_today: boolean; is_future: boolean }
 export interface Calendar { store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[] }

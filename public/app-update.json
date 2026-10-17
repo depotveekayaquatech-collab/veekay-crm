@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 9,
-    "latestVersionName": "1.0.1",
-    "minVersionCode": 8,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.0.1-code9.apk",
-    "notes": "Orders: Today/Yesterday view, marks show as Done straight away. Fixes for stores missing from lists. Update rule: phones may be one release behind.",
-    "apkSizeBytes": 56373749,
-    "apkSha256": "7f22bcbcad11369cdf5f041c512d4a7266f6e3e4e8206404a7e451e2c1b09132"
+    "latestVersionCode": 10,
+    "latestVersionName": "1.1.0",
+    "minVersionCode": 10,
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code10.apk",
+    "notes": "New: Compliance and Store cards on your phone (upload card photos, invoices, payment proofs), a clearer home screen, faster photo uploads. Please update to keep using the app.",
+    "apkSizeBytes": 56429021,
+    "apkSha256": "b27cd768bf8018d6a896d3132aec7eb105d1539a3fa3ee85278273eab691b49a"
   }
 }

@@ -133,7 +133,7 @@ def test_usage_watch_flags_the_quota_and_unusual_growth_and_never_raises(monkeyp
     assert m.summarize([("x", 5_100 * mb, now - timedelta(days=100))], now=now, quota_gb=5, warn_percent=80)["over_quota"]
     spike = [("old", 100 * mb, now - timedelta(days=14)), ("new", 600 * mb, now - timedelta(days=1))]      # 600 MB vs ~25 MB a week
     assert m.summarize(spike, now=now)["unusual_growth"]
-    monkeypatch.setattr(m.storage, "list_objects", lambda: (_ for _ in ()).throw(ConnectionError("down")))
+    monkeypatch.setattr(m, "usage_from_database", lambda db: (_ for _ in ()).throw(ConnectionError("down")))
     assert m.check_and_log() is None                                  # a failed check never breaks the sync it rides on
 
 

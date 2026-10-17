@@ -47,11 +47,11 @@ None: no code path could delete or expose existing data.
 - **F7.** Order of operations is safe in every path: the object is written and confirmed first, the record second. If the database fails after a confirmed write, one unreferenced object remains (harmless); the audit lists it as an orphan **candidate** after a grace period and never removes it.
 - **F8. Dead configuration:** `MAX_UPLOAD_SIZE_MB = 8` and `ALLOWED_UPLOAD_CONTENT_TYPES` are not read anywhere; they suggest limits that do not exist. Left alone.
 - **F9. Fly holds two sets of storage keys** (`AWS_*` and `S3_*`, different fingerprints) and `STORAGE_BACKEND` is set in `fly.toml` and as a secret. The app reads `S3_*`. Check the other pair is not an unused extra credential.
-- **F12. Monitoring was absent.** Added structured log lines (never a link or secret): `file stored` (category, key, size), `storage write failed`, `storage write not confirmed`, `stored file missing` (table, record id) on every read path, and a daily `storage usage` line with **warnings at 80% of `STORAGE_QUOTA_GB` and above 100%, and on unusual weekly growth** (more than 3x the previous 4-week average and at least 100 MB). The quota setting is only a warning level; it is not enforced and pricing is not in the code.
+- **F12. Monitoring was absent.** Added structured log lines (never a link or secret): `file stored` (category, key, size), `storage write failed`, `storage write not confirmed`, `stored file missing` (table, record id) on every read path, and a daily `storage usage` line with **warnings at 80% of `STORAGE_QUOTA_GB` and above 100%, and on unusual weekly growth** (more than 3x the previous 4-week average and at least 100 MB). The usage is added up **from the sizes recorded in the database, so the daily check makes no request to Tigris** (a daily bucket listing would have cost 720-1,680 Class A requests a month at 23,000-56,000 files). The quota setting is only a warning level; it is not enforced and pricing is not in the code.
 
 ### Low
 - Cash receipts and ticket photos are streamed through the API (`exists` + `read`); at about 300 KB this is fine. Proxied images use `Cache-Control: private, no-store`, which is correct for private data.
-- `/api/v1/ready` makes one bucket request per call; Fly's own check uses `/health` (no storage). Do not point an external monitor at `/ready` every minute (about 43,200 requests a month).
+- `/api/v1/ready` checks the bucket (HeadBucket, Class B). Your deployment guide recommends an uptime monitor on `/ready`, so the storage answer is now reused for 10 minutes: at most about 4,300 bucket requests a month however often it is polled (the database part stays live; an upload that cannot reach the bucket fails at once with its own message). Fly's own check uses `/health` (no storage).
 - The mobile app does not resize photos before sending (needs a native module and a new APK). The server shrinks them, so it works, but uploads on weak mobile data are larger than they need to be.
 
 ### Verified OK, no change needed
@@ -84,7 +84,9 @@ Storage charges added up over the whole first year: about **$0.15**. Projected o
 | Normal month | 1,950 | 19.5% | 23,950 | 23.9% | $0.00 |
 | If every PDF open made 3 range requests (uncertain; depends on the PDF viewer) | 1,950 | 19.5% | about 45,950 | 46% | $0.00 |
 
-Class A would pass the free allowance at about 10,000 uploads a month; Class B at about 49,000 views a month. Exceeding an allowance never blocks anything; it is billed at the rates above (10,000 extra Class B requests cost $0.005).
+These Class B figures include up to 4,320 readiness probes a month. Class A would pass the free allowance at about 10,000 uploads a month; Class B at about 49,000 views a month. Exceeding an allowance never blocks anything; it is billed at the rates above (10,000 extra Class B requests cost $0.005).
+
+**Reconciling the two estimates, and the full-usage case.** The first report counted about 200 uploads a month (2% of Class A) because it treated the 1,500 store cards as a one-time set; the second counted 1,950 (19.5%) because store files recur monthly. The request classification is the same in both (1 PUT = 1 Class A per upload; HEAD, GET = Class B; LIST = Class A; DELETE free; verified on Tigris's page 2026-10-17); only the number of uploads differs. The app treats **card, bill and payment proof as three expected items per store per month** (the compliance percentage is computed over those three), so a full-usage month for 1,500 stores is 4,500 slot files plus 150 others: **4,650 uploads, about 1,555 MB a month at your 5:1 photo-to-PDF mix** (3,750 photos × 300 KB + 750 PDFs × 500 KB + 55 MB). That is 46.5% of the free Class A, 31% of the free Class B, **5 GB passed in month 4**, 18.7 GB after 12 months, a storage charge of about $0.27 in month 12 and about $1.34 over the first year; request charges stay $0. Your two live-store sheets list about 1,406 LIVE stores (607 Zepto + 799 Blinkit), so the real full-usage figure is nearly the same. Backfilling earlier months is allowed (the app accepts up to 12 months back, from 2026-06), which would add a one-time burst of the same size per month backfilled.
 
 **If photos averaged the full 1 MB cap instead of 300 KB** (the worst case the policy allows): about 1,775 MB a month, 21.3 GB after 12 months, over 5 GB in month 3, roughly $0.33 a month of storage by month 12. The optimizer's job is to stay near 300 KB: on a synthetic 12-megapixel receipt with small print it produced about 200 KB with the text equally sharp when zoomed (a real photo with more detail will be larger; measure with the first week of real uploads).
 
@@ -120,6 +122,15 @@ cd backend
 .venv\Scripts\python.exe -m pytest -q                     # everything
 cd .. ; npx vitest run                                    # web
 ```
+
+**Running the app locally (safe way).** The web app's built-in default API address is the **production** server, so `npm run dev` with no setting talks to production. Always point it at the local backend:
+```
+# terminal 1 (backend, local database and local file storage)
+cd backend ; .venv\Scripts\python.exe -m alembic upgrade head ; .venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+# terminal 2 (web)
+$env:VITE_API_BASE_URL = "http://127.0.0.1:8000/api/v1" ; npm run dev -- --port 5173
+```
+Then open http://127.0.0.1:5173 and sign in with a seeded demo user (the local database only). Check `curl http://127.0.0.1:8000/api/v1/ready` first: `"backend":"local"` and a localhost database mean nothing can touch production.
 
 ## 9. Settings (names only; never commit values)
 

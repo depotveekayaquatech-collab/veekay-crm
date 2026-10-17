@@ -167,6 +167,67 @@ export async function request<T>(path: string, o: Options = {}): Promise<T> {
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+export interface UploadOptions {
+  /** Same key on every retry of one submission: the server then returns the first result instead of creating a duplicate. */
+  idempotencyKey?: string;
+  /** 0..1 as the bytes leave the phone. */
+  onProgress?: (fraction: number) => void;
+  /** Aborting cancels the transfer. */
+  signal?: AbortSignal;
+}
+
+/**
+ * POST a multipart form and report upload progress. `fetch` cannot report how many bytes were sent, so this uses
+ * XMLHttpRequest. Everything else matches `request`: the access token, one silent refresh on a 401, the server's own
+ * error messages, and the connectivity banner (no answer = ApiError status 0 with a kind).
+ */
+export function requestUpload<T>(path: string, form: FormData, o: UploadOptions = {}): Promise<T> {
+  const attempt = (retried: boolean): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      if (configError) return reject(new ApiError(0, configError));
+      const xhr = new XMLHttpRequest();
+      let timedOut = false;
+      const noAnswer = () => {
+        const kind: FailureKind = connectivity.isDeviceOffline() ? "offline" : timedOut ? "timeout" : "unreachable";
+        connectivity.reportFailure(kind);
+        reject(new ApiError(0, MESSAGES[kind], kind));
+      };
+      xhr.open("POST", `${BASE}${path}`);
+      xhr.timeout = UPLOAD_TIMEOUT_MS + 30_000;
+      xhr.setRequestHeader("Accept", "application/json");
+      if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+      if (o.idempotencyKey) xhr.setRequestHeader("Idempotency-Key", o.idempotencyKey);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) o.onProgress?.(Math.min(1, e.loaded / e.total));
+      };
+      xhr.onerror = noAnswer;
+      xhr.ontimeout = () => { timedOut = true; noAnswer(); };
+      xhr.onabort = () => reject(new ApiError(0, "The upload was cancelled."));
+      xhr.onload = () => {
+        connectivity.reportSuccess();                     // any answer proves the phone and the server can talk
+        if (xhr.status === 401 && !retried) {
+          void refreshSession().then((ok) => {
+            if (ok) return attempt(true).then(resolve, reject);
+            accessToken = null;
+            onExpired?.();
+            reject(new ApiError(401, "Your session has expired. Please sign in again."));
+          });
+          return;
+        }
+        let body: unknown = null;
+        try { body = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(body as T);
+        reject(new ApiError(xhr.status, messageOf((body as { detail?: unknown } | null)?.detail)));
+      };
+      if (o.signal) {
+        if (o.signal.aborted) return reject(new ApiError(0, "The upload was cancelled."));
+        o.signal.addEventListener("abort", () => xhr.abort(), { once: true });
+      }
+      xhr.send(form);
+    });
+  return attempt(false);
+}
+
 /** Raw bytes of an authenticated file (a ticket photo or a document). */
 export async function requestBytes(path: string): Promise<{ bytes: Uint8Array; contentType: string }> {
   const res = await send(path, {});

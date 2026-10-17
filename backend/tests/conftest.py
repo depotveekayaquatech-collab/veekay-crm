@@ -124,6 +124,8 @@ def db():
 def _clean_state():
     """Every test starts with empty throttles and ends with no leftovers from the tables it may touch."""
     rate_windows.reset()
+    from app.api.v1.endpoints.health import reset_storage_probe
+    reset_storage_probe()
     login_failures.reset()
     storage.reset_backend()
     yield

@@ -6,24 +6,29 @@ import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import { staffApi, type Reading } from "@/api/staff";
 import { describeFailure, readLocation } from "@/lib/location";
-import { useAttendanceToday } from "@/api/staffHooks";
+import { useAttendanceToday, useMyStores } from "@/api/staffHooks";
+import { useComplianceKpis } from "@/api/complianceHooks";
 import { useAuth } from "@/auth/AuthProvider";
 import { Badge, Card, ErrorNote, ListSkeleton, Screen, SectionTitle } from "@/components/ui";
 import { fmtDate, niceName } from "@/lib/format";
 import { useScanQueue } from "@/lib/useScanQueue";
-import { colors, font, radius } from "@/theme";
+import { colors, font, radius, shadow } from "@/theme";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 const hm = (min: number) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
 
-function Action({ icon, label, onPress, tone }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; tone: [string, string] }) {
+/** A module tile: a clear icon, the name, and one live line about it. At least 112 points tall, so it is easy to hit. */
+function Action({ icon, label, sub, onPress, tone }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; sub?: string; onPress: () => void; tone: [string, string] }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} android_ripple={{ color: colors.brand100 }}
-      style={{ width: "48.5%", backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
-      <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: tone[0], alignItems: "center", justifyContent: "center" }}>
-        <Ionicons name={icon} size={21} color={tone[1]} />
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={sub ? `${label}. ${sub}` : label} android_ripple={{ color: colors.brand100 }}
+      style={{ width: "48.5%", minHeight: 112, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10, ...shadow.card }}>
+      <View style={{ width: 42, height: 42, borderRadius: radius.md, backgroundColor: tone[0], alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name={icon} size={22} color={tone[1]} />
       </View>
-      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{label}</Text>
+      <View style={{ gap: 2 }}>
+        <Text style={{ fontSize: 15, fontWeight: "800", color: colors.text }}>{label}</Text>
+        {sub ? <Text numberOfLines={2} style={font.small}>{sub}</Text> : null}
+      </View>
     </Pressable>
   );
 }
@@ -34,6 +39,11 @@ export default function Today() {
   const qc = useQueryClient();
   const q = useAttendanceToday();
   const queue = useScanQueue();
+  const canCompliance = hasPermission("compliance.upload") || hasPermission("compliance.manage");
+  // Live lines on the tiles. An admin works with every store, so only an employee gets the "stores left today" count.
+  const stores = useMyStores(hasPermission("orders.mark") && !staff?.is_admin);
+  const left = stores.data ? stores.data.filter((s) => s.status === "LIVE" && s.today_count === null).length : null;
+  const kpis = useComplianceKpis(canCompliance).data;
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);
 
@@ -143,12 +153,20 @@ You can still check ${kind}; it will be recorded as "location not shared".`,
         </Pressable>
       )}
 
-      <SectionTitle>Quick actions</SectionTitle>
+      <SectionTitle>What do you want to do?</SectionTitle>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-        {hasPermission("orders.mark") && <Action icon="create-outline" label="Mark orders" onPress={() => router.push("/staff/orders")} tone={[colors.brand50, colors.brand600]} />}
-        {hasPermission("bottles.scan") && <Action icon="qr-code-outline" label="Scan bottles" onPress={() => router.push("/staff/scan")} tone={[colors.successSoft, colors.success]} />}
-        {hasPermission("cash.add") && <Action icon="wallet-outline" label="Add expense" onPress={() => router.push("/staff/expense/new")} tone={[colors.warningSoft, colors.warning]} />}
-        <Action icon="calendar-outline" label="Leave" onPress={() => router.push("/staff/leave")} tone={[colors.dangerSoft, colors.danger]} />
+        {hasPermission("orders.mark") && (
+          <Action icon="create-outline" label="Mark orders" sub={left === null ? "Enter today's bottle counts" : left === 0 ? "All stores marked today" : `${left} store${left === 1 ? "" : "s"} left today`} onPress={() => router.push("/staff/orders")} tone={[colors.brand50, colors.brand600]} />
+        )}
+        {canCompliance && (
+          <Action icon="id-card-outline" label="Store cards" sub="Upload a card photo" onPress={() => router.push("/staff/cards")} tone={[colors.successSoft, colors.success]} />
+        )}
+        {canCompliance && (
+          <Action icon="shield-checkmark-outline" label="Compliance" sub={kpis ? `${Math.round(kpis.kpis.compliance_percent)}% complete this month` : "Cards, invoices, payment proofs"} onPress={() => router.push("/staff/compliance")} tone={[colors.brand50, colors.brand700]} />
+        )}
+        {hasPermission("bottles.scan") && <Action icon="qr-code-outline" label="Scan bottles" sub={queue.pending.length ? `${queue.pending.length} waiting to send` : "Bottles in and out"} onPress={() => router.push("/staff/scan")} tone={[colors.successSoft, colors.success]} />}
+        {hasPermission("cash.add") && <Action icon="wallet-outline" label="Add expense" sub="Record a cash purchase" onPress={() => router.push("/staff/expense/new")} tone={[colors.warningSoft, colors.warning]} />}
+        <Action icon="calendar-outline" label="Leave" sub="Apply or check your leave" onPress={() => router.push("/staff/leave")} tone={[colors.dangerSoft, colors.danger]} />
       </View>
     </Screen>
   );

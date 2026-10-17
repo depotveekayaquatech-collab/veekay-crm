@@ -101,6 +101,8 @@ function Navigator() {
       <Stack.Protected guard={staffReady}>
         <Stack.Screen name="staff/(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="staff/mark/[storeId]" options={{ title: "Mark orders" }} />
+        <Stack.Screen name="staff/cards" options={{ title: "Store cards" }} />
+        <Stack.Screen name="staff/store-docs/[storeId]" options={{ title: "Compliance" }} />
         <Stack.Screen name="staff/expense/new" options={{ title: "Add a purchase" }} />
         <Stack.Screen name="staff/leave/index" options={{ title: "Leave" }} />
         <Stack.Screen name="staff/leave/new" options={{ title: "Apply for leave" }} />
