@@ -114,6 +114,29 @@ export async function movePlatform(
   return { from: w.from, to: w.to, matched: w.matched, moved: w.moved, skippedDuplicates: w.skipped_duplicates, dryRun: w.dry_run };
 }
 
+export interface StartDatesResult {
+  stores: number;
+  toFill: number;       // empty start dates that can be filled
+  differs: number;      // a date is set but isn't the first supply
+  unchanged: number;    // already equals the first supply
+  noOrders: number;     // no supplied day in the order sheet yet: left alone
+  toChange: number;     // what this run changes (fills, plus replacements when `replaceExisting`)
+  replaceExisting: boolean;
+  dryRun: boolean;
+}
+
+/** Developer only: set each store's start date to its first supplied day from the order sheet. `dryRun` only counts. */
+export async function syncStartDates(platform: string, replaceExisting: boolean, dryRun: boolean): Promise<StartDatesResult> {
+  const w = await apiRequest<{
+    stores: number; to_fill: number; differs: number; unchanged: number; no_orders: number; to_change: number;
+    replace_existing: boolean; dry_run: boolean;
+  }>("/stores/sync-start-dates", { method: "POST", body: { platform: platform || null, overwrite: replaceExisting, dry_run: dryRun } });
+  return {
+    stores: w.stores, toFill: w.to_fill, differs: w.differs, unchanged: w.unchanged, noOrders: w.no_orders,
+    toChange: w.to_change, replaceExisting: w.replace_existing, dryRun: w.dry_run,
+  };
+}
+
 /** Every vendor that has supplied a store (newest first); the current vendor has no end date. */
 export async function getStoreVendors(id: string): Promise<VendorPeriod[]> {
   const rows = await apiRequest<Parameters<typeof toVendorPeriod>[0][]>(`/stores/${id}/vendors`);

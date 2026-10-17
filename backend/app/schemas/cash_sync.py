@@ -17,6 +17,19 @@ class SyncSummary(BaseModel):
     pending_review: int         # synced earlier, still waiting for the developer
 
 
+class UploadResult(BaseModel):
+    """What an uploaded cash purchase sheet did. Nothing reaches the order sheet: rows land in the review list."""
+    summary: SyncSummary
+    rows_read: int
+    added: int                  # new rows now waiting for review
+    already_in_app: int         # same store + date + amount is already a purchase recorded in the app
+    already_uploaded: int       # this row was uploaded before
+    unmatched_store: int        # added, but the store must be picked in review
+    office_rows: int            # office purchases are not bottles, so they are ignored
+    invalid_rows: int           # unreadable date / amount, a future date, or a row with no store
+    warnings: list[str]
+
+
 class SyncRunOut(BaseModel):
     sync_id: uuid.UUID
     sync_code: str

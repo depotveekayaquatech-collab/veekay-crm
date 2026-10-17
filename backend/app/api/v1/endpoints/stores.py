@@ -13,7 +13,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
 from app.schemas.store import StoreCreate, StoreOut, StoreSyncResult, StoreUpdate, VendorPeriodOut
-from app.services import store_service, store_sync_service, vendor_history_service
+from app.services import activity_service, store_service, store_sync_service, vendor_history_service
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 _ALL_STORES = TypeAdapter(list[StoreOut])
@@ -132,6 +132,35 @@ def move_platform(
         db, user, payload.from_platform, payload.to_platform, payload.contains, dry_run=payload.dry_run
     )
     if not payload.dry_run:
+        read_cache.invalidate()
+    return result
+
+
+class SyncStartDatesRequest(BaseModel):
+    platform: str | None = None         # a platform slug; blank = every platform
+    overwrite: bool = False             # also replace start dates that are already set
+    dry_run: bool = True
+
+
+@router.post("/sync-start-dates", dependencies=[Depends(require_permission("sheets.sync"))])
+def sync_start_dates(
+    payload: SyncStartDatesRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Developer only. Set every store's start date to its first supplied day, taken from the order sheet. Empty dates are
+    always filled; dates already set are only replaced with `overwrite`. `dry_run` (default) only counts."""
+    partner_id = store_service._partner_by_slug(db, payload.platform).id if (payload.platform or "").strip() else None
+    result = vendor_history_service.sync_start_dates(
+        db, user.organization_id, partner_id=partner_id, overwrite=payload.overwrite, dry_run=payload.dry_run
+    )
+    if not payload.dry_run and result["to_change"]:
+        activity_service.record(
+            db, actor=user, action="store.start_dates_synced", entity_type="organization", entity_id=user.organization_id,
+            metadata={"platform": payload.platform or "all", "filled": result["to_fill"],
+                      "replaced": result["differs"] if payload.overwrite else 0},
+        )
+        db.commit()
         read_cache.invalidate()
     return result
 

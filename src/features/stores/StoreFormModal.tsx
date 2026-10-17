@@ -169,7 +169,8 @@ export function StoreFormModal({ onClose, store }: Props) {
             value={f.start_date}
             onChange={(e) => set("start_date")(e.target.value)}
             max={new Date().toISOString().slice(0, 10)}
-            hint="The day supply began. Earlier days are never counted as pending."
+            required={!editing || Boolean(store?.startDate)}
+            hint="Required. The day supply began. Earlier days are never counted as pending."
           />
           {store?.entity && <Input label="Entity (from the sheet)" value={store.entity} readOnly />}
         </Section>

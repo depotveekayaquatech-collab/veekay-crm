@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -42,9 +42,11 @@ from app.schemas.cash_sync import (
     SyncRecordOut,
     SyncRunOut,
     SyncSummary,
+    UploadResult,
 )
-from app.services import activity_service
+from app.services import activity_service, store_sync_service
 from app.services.cash_adjustment_service import apply_to_entry, calc_quantity
+from app.services.cash_purchase_service import MAX_AMOUNT, _today
 from app.services.order_service import _check_order_date
 
 SOURCE_NAME = "Store Purchase Sheet"
@@ -157,6 +159,177 @@ def sync(db: Session, user: User) -> SyncSummary:
     return _summary(db, user, run)
 
 
+# --------------------------------------------------------------------------
+# upload a cash purchase sheet
+# --------------------------------------------------------------------------
+
+# Header -> field. Headers are matched case-insensitively; the downloaded "Cash Purchase Sheet" works as it is.
+_UPLOAD_COLUMNS: dict[str, list[str]] = {
+    "date": ["date", "purchase date", "purchase_date"],
+    "code": ["store code", "outlet id", "outlet code", "store id", "code"],
+    "name": ["store / place", "store name", "outlet name", "store", "place", "name"],
+    "type": ["type"],
+    "amount": ["amount (inr)", "amount (₹)", "amount", "cash purchase", "total amount"],
+    "price": ["price per item", "price", "rate"],
+    "reason": ["reason"],
+    "added_by": ["added by"],
+}
+_SHEET_NAMESPACE = uuid.UUID("5b0a3f0e-7a52-4c1e-9d2b-3c1f6a8e4d17")
+
+
+def _money(raw: str | None) -> Decimal | None:
+    text = (raw or "").replace("₹", "").replace("INR", "").replace(",", "").strip()
+    try:
+        value = Decimal(text)
+        if not value.is_finite():
+            return None
+        value = value.quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        return None
+    return value if 0 < value <= MAX_AMOUNT else None
+
+
+def _resolve_store(by_code: dict, by_name: dict, code: str | None, name: str | None) -> Store | None:
+    """The store a sheet row means, or None when it is unknown or ambiguous (the developer then picks it in review)."""
+    if code:
+        found = by_code.get(code.lower(), [])
+        if len(found) > 1 and name:
+            found = [s for s in found if s.name.strip().lower() == name.strip().lower()]
+        if len(found) == 1:
+            return found[0]
+        if found:
+            return None
+    if name and not code:
+        found = by_name.get(name.strip().lower(), [])
+        if len(found) == 1:
+            return found[0]
+    return None
+
+
+def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> UploadResult:
+    """Bring a cash purchase sheet (.xlsx / .csv, same columns as the downloaded sheet) into the review list.
+
+    Like Sync, this only copies rows into the working area; the order sheet is untouched until the developer confirms.
+    Safe to repeat: a row that is already in the app (same store + date + amount) or was uploaded before is skipped,
+    so uploading the downloaded sheet back, or the same file twice, never adds a purchase twice."""
+    rows = store_sync_service.rows_from_upload(filename, content)
+    if not rows:
+        raise store_sync_service.SyncError("The sheet has no data rows.")
+    lower = {k.strip().lower(): k for k in rows[0]}
+    cols = {f: next((lower[a] for a in aliases if a in lower), None) for f, aliases in _UPLOAD_COLUMNS.items()}
+    if not cols["date"] or not cols["amount"] or not (cols["code"] or cols["name"]):
+        raise store_sync_service.SyncError(
+            "Could not find the columns. The sheet needs a Date column, an Amount column and a Store code (or Store name) column."
+        )
+
+    def cell(row: dict, field: str) -> str | None:
+        return store_sync_service._clean(row.get(cols[field])) if cols[field] else None
+
+    org = user.organization_id
+    today = _today()
+    stores = db.execute(select(Store).where(Store.organization_id == org)).scalars().unique().all()
+    by_code: dict[str, list[Store]] = {}
+    by_name: dict[str, list[Store]] = {}
+    for s in stores:
+        by_code.setdefault(s.external_code.strip().lower(), []).append(s)
+        by_name.setdefault(s.name.strip().lower(), []).append(s)
+    in_app = {
+        (sid, d, a): n for sid, d, a, n in db.execute(
+            select(CashPurchase.store_id, CashPurchase.purchase_date, CashPurchase.amount, func.count())
+            .where(CashPurchase.organization_id == org, CashPurchase.kind == PurchaseKind.STORE.value)
+            .group_by(CashPurchase.store_id, CashPurchase.purchase_date, CashPurchase.amount)
+        )
+    }
+
+    office = invalid = already_in_app = 0
+    problems: list[str] = []
+    seen: dict[tuple, int] = {}
+    candidates: list[dict] = []
+    for i, row in enumerate(rows, start=2):   # sheet row number (1 = header)
+        raw_date = cell(row, "date")
+        if (raw_date or "").lower() == "total":
+            continue
+        code, name = cell(row, "code"), cell(row, "name")
+        kind = (cell(row, "type") or "").lower()
+        if kind == "office" or (not code and (name or "").lower() == "office"):
+            office += 1
+            continue
+        day = store_sync_service._parse_date(raw_date)
+        amount = _money(cell(row, "amount"))
+        why = (
+            "the date can't be read" if day is None else "the date is in the future" if day > today
+            else "the amount is missing or not a valid number" if amount is None
+            else "there is no store" if not (code or name) else None
+        )
+        if why:
+            invalid += 1
+            if len(problems) < 5:
+                problems.append(f"Row {i}: skipped, {why}.")
+            continue
+        store = _resolve_store(by_code, by_name, code, name)
+        # Identity comes from what the sheet says, not from the store we matched, so a store added to the CRM later
+        # (or a different pick made in review) never turns an old row into a "new" one on the next upload.
+        key = (f"{(code or '').lower()}|{(name or '').lower() if not code else ''}", day, amount)
+        n = seen[key] = seen.get(key, -1) + 1   # the 1st, 2nd... identical purchase of the day (two ₹100 buys are legitimate)
+        if store and n < in_app.get((store.id, day, amount), 0):
+            already_in_app += 1
+            continue
+        candidates.append({
+            "pid": uuid.uuid5(_SHEET_NAMESPACE, f"{org}|{key[0]}|{day}|{amount}|{n}"), "store": store, "day": day,
+            "amount": amount, "code": code, "name": name, "price": _money(cell(row, "price")),
+            "reason": cell(row, "reason"), "added_by": cell(row, "added_by"),
+        })
+
+    known: set[uuid.UUID] = set()
+    pids = [c["pid"] for c in candidates]
+    for i in range(0, len(pids), 5000):
+        known.update(db.execute(
+            select(CashSyncRecord.purchase_id).where(CashSyncRecord.organization_id == org, CashSyncRecord.purchase_id.in_(pids[i:i + 5000]))
+        ).scalars())
+    fresh = [c for c in candidates if c["pid"] not in known]
+    already_uploaded = len(candidates) - len(fresh)
+
+    run = CashSyncRun(
+        organization_id=org, created_by_user_id=user.id, created_by_name=user.full_name,
+        records_found=len(candidates) + already_in_app, new_count=len(fresh), changed_count=0,
+        already_count=already_uploaded + already_in_app,
+    )
+    db.add(run)
+    db.flush()
+    unmatched: dict[str, int] = {}
+    for c in fresh:
+        s = c["store"]
+        snap = {
+            "store_id": str(s.id) if s else None, "store_code": s.external_code if s else c["code"],
+            "store_name": s.name if s else c["name"], "purchase_date": c["day"].isoformat(), "amount": str(c["amount"]),
+            "reason": c["reason"] or "Uploaded sheet", "added_by": c["added_by"] or user.full_name,
+        }
+        if s is None:
+            label = " ".join(x for x in (c["name"], f"({c['code']})" if c["code"] else None) if x)
+            unmatched[label] = unmatched.get(label, 0) + 1
+        db.add(CashSyncRecord(
+            organization_id=org, purchase_id=c["pid"], status=SyncStatus.PENDING, store_id=s.id if s else None,
+            purchase_date=c["day"], amount=c["amount"], price_per_item=c["price"], baseline=snap, current_source=snap, sync_id=run.id,
+        ))
+    if unmatched:
+        shown = ", ".join(sorted(unmatched)[:8]) + (" …" if len(unmatched) > 8 else "")
+        problems.append(f"{sum(unmatched.values())} row(s) have a store that isn't in the CRM ({shown}). Pick the store in the review list.")
+    if invalid > len(problems):
+        problems.append(f"{invalid} row(s) in total were skipped as unreadable.")
+    activity_service.record(
+        db, actor=user, action="cash_sync.uploaded", entity_type="cash_sync", entity_id=run.id,
+        metadata={"file": filename[:120], "rows": len(rows), "added": len(fresh), "already_in_app": already_in_app,
+                  "already_uploaded": already_uploaded, "office": office, "invalid": invalid},
+    )
+    db.commit()
+    db.refresh(run)
+    return UploadResult(
+        summary=_summary(db, user, run), rows_read=len(rows), added=len(fresh), already_in_app=already_in_app,
+        already_uploaded=already_uploaded, unmatched_store=sum(unmatched.values()), office_rows=office, invalid_rows=invalid,
+        warnings=problems[:12],
+    )
+
+
 def runs(db: Session, user: User) -> list[SyncRunOut]:
     rows = db.execute(
         select(CashSyncRun).where(CashSyncRun.organization_id == user.organization_id).order_by(CashSyncRun.created_at.desc()).limit(50)
@@ -200,7 +373,9 @@ def _out(r: CashSyncRecord, stores: dict[uuid.UUID, Store], run_codes: dict) -> 
     changed = r.status == SyncStatus.CHANGED
     return SyncRecordOut(
         id=r.id, purchase_id=r.purchase_id, purchase_code=purchase_code(r.purchase_id), status=r.status,
-        store_id=r.store_id, outlet_code=s.external_code if s else None, outlet_name=s.name if s else None,
+        # No store picked yet (an uploaded row whose store isn't in the CRM): show what the sheet said.
+        store_id=r.store_id, outlet_code=s.external_code if s else r.current_source.get("store_code"),
+        outlet_name=s.name if s else r.current_source.get("store_name"),
         purchase_date=r.purchase_date, amount=r.amount, price_per_item=r.price_per_item, auto_qty=auto, final_qty=final,
         overridden=r.final_qty_override is not None and r.final_qty_override != auto,
         reason=r.current_source.get("reason"), added_by=r.current_source.get("added_by"),

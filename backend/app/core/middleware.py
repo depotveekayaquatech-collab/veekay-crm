@@ -92,7 +92,7 @@ class RequestContextMiddleware:
 # --------------------------------------------------------------------------
 
 _HEAVY = [
-    ("POST", re.compile(rf"^{_API}/(compliance/(upload|bulk|summary-pdf|download)|orders/import|stores/import|employees/import|cards/zip)$")),
+    ("POST", re.compile(rf"^{_API}/(compliance/(upload|bulk|summary-pdf|download)|orders/import|stores/import|stores/sync-start-dates|employees/import|cards/zip|developer/cash-adjustments/sync/upload)$")),
     ("POST", re.compile(rf"^{_API}/external/(tickets|documents|deliveries)(/[0-9a-f-]{{36}}/comments)?$")),
     ("GET", re.compile(rf"^{_API}/(cards/pdf|orders/matrix/export)$")),
 ]

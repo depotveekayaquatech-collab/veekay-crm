@@ -13,7 +13,7 @@ from app.models.store import Store
 from app.services import store_sync_service as svc
 from tests.conftest import API
 
-HEADER = ["Outlet ID", "Outlet Name", "STATUS", "State", "City"]
+HEADER = ["Outlet ID", "Outlet Name", "STATUS", "State", "City", "Start date"]
 
 
 def _xlsx(rows, *, fill_cells=()) -> bytes:
@@ -31,7 +31,7 @@ def _xlsx(rows, *, fill_cells=()) -> bytes:
 
 
 def _rows(n, prefix="LIM"):
-    return [[f"{prefix}-{i}", f"Blinkit - {prefix} {i}", "Live", "Delhi", "Delhi"] for i in range(n)]
+    return [[f"{prefix}-{i}", f"Blinkit - {prefix} {i}", "Live", "Delhi", "Delhi", "2026-03-01"] for i in range(n)]
 
 
 def test_normal_sheet_parses_unchanged():
@@ -124,7 +124,7 @@ def test_a_huge_archive_is_restored_inside_the_database_not_in_python(client, de
 
     _seed_archive(db, codes=1000, days=150)                         # 150,000 archived order days
     assert db.query(OrderEntryArchive).count() == 150_000
-    data = _xlsx([[f"ARC-{i}", f"Blinkit - Arc {i}", "Live", "Delhi", "Delhi"] for i in range(1000)])
+    data = _xlsx([[f"ARC-{i}", f"Blinkit - Arc {i}", "Live", "Delhi", "Delhi", "2026-03-01"] for i in range(1000)])
     tracemalloc.start()
     t = time.time()
     r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.xlsx", data, "application/octet-stream")}, headers=dev)

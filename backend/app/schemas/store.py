@@ -21,6 +21,7 @@ class StoreBase(BaseModel):
 
 
 class StoreCreate(StoreBase):
+    start_date: date   # mandatory for every new store: the day supply began
     partner_organization_id: uuid.UUID
     region_id: uuid.UUID | None = None
     status: StoreStatus = StoreStatus.LIVE
@@ -71,6 +72,7 @@ class StoreSyncResult(BaseModel):
     unchanged: int
     rows_read: int
     vendor_changes: int = 0
+    skipped: int = 0
     warnings: list[str]
 
 

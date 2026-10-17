@@ -72,6 +72,8 @@ export interface StoreSyncResult {
   unchanged: number;
   rowsRead: number;
   vendorChanges: number;
+  /** New stores left out because the sheet gave no readable start date. */
+  skipped: number;
   warnings: string[];
 }
 
@@ -82,6 +84,7 @@ export function toSyncResult(w: {
   unchanged: number;
   rows_read: number;
   vendor_changes?: number;
+  skipped?: number;
   warnings: string[];
 }): StoreSyncResult {
   return {
@@ -91,6 +94,7 @@ export function toSyncResult(w: {
     unchanged: w.unchanged,
     rowsRead: w.rows_read,
     vendorChanges: w.vendor_changes ?? 0,
+    skipped: w.skipped ?? 0,
     warnings: w.warnings,
   };
 }

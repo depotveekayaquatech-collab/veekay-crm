@@ -71,7 +71,7 @@ def test_wiped_history_comes_back_when_the_store_is_added_again(client, dev, adm
     db.expire_all()
     assert db.query(OrderEntryArchive).filter_by(external_code="ZPT-RESTORE-1").count() == 2
     created = client.post(f"{API}/stores", json={"name": "Zepto Restore", "external_code": "ZPT-RESTORE-1",
-                                                  "partner_organization_id": str(partner_id), "status": "LIVE"}, headers=admin)
+                                                  "partner_organization_id": str(partner_id), "status": "LIVE", "start_date": "2026-03-01"}, headers=admin)
     assert created.status_code == 201, created.text
     sid = created.json()["id"]
     db.expire_all()
@@ -93,8 +93,8 @@ def test_closing_a_store_keeps_history_too(client, admin, db, make_store):
 
 
 def _csv(rows):
-    head = "Outlet ID,Outlet Name,STATUS,State,City\n"
-    return (head + "\n".join(f"{c},{n},Live,Delhi,Delhi" for c, n in rows)).encode()
+    head = "Outlet ID,Outlet Name,STATUS,State,City,Start date\n"
+    return (head + "\n".join(f"{c},{n},Live,Delhi,Delhi,2026-03-01" for c, n in rows)).encode()
 
 
 def test_import_refuses_a_sheet_that_mentions_another_platform(client, dev, db):

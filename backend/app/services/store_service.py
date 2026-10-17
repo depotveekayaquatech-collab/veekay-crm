@@ -113,6 +113,8 @@ def update_store(db: Session, actor: User, store_id: uuid.UUID, payload: StoreUp
         _validate_region(db, actor, data["region_id"])
     if "status" in data and data["status"] is not None:
         data["status"] = data["status"].value if hasattr(data["status"], "value") else data["status"]
+    if "start_date" in data and data["start_date"] is None and store.start_date is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A store's start date can be changed but not removed.")
     old_status = store.status
     old_vendor = store.vendor_name
     for field, value in data.items():

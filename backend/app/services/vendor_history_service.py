@@ -87,6 +87,50 @@ def set_start_dates_from_orders(db: Session, partner_id: uuid.UUID) -> int:
     return res.rowcount or 0
 
 
+def sync_start_dates(
+    db: Session, org_id: uuid.UUID, *, partner_id: uuid.UUID | None = None, overwrite: bool = False, dry_run: bool = True,
+) -> dict:
+    """Developer tool: set each store's start date to the first day it was supplied (earliest order with bottles).
+
+    Empty dates are always filled. A date that already differs from the first supply is only replaced when `overwrite`
+    is true (otherwise it is counted as `differs` and left alone). `dry_run` only counts, so the developer can see the
+    effect first. Stores that have no supplied day yet are never touched."""
+    first = (
+        select(OrderEntry.store_id.label("store_id"), func.min(OrderEntry.order_date).label("d"))
+        .where(OrderEntry.bottle_count > 0)
+        .group_by(OrderEntry.store_id)
+        .subquery()
+    )
+    cond = [Store.organization_id == org_id]
+    if partner_id is not None:
+        cond.append(Store.partner_organization_id == partner_id)
+    stores, fill, differs, same = db.execute(
+        select(
+            func.count(),
+            func.count().filter(first.c.d.is_not(None), Store.start_date.is_(None)),
+            func.count().filter(first.c.d.is_not(None), Store.start_date.is_not(None), Store.start_date != first.c.d),
+            func.count().filter(first.c.d.is_not(None), Store.start_date == first.c.d),
+        ).select_from(Store).outerjoin(first, first.c.store_id == Store.id).where(*cond)
+    ).one()
+    out = {
+        "stores": int(stores), "to_fill": int(fill), "differs": int(differs), "unchanged": int(same),
+        "no_orders": int(stores - fill - differs - same), "replace_existing": overwrite, "dry_run": dry_run,
+    }
+    out["to_change"] = out["to_fill"] + (out["differs"] if overwrite else 0)
+    if dry_run or not out["to_change"]:
+        return out
+    change = Store.start_date.is_(None) if not overwrite else Store.start_date.is_distinct_from(first.c.d)
+    db.execute(update(Store).where(Store.id == first.c.store_id, *cond, change).values(start_date=first.c.d))
+    # A current vendor with no known start inherits the store's start (same rule the order import applies).
+    db.execute(
+        update(StoreVendorPeriod)
+        .where(StoreVendorPeriod.store_id == Store.id, *cond, Store.start_date.is_not(None),
+               StoreVendorPeriod.start_date.is_(None), StoreVendorPeriod.end_date.is_(None))
+        .values(start_date=Store.start_date)
+    )
+    return out
+
+
 def confirm_vendor_starts(db: Session, partner_id: uuid.UUID) -> int:
     """For vendors whose start was only "the day the change was noticed": use the first order on or after that day."""
     pending = db.execute(

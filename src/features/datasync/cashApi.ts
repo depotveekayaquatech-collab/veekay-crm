@@ -84,6 +84,18 @@ export interface SyncSummary {
   pendingReview: number;
 }
 
+export interface UploadResult {
+  summary: SyncSummary;
+  rowsRead: number;
+  added: number;
+  alreadyInApp: number;
+  alreadyUploaded: number;
+  unmatchedStore: number;
+  officeRows: number;
+  invalidRows: number;
+  warnings: string[];
+}
+
 export interface SyncRun {
   syncId: string;
   syncCode: string;
@@ -257,6 +269,17 @@ export function useSyncActions() {
   };
   return {
     sync: useMutation({ mutationFn: () => post<SyncSummary>("/sync"), onSuccess: refresh }),
+    upload: useMutation({
+      mutationFn: (file: File) => {
+        const body = new FormData();
+        body.append("file", file);
+        return apiRequest<unknown>(`${BASE}/sync/upload`, { method: "POST", body }).then((r) => camelize<UploadResult>(r));
+      },
+      onSuccess: (r) => {
+        refresh();
+        pushToast(r.added ? `${r.added} purchase${r.added === 1 ? "" : "s"} added for review.` : "Nothing new in that sheet.", r.added ? "success" : "info");
+      },
+    }),
     edit: useMutation({
       mutationFn: ({ id, ...e }: RecordEdit & { id: string }) =>
         apiRequest<unknown>(`${BASE}/sync/records/${id}`, {

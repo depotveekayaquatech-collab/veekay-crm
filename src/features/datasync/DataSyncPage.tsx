@@ -7,6 +7,7 @@ import { useSyncOrders } from "@/features/orders/useOrders";
 import { DeleteAllStoresModal } from "@/features/stores/DeleteAllStoresModal";
 import { MovePlatformModal } from "@/features/stores/MovePlatformModal";
 import { ImportStoresModal } from "@/features/stores/ImportStoresModal";
+import { SyncStartDatesModal } from "@/features/stores/SyncStartDatesModal";
 import { useStoreMutations } from "@/features/stores/useStores";
 
 interface Result {
@@ -18,6 +19,7 @@ interface Result {
   vendorChanges?: number;
   startDatesSet?: number;
   vendorStartsSet?: number;
+  skipped?: number;
   warnings: string[];
 }
 
@@ -36,6 +38,7 @@ function Results({ title, results, onDismiss }: { title: string; results: Result
           <li key={r.platform}>
             <span className="font-bold capitalize text-gray-900">{r.platform}</span>: +{r.created} new · {r.updated} updated · {r.unchanged} unchanged · {r.rowsRead} rows read
             {r.startDatesSet ? ` · ${r.startDatesSet} start dates set` : ""}
+            {r.skipped ? ` · ${r.skipped} NOT added (no start date)` : ""}
             {r.vendorChanges ? ` · ${r.vendorChanges} vendor changes` : ""}
             {r.vendorStartsSet ? ` · ${r.vendorStartsSet} new-vendor start dates set` : ""}
           </li>
@@ -69,6 +72,7 @@ export function DataSyncPage() {
   const [importStores, setImportStores] = useState(false);
   const [removingStores, setRemovingStores] = useState(false);
   const [movingStores, setMovingStores] = useState(false);
+  const [syncingDates, setSyncingDates] = useState(false);
   const [importOrders, setImportOrders] = useState(false);
   const { sync: syncStores } = useStoreMutations();
   const syncOrders = useSyncOrders();
@@ -86,6 +90,9 @@ export function DataSyncPage() {
             <Button variant="secondary" onClick={() => setImportStores(true)}>
               <IconUpload className="h-4 w-4" aria-hidden="true" />
               Import file
+            </Button>
+            <Button variant="secondary" onClick={() => setSyncingDates(true)}>
+              Sync start dates
             </Button>
             <Button variant="secondary" onClick={() => setMovingStores(true)}>
               Fix wrong platform
@@ -110,6 +117,7 @@ export function DataSyncPage() {
           {syncOrders.data && <Results title="Last order sync" results={syncOrders.data} onDismiss={() => syncOrders.reset()} />}
         </Card>
       </div>
+      {syncingDates && <SyncStartDatesModal onClose={() => setSyncingDates(false)} />}
       {movingStores && <MovePlatformModal onClose={() => setMovingStores(false)} />}
       {removingStores && <DeleteAllStoresModal onClose={() => setRemovingStores(false)} />}
       {importStores && <ImportStoresModal onClose={() => setImportStores(false)} />}

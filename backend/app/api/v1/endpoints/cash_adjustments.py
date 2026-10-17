@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_permission
@@ -10,9 +10,9 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.cash_adjustment import AdjustmentList, AdjustRequest, ApplyResult, Preview, StoreChoice
 from app.schemas.cash_sync import (
-    RecordEdit, RecordIds, ResolveRequest, StandardRate, StandardRateResult, SyncApplyResult, SyncOverview, SyncPreview, SyncRecordOut, SyncRunOut, SyncSummary,
+    RecordEdit, RecordIds, ResolveRequest, StandardRate, StandardRateResult, SyncApplyResult, SyncOverview, SyncPreview, SyncRecordOut, SyncRunOut, SyncSummary, UploadResult,
 )
-from app.services import cash_adjustment_service as svc
+from app.services import cash_adjustment_service as svc, store_sync_service
 from app.services import cash_analysis_service as analysis_svc
 from app.services import cash_purchase_service, cash_sync_service as sync_svc
 
@@ -105,6 +105,19 @@ def analysis_export(
 def sync(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SyncSummary:
     """Bring the latest store purchases into the developer working area. Does NOT change the order sheet."""
     return sync_svc.sync(db, user)
+
+
+@router.post("/sync/upload", response_model=UploadResult)
+def sync_upload(
+    file: UploadFile = File(...), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> UploadResult:
+    """Upload a cash purchase sheet (.xlsx / .csv). Rows join the review list; the order sheet is NOT changed."""
+    # A plain `def` (worker thread), like the other importers: parsing and writing is blocking work.
+    content = file.file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
+    try:
+        return sync_svc.upload_sheet(db, user, file.filename or "", content)
+    except store_sync_service.SyncError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
 @router.get("/sync/runs", response_model=list[SyncRunOut])

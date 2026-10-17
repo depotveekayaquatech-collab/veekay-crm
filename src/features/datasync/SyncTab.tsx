@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { IconUpload } from "@/components/ui/icons";
+import { pushToast } from "@/lib/toast";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Pagination } from "@/components/ui/Pagination";
@@ -21,6 +23,7 @@ import {
   type SyncRecord,
   type SyncStatus,
   type SyncSummary,
+  type UploadResult,
 } from "@/features/datasync/cashApi";
 import { daysAgo } from "@/lib/dates";
 
@@ -64,7 +67,10 @@ function Row({
           {locked ? (
             <span>{r.outletName} <span className="text-xs text-gray-500">{r.outletCode}</span></span>
           ) : (
-            <Select label="Store" searchable value={r.storeId ?? ""} options={stores} placeholder="Pick a store" onChange={(e) => save({ storeId: e.target.value })} />
+            <>
+              <Select label="Store" searchable value={r.storeId ?? ""} options={stores} placeholder="Pick a store" onChange={(e) => save({ storeId: e.target.value })} />
+              {!r.storeId && r.outletName && <p className="mt-1 text-xs text-status-warning">Sheet says: {r.outletName}{r.outletCode ? ` (${r.outletCode})` : ""}</p>}
+            </>
           )}
         </Td>
         <Td className="[&_label]:sr-only">
@@ -124,6 +130,8 @@ export function SyncTab() {
   const [preview, setPreview] = useState<SyncPreview | null>(null);
   const [result, setResult] = useState<SyncApplyResult | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [uploaded, setUploaded] = useState<UploadResult | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const actions = useSyncActions();
   const { data, isLoading } = useSyncRecords(status, page);
   const { data: storeList = [] } = useStoreChoices("");
@@ -131,6 +139,19 @@ export function SyncTab() {
 
   const pending = (data?.items ?? []).filter((r) => r.status === "PENDING");
   const counts = data?.counts;
+
+  async function doUpload(file: File) {
+    if (!/\.(xlsx|xlsm|csv)$/i.test(file.name)) return pushToast("Choose an .xlsx or .csv file.", "error");
+    if (file.size > 5 * 1024 * 1024) return pushToast("That file is larger than 5 MB.", "error");
+    setResult(null);
+    try {
+      setUploaded(await actions.upload.mutateAsync(file));
+      setStatus("PENDING");
+      setPage(1);
+    } catch {
+      /* shown by the API layer */
+    }
+  }
 
   async function doSync() {
     setResult(null);
@@ -183,6 +204,19 @@ export function SyncTab() {
             <p className="mt-1 text-sm text-gray-500">Sync only brings the latest store purchases here for review. Nothing reaches the order sheet until you confirm.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".xlsx,.xlsm,.csv"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label="Cash purchase sheet file"
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void doUpload(f); }}
+            />
+            <Button variant="secondary" isLoading={actions.upload.isPending} onClick={() => fileInput.current?.click()}>
+              <IconUpload className="h-4 w-4" aria-hidden="true" />
+              Upload Cash Purchase Sheet
+            </Button>
             <Button variant="secondary" isLoading={downloading} onClick={async () => { setDownloading(true); try { await downloadPurchaseSheet(); } catch { /* shown */ } finally { setDownloading(false); } }}>
               Download Cash Purchase Sheet
             </Button>
@@ -195,6 +229,31 @@ export function SyncTab() {
           <p role="status" className="rounded-xl bg-surface-subtle px-4 py-3 text-sm text-gray-700">
             Syncing store purchases… fetching the latest data, checking stores, dates and amounts.
           </p>
+        )}
+        {actions.upload.isPending && (
+          <p role="status" className="rounded-xl bg-surface-subtle px-4 py-3 text-sm text-gray-700">
+            Reading the sheet… matching stores and checking for purchases that are already here.
+          </p>
+        )}
+        {uploaded && !actions.upload.isPending && (
+          <div role="status" className="rounded-xl bg-surface-subtle px-4 py-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-semibold text-heading">
+                Sheet uploaded · <span className="font-mono text-xs text-gray-500">{uploaded.summary.syncCode}</span> · {uploaded.rowsRead} rows read
+              </p>
+              <button type="button" onClick={() => setUploaded(null)} className="text-xs font-semibold text-gray-500 hover:text-gray-800">Dismiss</button>
+            </div>
+            <p className="mt-1 text-gray-700">
+              Added for review <b>{uploaded.added}</b> · Already in the app <b>{uploaded.alreadyInApp}</b> · Uploaded before <b>{uploaded.alreadyUploaded}</b>
+              {" · "}Office rows ignored <b>{uploaded.officeRows}</b> · Skipped <b>{uploaded.invalidRows}</b>
+            </p>
+            {uploaded.warnings.length > 0 && (
+              <ul className="mt-2 list-disc rounded-lg bg-status-warning-soft px-4 py-2 pl-8 text-xs text-status-warning">
+                {uploaded.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-gray-500">Nothing reaches the order sheet yet. Set the price, check each row, then preview and apply.</p>
+          </div>
         )}
         {(summary ?? data?.lastSync) && !actions.sync.isPending && (() => {
           const s = (summary ?? data?.lastSync) as SyncSummary;

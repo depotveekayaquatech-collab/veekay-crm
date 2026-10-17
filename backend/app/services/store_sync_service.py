@@ -91,12 +91,14 @@ class SyncResult:
     unchanged: int = 0
     rows_read: int = 0
     vendor_changes: int = 0     # stores whose vendor changed (the old vendor is kept as history)
+    skipped: int = 0            # new stores not added (no start date in the sheet)
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
             "platform": self.platform,
             "vendor_changes": self.vendor_changes,
+            "skipped": self.skipped,
             "created": self.created,
             "updated": self.updated,
             "unchanged": self.unchanged,
@@ -490,6 +492,7 @@ def _import_rows(
     trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
     bad_dates: list[int] = []            # rows whose start date couldn't be read
     vendor_touched: list[Store] = []     # stores whose vendor was set or changed by this import
+    missing_start: list[int] = []        # NEW stores skipped because the sheet gave no readable start date
 
     for i, row in enumerate(rows, start=2):  # sheet row number (1 = header)
         code = _clean(row.get(cols["external_code"]))
@@ -545,6 +548,9 @@ def _import_rows(
 
         existing = by_code.get(code)
         if existing is None:
+            if fields["start_date"] is None:
+                missing_start.append(i)   # a new store must come with its start date
+                continue
             new_store = Store(
                 organization_id=actor.organization_id,
                 partner_organization_id=partner.id,
@@ -592,10 +598,20 @@ def _import_rows(
         if restored:
             result.warnings.append(f"{restored} archived order days were restored to re-added stores.")
 
+    if missing_start:
+        n = len(missing_start)
+        result.skipped = n
+        rows_txt = ", ".join(str(r) for r in missing_start[:8]) + (" …" if n > 8 else "")
+        result.warnings.insert(
+            0,
+            f"{n} new store{'s were' if n > 1 else ' was'} NOT added because the sheet has no readable start date for "
+            f"{'them' if n > 1 else 'it'} (rows {rows_txt}). A start date is required for every new store: fill the "
+            "'Start date' column (e.g. 2026-03-15 or 15-Mar-2026) and import again.",
+        )
     if bad_dates:
         result.warnings.append(
             f"{len(bad_dates)} row{'s' if len(bad_dates) > 1 else ''} had a start date that could not be read "
-            f"and was left blank (first: row {bad_dates[0]})."
+            f"(first: row {bad_dates[0]}). Existing stores keep their current date."
         )
 
     for fname, rows_hit in trimmed.items():
