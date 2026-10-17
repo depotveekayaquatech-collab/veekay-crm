@@ -2,13 +2,13 @@
 
 Direct APK distribution to employees now; Google Play later. Same application ID (`com.veekay.partner`) and same signing key throughout.
 
-## Current build (verified by inspection, 2026-10-16)
+## Current build (verified by inspection, 2026-10-17)
 
 | | |
 |---|---|
-| File | `mobile/build/apk/Veekay-Partner-1.0.0-code6.apk` (git-ignored) |
-| Size / SHA-256 | 56,318,257 bytes / `703a1dc8c8ca53aeaef1ed9ba57e20528b9ab8a9bb2c954c921b8bf754709131` |
-| Application ID, version | `com.veekay.partner`, versionName 1.0.0, versionCode 6 |
+| File | `mobile/build/apk/Veekay-Partner-1.0.1-code9.apk` (git-ignored); the published copy is `public/downloads/` |
+| Size / SHA-256 | 56,373,749 bytes / `7f22bcbcad11369cdf5f041c512d4a7266f6e3e4e8206404a7e451e2c1b09132` |
+| Application ID, version | `com.veekay.partner`, versionName 1.0.1, versionCode 9 |
 | minSdk / targetSdk / compileSdk | 24 (Android 7.0) / 36 (Android 16) / 36 |
 | ABIs | arm64-v8a, armeabi-v7a (no x86: emulators on PCs and Chromebooks are not supported by this APK) |
 | Signature | APK Signature Scheme v2, one signer `CN=Veekay Aquatech`, RSA 2048, cert SHA-256 `711d9aa84857dcdb54ea4e8d330e145f293da79ad01b7662ed3c3ca01c6b2249` |
@@ -55,13 +55,15 @@ Minimum before sending to everyone: run the full column on **one real phone** yo
 
 Phones with build 6 or newer check `https://veekay-crm.vercel.app/app-update.json` every time the app opens and whenever it returns to the foreground (at most once per 10 minutes). From build 8 the alert's **Update now** button downloads the APK inside the app (progress shown) and opens Android's installer; if that fails it falls back to the browser link. Every profile screen has **Check for updates** and shows `version X (build N)`.
 
+**One command, nothing to upload by hand:** `cd mobile; npm run release -- --notes "What changed"`. It builds the APK, copies it to `public/downloads/` (the web app serves it), writes `public/app-update.json` with its size, SHA-256 and the one-release-behind update policy, and prints the link to check. Then `git add -A`, commit and push: Vercel deploys the file and the alert together. The numbered steps below are the same thing done in pieces (or with a link you host elsewhere, via `--url`).
+
 For each release:
 1. Change the code, then (optionally) raise `version` in `app.config.ts` (the visible name, e.g. 1.0.2).
 2. `cd mobile; npm run build:apk-local`. The version code is chosen automatically: always above every APK already built and above the one in `public/app-update.json`. The build refuses a code that is not higher.
 3. Host `mobile/build/apk/Veekay-Partner-<name>-code<N>.apk` at an https direct-download link (Google Drive: `https://drive.google.com/uc?export=download&id=FILE_ID`; or a public GitHub release).
 4. `npm run release:publish -- --url "<that link>" --notes "What changed"`. It reads the real version out of the APK, records its size and SHA-256, refuses a non-upgrading code, and downloads the first bytes of the link to prove it serves an APK and not a web page.
 5. Commit and push `public/app-update.json`. When Vercel has deployed, phones show "An update is available" on their next check. This push is what switches the alert on; do it last, after step 4 succeeded.
-6. Optional: add `--min <code>` to step 4 to block every build below that code behind a full-screen "Update required" page. Leave it at the default (nobody forced) unless an old build is dangerous.
+6. **Update policy (automatic):** step 4 sets the minimum to the *previous* release. A phone one release behind keeps working and is only offered the update; a phone two releases behind gets the full-screen "Update required" page until it updates. Example: publishing 9 after 8 blocks 7 and older; publishing 10 then blocks 8. Pass `--min <code>` to choose differently, `--min 0` to force nobody.
 
 Rules that keep the chain unbroken: same package ID, same signing key, ever-higher version codes. Skip any of these and phones cannot update in place.
 

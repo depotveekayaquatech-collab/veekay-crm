@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 8,
+    "latestVersionCode": 9,
     "latestVersionName": "1.0.1",
-    "minVersionCode": 0,
-    "downloadUrl": "https://drive.usercontent.google.com/download?id=1wsAFl6KX_UyNK5KAQj2T2TsYRkv9PkLM&export=download&confirm=t",
-    "notes": "Location fix, Insights home, expense totals, in-app updates",
-    "apkSizeBytes": 56372297,
-    "apkSha256": "3e32e90f3b33c9e72bf443cb170a61882787b2414ed520887cf03bbec78dae3d"
+    "minVersionCode": 8,
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.0.1-code9.apk",
+    "notes": "Orders: Today/Yesterday view, marks show as Done straight away. Fixes for stores missing from lists. Update rule: phones may be one release behind.",
+    "apkSizeBytes": 56373749,
+    "apkSha256": "7f22bcbcad11369cdf5f041c512d4a7266f6e3e4e8206404a7e451e2c1b09132"
   }
 }

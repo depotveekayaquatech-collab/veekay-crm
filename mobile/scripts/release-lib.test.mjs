@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildManifest, codeFromFileName, looksLikeApk, nextVersionCode } from "./release-lib.mjs";
+import { buildManifest, codeFromFileName, defaultMinCode, looksLikeApk, nextVersionCode } from "./release-lib.mjs";
 
 test("version code comes from the file name and the next one is above everything built or published", () => {
   assert.equal(codeFromFileName("Veekay-Partner-1.0.1-code8.apk"), 8);
@@ -26,4 +26,11 @@ test("manifest: refuses an unsafe or non-upgrading release", () => {
   assert.throws(() => buildManifest({ ...ok, url: "http://example.com/a.apk" }), /https/);
   assert.throws(() => buildManifest({ ...ok, minCode: 9 }), /minVersionCode/);
   assert.equal(buildManifest({ ...ok, code: 7, force: true }).android.latestVersionCode, 7);
+});
+
+test("a phone may be one release behind; two behind must update", () => {
+  assert.equal(defaultMinCode(9, 8), 8);   // releasing 9 after 8: phones on 8 keep working, 7 and older are blocked
+  assert.equal(defaultMinCode(10, 9), 9);  // releasing 10: now 8 is two behind and blocked
+  assert.equal(defaultMinCode(1, 0), 0);   // the first release blocks nobody
+  assert.equal(defaultMinCode(5, 5), 0);   // never a minimum above or equal to the release itself (a forced re-release)
 });

@@ -1,10 +1,16 @@
 /**
  * Writes public/app-update.json for a finished APK, so every phone with the app shows "An update is available".
  *
+ *   npm run release:publish -- --notes "What changed"
+ *       Hosts the APK on the web app itself: it is copied to public/downloads/ and the link points there, so ONE git push
+ *       publishes the file and the update alert together. Only the newest APK is kept in that folder.
  *   npm run release:publish -- --url "https://.../Veekay-Partner-1.0.1-code8.apk" --notes "What changed"
+ *       Use a link you host elsewhere (Drive, GitHub release...) instead.
  *   options: --apk <file>   (default: the highest-code APK in mobile/build/apk)
- *            --min <code>   (force everyone below this code to update; default 0 = nobody is forced)
+ *            --min <code>   (force everyone below this code to update. Default: the previous release, so a phone may be ONE
+ *                            release behind and keep working, but two behind must update. --min 0 forces nobody.)
  *            --force        (allow a version code that is not higher than the published one: never for real releases)
+ *            --base <url>   (site that serves public/; default https://veekay-crm.vercel.app or $VEEKAY_PUBLIC_URL)
  *            --skip-verify  (do not test the link)
  *
  * It reads the real version out of the APK, records its size and SHA-256, refuses a code that phones would not accept
@@ -16,7 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { buildManifest, codeFromFileName, looksLikeApk } from "./release-lib.mjs";
+import { buildManifest, codeFromFileName, defaultMinCode, looksLikeApk } from "./release-lib.mjs";
 
 const mobile = path.resolve(import.meta.dirname, "..");
 const apkDir = path.join(mobile, "build", "apk");
@@ -27,8 +33,6 @@ const args = process.argv.slice(2);
 const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };
 const flag = (n) => args.includes(`--${n}`);
 
-const url = opt("url");
-if (!url) die('Missing --url "https://...". Host the APK first, then pass its direct-download link.');
 
 let apk = opt("apk");
 if (!apk) {
@@ -54,15 +58,28 @@ const code = Number(codeText);
 const bytes = fs.readFileSync(apk);
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 
+// No --url: host the APK on the web app. Vercel serves everything in public/ as it is, so the link only works after the push.
+let url = opt("url");
+const selfHosted = !url;
+if (selfHosted) {
+  const downloads = path.resolve(mobile, "..", "public", "downloads");
+  fs.mkdirSync(downloads, { recursive: true });
+  const fileName = path.basename(apk);
+  for (const old of fs.readdirSync(downloads)) if (old.endsWith(".apk") && old !== fileName) fs.rmSync(path.join(downloads, old)); // keep only the newest
+  fs.copyFileSync(apk, path.join(downloads, fileName));
+  const base = (opt("base") ?? process.env.VEEKAY_PUBLIC_URL ?? "https://veekay-crm.vercel.app").replace(/\/+$/, "");
+  url = `${base}/downloads/${fileName}`;
+}
+
 let previousLatest = 0;
 try { previousLatest = Number(JSON.parse(fs.readFileSync(manifestFile, "utf8")).android?.latestVersionCode) || 0; } catch { /* first release */ }
 
 let manifest;
 try {
-  manifest = buildManifest({ code, name, url, notes: opt("notes") ?? "", minCode: Number(opt("min") ?? 0), sizeBytes: bytes.length, sha256, previousLatest, force: flag("force") });
+  manifest = buildManifest({ code, name, url, notes: opt("notes") ?? "", minCode: Number(opt("min") ?? defaultMinCode(code, previousLatest)), sizeBytes: bytes.length, sha256, previousLatest, force: flag("force") });
 } catch (e) { die(e.message); }
 
-if (!flag("skip-verify")) {
+if (!flag("skip-verify") && !selfHosted) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 30_000);
   try {
@@ -83,4 +100,6 @@ console.log(`\nPublished in ${path.relative(process.cwd(), manifestFile)}:`);
 console.log(`  ${path.basename(apk)}  versionCode ${code}  versionName ${name}  ${(bytes.length / 1048576).toFixed(1)} MB`);
 console.log(`  sha256 ${sha256}`);
 console.log(`  forced for builds below ${manifest.android.minVersionCode || "nobody"}`);
-console.log("\nNext: commit and push public/app-update.json. When the web app has deployed, phones show the update on their next check.");
+console.log(selfHosted
+  ? `\nNext: git add -A, commit and push. Vercel then serves the APK and the update alert together.\nAfter it deploys, check the link: curl -sI ${url}   (expect HTTP 200 and about ${(bytes.length / 1048576).toFixed(0)} MB)`
+  : "\nNext: commit and push public/app-update.json. When the web app has deployed, phones show the update on their next check.");

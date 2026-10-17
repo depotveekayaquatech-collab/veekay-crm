@@ -75,7 +75,9 @@ const jdkRoot = process.env.VEEKAY_JDK17 || path.join(os.homedir(), ".veekay-jdk
 const jdk17 = fs.existsSync(jdkRoot) ? fs.readdirSync(jdkRoot).find((d) => /^jdk-17/.test(d)) : undefined;
 if (jdk17) {
   env.JAVA_HOME = path.join(jdkRoot, jdk17);
-  env.PATH = `${path.join(env.JAVA_HOME, "bin")}${path.delimiter}${env.PATH}`;
+  // Windows names the variable `Path`; writing `PATH` next to it would shadow the real one with "...;undefined".
+  const pathKey = Object.keys(env).find((k) => k.toLowerCase() === "path") ?? "PATH";
+  env[pathKey] = `${path.join(env.JAVA_HOME, "bin")}${path.delimiter}${env[pathKey] ?? ""}`;
   console.log(`Using JDK 17: ${env.JAVA_HOME}`);
 } else {
   console.warn("WARNING: no JDK 17 found; on JDK 24+ the native build step is expected to fail (see mobile/UPDATES.md).");

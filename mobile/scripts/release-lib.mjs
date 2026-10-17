@@ -16,6 +16,15 @@ export function looksLikeApk(bytes) {
   return bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 }
 
+/**
+ * The lowest version code allowed to keep working after a release: the PREVIOUS release. A phone may be one release
+ * behind and still works (it is only offered the update); two releases behind it is blocked until it updates.
+ * The first release has nothing before it, so nobody is blocked.
+ */
+export function defaultMinCode(code, previousLatest = 0) {
+  return previousLatest > 0 && previousLatest < code ? previousLatest : 0;
+}
+
 /** The app-update.json content for a release. Throws a readable Error for anything unsafe. */
 export function buildManifest({ code, name, url, notes = "", minCode = 0, sizeBytes, sha256, previousLatest = 0, force = false }) {
   if (!Number.isInteger(code) || code < 1) throw new Error(`Bad version code: ${code}`);
