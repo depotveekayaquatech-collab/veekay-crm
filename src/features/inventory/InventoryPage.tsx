@@ -1,4 +1,4 @@
-import { SelectField } from "@/components/ui/Dropdown";
+import { Dropdown, SelectField } from "@/components/ui/Dropdown";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { IconChevronDown, IconDownload, IconSearch } from "@/components/ui/icons
 import { usePartners } from "@/features/stores/useStores";
 import { usePermission } from "@/hooks/usePermission";
 import { downloadCsv } from "@/lib/csv";
+import { KEYS, NO_FILTERS, applyLocationFilters, hasFilters, optionsFor, pruneFilters, setFilter, type LocationKey } from "@/lib/inventoryFilters";
 import { apiRequest } from "@/services/api";
 import { toInventory, type InventoryStore } from "@/types/inventory";
 
@@ -31,6 +32,8 @@ function Phone({ value }: { value: string | null }) {
     </a>
   );
 }
+
+const LOCATION_LABEL: Record<LocationKey, string> = { region: "Region", state: "State", city: "City", vendor: "Vendor" };
 
 function PendingBadge({ days }: { days: number }) {
   if (days === 0) return <Badge tone="success">Up to date</Badge>;
@@ -52,11 +55,19 @@ export function InventoryPage() {
   const [chip, setChip] = useState<Chip>("all");
   const [query, setQuery] = useState("");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
-  const { data, isLoading, isError, refetch } = useInventory(partner);
+  const [loc, setLoc] = useState(NO_FILTERS);
+  const { data, isLoading, isError, refetch, isFetching } = useInventory(partner);
+
+  // Region / State / City / Vendor are linked: each list only offers what is left once the other three are applied.
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const place = useMemo(() => pruneFilters(items, loc), [items, loc]);   // also drops a choice the new data no longer has
+  const inPlace = useMemo(() => applyLocationFilters(items, place), [items, place]);
+  const choices = useMemo(() => Object.fromEntries(KEYS.map((k) => [k, optionsFor(items, place, k)])) as Record<LocationKey, ReturnType<typeof optionsFor>>, [items, place]);
+  const placeActive = hasFilters(place);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (data?.items ?? []).filter((s) => {
+    return inPlace.filter((s) => {
       if (chip === "behind" && s.pendingDays === 0) return false;
       if (chip === "uptodate" && s.pendingDays > 0) return false;
       if (chip === "unmarked" && s.markedToday) return false;
@@ -65,7 +76,7 @@ export function InventoryPage() {
         [s.name, s.externalCode, s.city, s.state, s.vendorName, s.pocName].some((f) => (f ?? "").toLowerCase().includes(q))
       );
     });
-  }, [data, chip, query]);
+  }, [inPlace, chip, query]);
 
   const groups = useMemo(() => {
     const map = new Map<string, InventoryStore[]>();
@@ -95,7 +106,15 @@ export function InventoryPage() {
       return next;
     });
 
-  const s = data?.summary;
+  // The tiles describe the stores the location filters select; with no filter they are the server's own totals.
+  const s = !data ? undefined : placeActive
+    ? {
+        stores: inPlace.length,
+        behind: inPlace.filter((x) => x.pendingDays > 0).length,
+        markedToday: inPlace.filter((x) => x.markedToday).length,
+        totalPendingDays: inPlace.reduce((n, x) => n + x.pendingDays, 0),
+      }
+    : data.summary;
 
   return (
     <div className="flex flex-col gap-6">
@@ -172,6 +191,39 @@ export function InventoryPage() {
             className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
           />
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by location and vendor">
+        {KEYS.map((k) => (
+          <Dropdown
+            key={k}
+            aria-label={LOCATION_LABEL[k]}
+            value={place[k]}
+            onValueChange={(v) => setLoc(setFilter(items, place, k, v))}
+            placeholder={`All ${k === "city" ? "cities" : LOCATION_LABEL[k].toLowerCase() + "s"}`}
+            options={choices[k].map((o) => ({ value: o.value, label: `${o.value} (${o.count})` }))}
+            disabled={!data}
+            className="w-full sm:w-52"
+            searchable={choices[k].length > 8}
+          />
+        ))}
+        {placeActive && (
+          <button onClick={() => setLoc(NO_FILTERS)} className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50">
+            Clear filters
+          </button>
+        )}
+        <button
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          className="ml-auto rounded-lg px-3 py-2 text-sm font-semibold text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle disabled:opacity-60"
+        >
+          {isFetching ? "Refreshing…" : "Refresh data"}
+        </button>
+        {data && (
+          <p className="w-full text-xs text-gray-500" aria-live="polite">
+            Showing {filtered.length} of {items.length} stores{placeActive ? ` · ${KEYS.filter((k) => place[k]).map((k) => place[k]).join(" · ")}` : ""}
+          </p>
+        )}
       </div>
 
       {isLoading && <Skeleton className="h-64" />}
