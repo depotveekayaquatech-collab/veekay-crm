@@ -10,6 +10,7 @@ import { useTestReports } from "@/features/reports/testReports";
 import { useDebounced } from "@/hooks/useDebounced";
 import { listStores } from "@/services/stores";
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { CappingAlertBanner } from "@/features/capping/CappingAlertBanner";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
 import { useEmployees } from "@/features/team/useTeam";
@@ -752,6 +753,7 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={`Welcome back, ${firstName}`} subtitle={dateLabel} />
+      <CappingAlertBanner />
       {isAdmin ? <AdminDashboard /> : <EmployeeDashboard />}
     </div>
   );

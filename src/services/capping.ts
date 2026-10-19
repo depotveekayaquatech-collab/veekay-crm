@@ -1,7 +1,8 @@
 import { camelize } from "@/lib/camel";
 import { apiRequest } from "@/services/api";
 
-export type CapLevel = "OVER" | "NEAR" | "OK" | "NO_CAP";
+/** AHEAD: more bottles than the cap pro-rated to today (current month only), still under the cap. */
+export type CapLevel = "OVER" | "AHEAD" | "NEAR" | "OK" | "NO_CAP";
 
 export interface CapRow {
   storeId: string;
@@ -17,6 +18,9 @@ export interface CapRow {
   remaining: number | null;
   excess: number;
   percent: number | null;
+  /** Cap pro-rated to today; null for a finished month or a store with no cap. */
+  allowedToDate: number | null;
+  aheadBy: number | null;
   alert: CapLevel;
 }
 
@@ -26,7 +30,18 @@ export interface CapReport {
   monthLabel: string;
   months: string[];
   warnPercent: number;
-  summary: { over: number; near: number; ok: number; noCap: number; total: number };
+  summary: { over: number; ahead: number; near: number; ok: number; noCap: number; total: number };
+  rows: CapRow[];
+}
+
+/** This month's over-cap / ahead-of-pace stores for the signed-in employee (needs capping.alerts). */
+export interface CapAlerts {
+  month: string;
+  monthLabel: string;
+  day: number;
+  daysInMonth: number;
+  over: number;
+  ahead: number;
   rows: CapRow[];
 }
 
@@ -45,6 +60,10 @@ export async function getCappingReport(month?: string): Promise<CapReport> {
   return camelize<CapReport>(await apiRequest(`/capping${q}`));
 }
 
+export async function getCappingAlerts(): Promise<CapAlerts> {
+  return camelize<CapAlerts>(await apiRequest("/capping/alerts"));
+}
+
 /** Set a store's monthly cap; null removes it. */
 export async function setStoreCap(storeId: string, monthlyCap: number | null): Promise<void> {
   await apiRequest(`/capping/stores/${storeId}`, { method: "PUT", body: { monthly_cap: monthlyCap } });
@@ -55,6 +74,7 @@ export async function syncCapsFromSheet(overwrite: boolean): Promise<CapImportRe
   return camelize<CapImportResult>(await apiRequest(`/capping/sync?overwrite=${overwrite}`, { method: "POST" }));
 }
 
+/** Developer or administrator: load caps from an uploaded .csv / .xlsx (Outlet ID + Monthly Capping). */
 export async function importCapsFile(file: File, overwrite: boolean): Promise<CapImportResult> {
   const form = new FormData();
   form.append("file", file);

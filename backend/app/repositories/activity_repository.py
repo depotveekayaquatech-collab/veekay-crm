@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.models.user import User
+from app.repositories.display_names import shown_name
 
 
 class ActivityRepository:
@@ -23,7 +24,7 @@ class ActivityRepository:
         entity_type: str | None = None,
     ) -> tuple[list[tuple[AuditLog, str | None]], int]:
         base = (
-            select(AuditLog, User.full_name)
+            select(AuditLog, shown_name())
             .outerjoin(User, User.id == AuditLog.user_id)
             .where(AuditLog.organization_id == org_id)
         )
@@ -44,7 +45,7 @@ class ActivityRepository:
         self, org_id: uuid.UUID, entity_type: str, entity_id: str
     ) -> list[tuple[AuditLog, str | None]]:
         stmt = (
-            select(AuditLog, User.full_name)
+            select(AuditLog, shown_name())
             .outerjoin(User, User.id == AuditLog.user_id)
             .where(
                 AuditLog.organization_id == org_id,

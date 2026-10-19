@@ -75,6 +75,31 @@ def test_the_permission_catalogue_and_team_list_hide_the_developer(client, admin
     assert client.post(f"{API}/employees/{dev_id}/deactivate", headers=admin).status_code == 404
 
 
+def test_developer_can_manage_admins_like_a_full_admin(client, dev, admin, db):
+    """The developer is not an 'admin' role, but may do everything a full admin can: create admins, open and change their accounts."""
+    from app.models.refresh_session import RefreshSession
+    from app.models.user_permission import UserPermission
+
+    code = "T-DEV-ADM"
+    try:
+        r = client.post(f"{API}/employees", headers=dev, json={
+            "employee_code": code, "full_name": "Made By Dev", "password": "Temp#Pass1234", "account_type": "admin", "admin_access": "custom",
+            "permission_codes": ["orders.view"]})
+        assert r.status_code == 201 and r.json()["admin_level"] == "custom", r.text
+        uid = r.json()["id"]
+        assert client.get(f"{API}/employees/{uid}", headers=dev).status_code == 200
+        assert client.put(f"{API}/employees/{uid}/admin-access", headers=dev, json={"full": True}).json()["admin_level"] == "full"
+        admin_id = next(e["id"] for e in client.get(f"{API}/employees?category=admin", headers=dev).json()["items"] if e["employee_code"] == "ADMIN001")
+        assert client.patch(f"{API}/employees/{admin_id}", headers=dev, json={"full_name": "Admin User"}).status_code == 200
+    finally:
+        u = db.query(User).filter_by(employee_code=code).one_or_none()
+        if u is not None:
+            for model in (RefreshSession, UserPermission, UserRole):
+                db.query(model).filter(model.user_id == u.id).delete()
+            db.query(User).filter_by(id=u.id).delete()
+            db.commit()
+
+
 def test_no_api_account_type_creates_a_developer(client, admin):
     r = client.post(f"{API}/employees", headers=admin, json={
         "employee_code": "T-DEV-Y", "full_name": "Y", "password": "Passw0rd!y", "account_type": "developer"})

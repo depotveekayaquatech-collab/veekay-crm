@@ -47,6 +47,16 @@ export interface LeaveItem {
 }
 export interface LeavesMe { year: number; items: LeaveItem[]; taken: Record<string, number>; pending: number }
 
+export interface PayslipDay {
+  date: string; kind: "PRESENT" | "LEAVE" | "OFF" | "ABSENT" | "BEFORE_JOINING"; mark: "FULL" | "HALF" | "ABSENT" | null; counted: number;
+  check_in_at: string | null; check_out_at: string | null; minutes: number; late: boolean; no_checkout: boolean; location: string | null;
+  leave_type: string | null; half_day: boolean;
+}
+export interface Payslip {
+  id: string; month: string; month_label: string; release_date: string; monthly_salary: number; days_in_month: number; paid_days: number;
+  amount: number; paid_at: string; seen: boolean; days?: PayslipDay[];
+}
+
 export interface MyStore {
   id: string; name: string; external_code: string; state: string | null; city: string | null; region_name: string | null;
   status: string; partner_name: string | null; today: string; today_count: number | null; yesterday_count?: number | null;
@@ -93,6 +103,10 @@ export const staffApi = {
   attendanceToday: () => request<AttendanceToday>("/attendance/today"),
   checkIn: (r: Reading) => request<unknown>("/attendance/check-in", { method: "POST", body: r }),
   checkOut: (r: Reading) => request<unknown>("/attendance/check-out", { method: "POST", body: r }),
+
+  payslips: () => request<{ items: Payslip[] }>("/payroll/me"),
+  unseenPayslips: () => request<{ items: Payslip[] }>("/payroll/me/unseen"),
+  payslipSeen: (id: string) => request<{ id: string; seen: boolean }>(`/payroll/me/${id}/seen`, { method: "POST", body: {} }),
 
   leaves: () => request<LeavesMe>("/attendance/leaves/me"),
   applyLeave: (b: { leave_type: LeaveType; start_date: string; end_date: string; half_day: boolean; reason: string }) =>

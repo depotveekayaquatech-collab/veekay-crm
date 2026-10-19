@@ -14,6 +14,7 @@ const local = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${is
 export const fmtDate = (iso: string) => local(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 export const fmtDateTime = (iso: string) => local(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 export const fmtMonth = (iso: string) => new Date(`${iso.slice(0, 7)}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+export const fmtMoney = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 export const fmtNumber = (n: number) => n.toLocaleString("en-IN");
 
 export function fmtSize(bytes: number): string {

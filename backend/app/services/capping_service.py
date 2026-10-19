@@ -8,7 +8,13 @@ Who may use it (always re-checked on the server, whatever the app shows):
 
 The cap is one number per store (store_caps). No row = no cap; 0 is a real cap. Usage is the sum of the month's order
 entries for the store, whoever entered them, so every employee sees the same figures. Alert levels:
-  OVER  usage > cap        NEAR  usage >= 80% of the cap (and not over)        OK  below that        NO_CAP  no cap set
+  OVER   usage > cap
+  AHEAD  usage is ahead of the pro-rated cap (cap x day of month / days in month) - current month only, not yet over
+  NEAR   usage >= 80% of the cap (and not over / ahead)        OK  below that        NO_CAP  no cap set
+There is no per-day entry rule: the only limit is the cap from the capping sheet (or set by hand).
+
+Who loads caps in bulk: developers and administrators (an uploaded sheet). Employees only change one store at a time.
+Who is alerted: people holding capping.alerts - see alerts() - for the stores they cover.
 """
 from __future__ import annotations
 
@@ -31,7 +37,7 @@ from app.services import activity_service, assignment_service
 PLATFORM = "zepto"
 WARN_PERCENT = 80
 MAX_CAP = 1_000_000
-_ORDER = {"OVER": 0, "NEAR": 1, "OK": 2, "NO_CAP": 3}
+_ORDER = {"OVER": 0, "AHEAD": 1, "NEAR": 2, "OK": 3, "NO_CAP": 4}
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 
 
@@ -83,15 +89,26 @@ def available_months(today: date | None = None) -> list[str]:
     return out
 
 
-def alert_for(used: int, cap: int | None) -> str:
-    """OVER / NEAR / OK / NO_CAP. Cap 0 is valid: zero used is OK, any use is OVER (no division)."""
+def alert_for(used: int, cap: int | None, day: int | None = None, days_in_month: int | None = None) -> str:
+    """OVER / AHEAD / NEAR / OK / NO_CAP. Cap 0 is valid: zero used is OK, any use is OVER (no division).
+    Pass `day` and `days_in_month` for the month in progress to also get AHEAD (used more than cap x day / days_in_month)."""
     if cap is None:
         return "NO_CAP"
     if used > cap:
         return "OVER"
     if cap == 0:
         return "OK"
+    if day is not None and days_in_month and used * days_in_month > cap * day:
+        return "AHEAD"
     return "NEAR" if used * 100 >= WARN_PERCENT * cap else "OK"
+
+
+def pace_for(cap: int | None, month: date, today: date) -> tuple[int | None, int | None, int | None]:
+    """(day, days_in_month, allowed so far) for the month in progress; (None, None, None) for a finished month or no cap."""
+    if cap is None or (month.year, month.month) != (today.year, today.month):
+        return None, None, None
+    dim = calendar.monthrange(month.year, month.month)[1]
+    return today.day, dim, cap * today.day // dim
 
 
 def _partner(db: Session, org_id: uuid.UUID) -> Organization:
@@ -115,18 +132,19 @@ def _owners(db: Session, org_id: uuid.UUID, partner: Organization) -> dict[uuid.
     return out
 
 
-def report(db: Session, user: User, perms: set[str], month_str: str | None) -> dict:
-    require_eligible(user, perms)
-    month = parse_month(month_str)
-    partner = _partner(db, user.organization_id)
+def _rows(db: Session, user: User, partner: Organization, month: date, store_ids: set[uuid.UUID] | None = None) -> list[dict]:
+    """One row per live Zepto store (or only `store_ids`) with the month's usage and alert, worst first."""
+    today = _today()
     end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
-
-    stores = db.execute(
+    q = (
         select(Store.id, Store.external_code, Store.name, Store.state, Store.city, StoreCap.monthly_cap)
         .select_from(Store)
         .outerjoin(StoreCap, StoreCap.store_id == Store.id)
         .where(Store.organization_id == user.organization_id, Store.partner_organization_id == partner.id, Store.status == StoreStatus.LIVE.value)
-    ).all()
+    )
+    if store_ids is not None:
+        q = q.where(Store.id.in_(store_ids or {uuid.uuid4()}))
+    stores = db.execute(q).all()
     usage = {
         r[0]: (int(r[1]), int(r[2]))
         for r in db.execute(
@@ -140,7 +158,8 @@ def report(db: Session, user: User, perms: set[str], month_str: str | None) -> d
     rows = []
     for sid, code, name, state, city, cap in stores:
         used, entries = usage.get(sid, (0, 0))
-        level = alert_for(used, cap)
+        day, dim, allowed = pace_for(cap, month, today)
+        level = alert_for(used, cap, day, dim)
         owner = owners.get(sid)
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
@@ -149,16 +168,49 @@ def report(db: Session, user: User, perms: set[str], month_str: str | None) -> d
             "remaining": None if cap is None else max(cap - used, 0),
             "excess": 0 if cap is None else max(used - cap, 0),
             "percent": None if not cap else round(used * 100 / cap, 1),   # cap 0 or none: no percentage
+            "allowed_to_date": allowed,                                     # None for a finished month / no cap
+            "ahead_by": None if allowed is None else max(used - allowed, 0),
             "alert": level,
         })
     rows.sort(key=lambda r: (_ORDER[r["alert"]], -(r["percent"] if r["percent"] is not None else (10_000 if r["alert"] == "OVER" else -1)), r["outlet_name"].lower()))
+    return rows
+
+
+def _summary(rows: list[dict]) -> dict:
     counts = {k: sum(1 for r in rows if r["alert"] == k) for k in _ORDER}
+    return {"over": counts["OVER"], "ahead": counts["AHEAD"], "near": counts["NEAR"], "ok": counts["OK"], "no_cap": counts["NO_CAP"], "total": len(rows)}
+
+
+def report(db: Session, user: User, perms: set[str], month_str: str | None) -> dict:
+    require_eligible(user, perms)
+    month = parse_month(month_str)
+    partner = _partner(db, user.organization_id)
+    rows = _rows(db, user, partner, month)
     return {
         "success": True,
         "month": f"{month:%Y-%m}", "month_label": f"{_MONTHS[month.month]} {month.year}", "months": available_months(),
         "warn_percent": WARN_PERCENT,
-        "summary": {"over": counts["OVER"], "near": counts["NEAR"], "ok": counts["OK"], "no_cap": counts["NO_CAP"], "total": len(rows)},
+        "summary": _summary(rows),
         "rows": rows,
+    }
+
+
+def alerts(db: Session, user: User, perms: set[str]) -> dict:
+    """This month's stores that need the employee's attention (OVER or AHEAD), for people holding capping.alerts.
+    An administrator sees every Zepto store; a Zepto employee only the stores they cover (their assigned states)."""
+    if "capping.alerts" not in perms:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Capping alerts are not switched on for you.")
+    require_eligible(user, perms)
+    partner = _partner(db, user.organization_id)
+    today = _today()
+    month = date(today.year, today.month, 1)
+    scope = None if "orders.correct" in perms else assignment_service.visible_store_ids(db, user)
+    rows = [r for r in _rows(db, user, partner, month, scope) if r["alert"] in ("OVER", "AHEAD")]
+    return {
+        "success": True, "month": f"{month:%Y-%m}", "month_label": f"{_MONTHS[month.month]} {month.year}",
+        "day": today.day, "days_in_month": calendar.monthrange(month.year, month.month)[1],
+        "over": sum(1 for r in rows if r["alert"] == "OVER"), "ahead": sum(1 for r in rows if r["alert"] == "AHEAD"),
+        "rows": rows[:50],
     }
 
 

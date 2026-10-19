@@ -23,6 +23,8 @@ _GROUP_LABELS = {
     "leave": "Leave",
     "attendance": "Attendance",
     "cash": "Cash purchases",
+    "capping": "Capping",
+    "payroll": "Payroll",
 }
 
 

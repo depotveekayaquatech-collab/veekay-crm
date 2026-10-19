@@ -95,7 +95,7 @@ class OrderEntryRepository:
         self, org_id: uuid.UUID, partner_id: uuid.UUID, limit: int
     ) -> list[tuple[OrderEntry, str | None, str, str]]:
         stmt = (
-            select(OrderEntry, User.full_name, Store.name, Store.external_code)
+            select(OrderEntry, shown_name(), Store.name, Store.external_code)
             .join(Store, Store.id == OrderEntry.store_id)
             .outerjoin(User, User.id == OrderEntry.marked_by_user_id)
             .where(OrderEntry.organization_id == org_id, Store.partner_organization_id == partner_id)

@@ -1,4 +1,5 @@
-"""Zepto monthly capping. Employees view and edit caps; a developer loads them from the Capping sheet or a file."""
+"""Zepto monthly capping. Employees view and edit caps one store at a time; developers and administrators load them in bulk
+from an uploaded sheet (a developer can also read the Google Capping sheet). Employees with capping.alerts see the alerts."""
 import uuid
 from decimal import Decimal
 
@@ -15,6 +16,13 @@ from app.services import capping_service, store_sync_service
 router = APIRouter(prefix="/capping", tags=["capping"])
 
 
+def require_bulk_upload(user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions)) -> User:
+    """Bulk loading is for developers (sheets.sync) and administrators (orders.correct). Employees edit one store at a time."""
+    if "sheets.sync" not in perms and "orders.correct" not in perms:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an administrator or developer can upload the capping sheet.")
+    return user
+
+
 class CapIn(BaseModel):
     monthly_cap: int | None = Field(default=None, ge=0, le=capping_service.MAX_CAP, description="null clears the cap")
 
@@ -26,6 +34,14 @@ def get_report(
 ) -> dict:
     """Every live Zepto store with its cap, the month's bottles used and an alert level. Read-only for the caller."""
     return capping_service.report(db, user, perms, month)
+
+
+@router.get("/alerts")
+def get_alerts(
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """This month's over-cap / ahead-of-pace stores for the caller's own stores. Needs the capping.alerts permission."""
+    return capping_service.alerts(db, user, perms)
 
 
 @router.put("/stores/{store_id}")
@@ -52,12 +68,12 @@ def sync_from_sheet(
     return capping_service.import_caps(db, user, rows, overwrite=overwrite, source="sheet")
 
 
-@router.post("/import", dependencies=[Depends(require_permission("sheets.sync"))])
+@router.post("/import", dependencies=[Depends(require_bulk_upload)])
 async def import_file(
     overwrite: bool = Form(False), file: UploadFile = File(...),
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
-    """Developer: the same load from an uploaded .csv / .xlsx of the Capping tab."""
+    """Developer or administrator: load caps from an uploaded .csv / .xlsx (Outlet ID + Monthly Capping)."""
     from starlette.concurrency import run_in_threadpool
 
     content = await file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)

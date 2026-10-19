@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.roles import ADMIN, CATEGORY_LABELS, MANAGER, PARTNER, PARTNER_PERMISSIONS, staff_category
+from app.core.roles import ADMIN, CATEGORY_LABELS, DEVELOPER, MANAGER, PARTNER, PARTNER_PERMISSIONS, staff_category
 from app.core.security import generate_temp_password, hash_password
 from app.models.organization import Organization, OrganizationKind
 from app.models.permission import Permission
@@ -262,7 +262,8 @@ def deactivate_employee(db: Session, actor: User, employee_id: uuid.UUID) -> Non
 
 
 def _is_full_admin(db: Session, actor: User) -> bool:
-    return ADMIN in EmployeeRepository(db).role_codes(actor.id)
+    """Full admins, and the developer (who holds every right an admin has, and more)."""
+    return bool({ADMIN, DEVELOPER} & set(EmployeeRepository(db).role_codes(actor.id)))
 
 
 def _require_full_admin(db: Session, actor: User, message: str) -> None:

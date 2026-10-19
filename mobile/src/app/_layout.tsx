@@ -73,7 +73,7 @@ function Navigator() {
       const ref = typeof data?.ref_id === "string" && data.ref_id ? data.ref_id : null;
       if (data?.audience === "staff") {
         // an employee's alert: leave goes to the approvals list for reviewers, everything else to the alerts list
-        router.push(data.kind === "leave" ? "/staff/leave" : "/staff/alerts");
+        router.push(data.kind === "leave" ? "/staff/leave" : data.kind === "salary" ? "/staff/payslips" : "/staff/alerts");
       } else if (data?.kind === "ticket" && ref) router.push(`/tickets/${ref}`);
       else if (data?.kind === "bill") router.push({ pathname: "/documents", params: { kind: "bill" } });
     };
@@ -106,6 +106,7 @@ function Navigator() {
         <Stack.Screen name="staff/expense/new" options={{ title: "Add a purchase" }} />
         <Stack.Screen name="staff/leave/index" options={{ title: "Leave" }} />
         <Stack.Screen name="staff/leave/new" options={{ title: "Apply for leave" }} />
+        <Stack.Screen name="staff/payslips" options={{ title: "Payslips" }} />
         <Stack.Screen name="staff/sync" options={{ title: "Scan sync" }} />
         <Stack.Screen name="staff/alerts" options={{ title: "Alerts" }} />
         <Stack.Screen name="staff/admin/pending" options={{ title: "Stores yet to mark" }} />

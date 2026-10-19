@@ -27,6 +27,7 @@ import {
   IconWallet,
 } from "@/components/ui/icons";
 import { useTheme } from "@/lib/theme";
+import { SalaryReceivedPopup } from "@/features/payroll/SalaryReceivedPopup";
 
 interface NavItem {
   label: string;
@@ -412,6 +413,7 @@ export function AppLayout() {
       </header>
 
       <ShortcutsModal open={helpOpen} onClose={() => setHelpOpen(false)} go={goKeys} />
+      <SalaryReceivedPopup />
 
       <CommandPalette
         open={paletteOpen}

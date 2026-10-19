@@ -6,8 +6,9 @@ role, and no admin screen or API can grant it.
     python scripts/create_developer.py DEV001 "Full Name" --password '...'
     python scripts/create_developer.py EXISTING001 --promote        # add the role to an existing account
 
-A developer holds ONLY 'sheets.sync' (store sheet sync / file upload, order sheet sync / upload) and sees only the
-Data sync page: none of an admin's rights. The account is hidden from the Users & access page, so admins cannot edit, reset or deactivate it.
+A developer holds EVERY permission that exists (everything an admin has, plus the reserved developer-only ones such as
+'sheets.sync'), and may also create admins and change admin accounts. The account is hidden from the Users & access page
+and the permission catalogue, so admins cannot see, edit, reset or deactivate it.
 """
 import argparse
 import getpass

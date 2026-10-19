@@ -1,7 +1,6 @@
 import { Dropdown, SelectField } from "@/components/ui/Dropdown";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,8 +12,9 @@ import { usePartners } from "@/features/stores/useStores";
 import { usePermission } from "@/hooks/usePermission";
 import { downloadCsv } from "@/lib/csv";
 import { KEYS, NO_FILTERS, applyLocationFilters, hasFilters, optionsFor, pruneFilters, setFilter, type LocationKey } from "@/lib/inventoryFilters";
-import { apiRequest } from "@/services/api";
-import { toInventory, type InventoryStore } from "@/types/inventory";
+import type { InventoryStore } from "@/types/inventory";
+import { BlinkitRegionTable } from "./BlinkitRegionTable";
+import { useInventory } from "./useInventory";
 
 type Chip = "all" | "behind" | "uptodate" | "unmarked";
 const CHIPS: { id: Chip; label: string }[] = [
@@ -38,14 +38,6 @@ const LOCATION_LABEL: Record<LocationKey, string> = { region: "Region", state: "
 function PendingBadge({ days }: { days: number }) {
   if (days === 0) return <Badge tone="success">Up to date</Badge>;
   return <Badge tone={days >= 3 ? "danger" : "warning"}>{days} day{days > 1 ? "s" : ""} pending</Badge>;
-}
-
-function useInventory(partner: string) {
-  return useQuery({
-    queryKey: ["inventory", partner],
-    queryFn: async () => toInventory(await apiRequest(`/orders/inventory${partner ? `?partner=${partner}` : ""}`)),
-    staleTime: 30_000,
-  });
 }
 
 export function InventoryPage() {
@@ -155,6 +147,8 @@ export function InventoryPage() {
           </div>
         ))}
       </div>
+
+      <BlinkitRegionTable />
 
       <div className="flex flex-wrap items-center gap-2">
         {CHIPS.map((c) => (

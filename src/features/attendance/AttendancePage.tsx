@@ -8,8 +8,10 @@ import { MonthlyView } from "@/features/attendance/MonthlyView";
 import { MyAttendance } from "@/features/attendance/MyAttendance";
 import { OfficesView } from "@/features/attendance/OfficesView";
 import { useAllLeaves, useTodayStatus } from "@/features/attendance/api";
+import { MyPayslips } from "@/features/payroll/MyPayslips";
+import { PayslipView } from "@/features/payroll/PayslipView";
 
-type Tab = "me" | "leave" | "daily" | "monthly" | "requests" | "offices";
+type Tab = "me" | "leave" | "payslips" | "daily" | "monthly" | "requests" | "payroll" | "offices";
 
 /**
  * Attendance. Employees and accounts staff check in / out and apply for leave here (this is the only place a
@@ -18,15 +20,17 @@ type Tab = "me" | "leave" | "daily" | "monthly" | "requests" | "offices";
 export function AttendancePage() {
   const canView = usePermission("attendance.view");
   const canReview = usePermission("leave.review");
+  const canPayroll = usePermission("payroll.manage");
   const { data: today } = useTodayStatus();
   const { data: pending } = useAllLeaves("PENDING", "", canReview);
   const [params, setParams] = useSearchParams();
 
   const eligible = Boolean(today?.eligible);
   const tabs: { id: Tab; label: string }[] = [
-    ...(eligible ? [{ id: "me" as Tab, label: "My attendance" }, { id: "leave" as Tab, label: "My leave" }] : []),
+    ...(eligible ? [{ id: "me" as Tab, label: "My attendance" }, { id: "leave" as Tab, label: "My leave" }, { id: "payslips" as Tab, label: "My payslips" }] : []),
     ...(canView ? [{ id: "daily" as Tab, label: "Daily" }, { id: "monthly" as Tab, label: "Monthly" }] : []),
     ...(canReview ? [{ id: "requests" as Tab, label: pending?.pending ? `Leave requests (${pending.pending})` : "Leave requests" }] : []),
+    ...(canPayroll ? [{ id: "payroll" as Tab, label: "Payslips" }] : []),
     ...(canView ? [{ id: "offices" as Tab, label: "Offices" }] : []),
   ];
   const requested = params.get("tab") as Tab | null;
@@ -68,6 +72,8 @@ export function AttendancePage() {
       )}
       {tab === "me" && <MyAttendance />}
       {tab === "leave" && <LeavePanel />}
+      {tab === "payslips" && <MyPayslips />}
+      {tab === "payroll" && <PayslipView />}
       {tab === "daily" && <DailyView />}
       {tab === "monthly" && <MonthlyView />}
       {tab === "requests" && <LeaveRequestsView />}

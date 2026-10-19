@@ -11,6 +11,7 @@ import { useComplianceKpis } from "@/api/complianceHooks";
 import { useAuth } from "@/auth/AuthProvider";
 import { Badge, Card, ErrorNote, ListSkeleton, Screen, SectionTitle } from "@/components/ui";
 import { fmtDate, niceName } from "@/lib/format";
+import { SalaryReceivedModal } from "@/components/SalaryReceivedModal";
 import { useScanQueue } from "@/lib/useScanQueue";
 import { colors, font, radius, shadow } from "@/theme";
 
@@ -143,6 +144,7 @@ You can still check ${kind}; it will be recorded as "location not shared".`,
 
   return (
     <Screen onRefresh={() => qc.invalidateQueries()} refreshing={q.isRefetching && !q.isLoading}>
+      <SalaryReceivedModal />
       <Text style={font.small}>{fmtDate(new Date().toISOString().slice(0, 10))}</Text>
       <Text style={[font.title, { marginTop: 2 }]}>Hello, {niceName(staff?.full_name ?? "").split(" ")[0]}</Text>
 
@@ -221,6 +223,9 @@ You can still check ${kind}; it will be recorded as "location not shared".`,
         )}
         {hasPermission("cash.add") && (
           <Action icon="wallet-outline" label="Add expense" sub="Record a cash purchase" onPress={() => router.push("/staff/expense/new")} tone={[colors.warningSoft, colors.warning]} />
+        )}
+        {a?.eligible && (
+          <Action icon="cash-outline" label="Payslips" sub="Your salary and day-wise attendance" onPress={() => router.push("/staff/payslips")} tone={[colors.successSoft, colors.success]} />
         )}
         <Action icon="calendar-outline" label="Leave" sub="Apply or check your leave" onPress={() => router.push("/staff/leave")} tone={[colors.dangerSoft, colors.danger]} />
       </View>

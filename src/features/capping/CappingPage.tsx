@@ -21,6 +21,7 @@ const field =
 
 const LEVEL: Record<CapLevel, { label: string; tone: "danger" | "warning" | "success" | "neutral" }> = {
   OVER: { label: "Over cap", tone: "danger" },
+  AHEAD: { label: "Ahead of pace", tone: "warning" },
   NEAR: { label: "Near cap", tone: "warning" },
   OK: { label: "OK", tone: "success" },
   NO_CAP: { label: "No cap", tone: "neutral" },
@@ -47,7 +48,7 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
 function UsageBar({ row }: { row: CapRow }) {
   if (row.percent === null) return <span className="text-gray-400">—</span>;
   const w = Math.min(100, row.percent);
-  const color = row.alert === "OVER" ? "bg-status-danger" : row.alert === "NEAR" ? "bg-status-warning" : "bg-status-success";
+  const color = row.alert === "OVER" ? "bg-status-danger" : row.alert === "NEAR" || row.alert === "AHEAD" ? "bg-status-warning" : "bg-status-success";
   return (
     <div className="flex w-full min-w-[84px] items-center gap-2">
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-border" role="progressbar" aria-valuenow={Math.round(row.percent)} aria-valuemin={0} aria-valuemax={100}>
@@ -142,32 +143,38 @@ function EditCapModal({ rows, initial, onClose }: { rows: CapRow[]; initial: Cap
   );
 }
 
-/** Developer-only: load caps from the Google Capping sheet or a file. */
-function LoadCaps({ onDone }: { onDone: () => void }) {
-  const [overwrite, setOverwrite] = useState(false);
+/** Developers and administrators: load caps from an uploaded sheet (developers can also read the Google Capping sheet). */
+function LoadCaps({ onDone, canSyncSheet }: { onDone: () => void; canSyncSheet: boolean }) {
+  // An upload exists to change caps, so replacing the ones already set is the default.
+  const [overwrite, setOverwrite] = useState(true);
   const [result, setResult] = useState<CapImportResult | null>(null);
   const sheet = useMutation({ mutationFn: () => syncCapsFromSheet(overwrite), onSuccess: (r) => { setResult(r); onDone(); } });
   const file = useMutation({ mutationFn: (f: File) => importCapsFile(f, overwrite), onSuccess: (r) => { setResult(r); onDone(); } });
   return (
     <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
-      <h3 className="text-sm font-bold text-gray-900">Load caps from the Capping sheet (developer)</h3>
-      <p className="mt-1 text-xs text-gray-500">Reads Outlet ID + Monthly Capping. Caps already in the CRM are kept unless you tick Overwrite.</p>
+      <h3 className="text-sm font-bold text-gray-900">Upload the capping sheet</h3>
+      <p className="mt-1 text-xs text-gray-500">
+        A .csv or .xlsx with an <b>Outlet ID</b> column and a <b>Monthly Capping</b> column. The cap is the most bottles a store may take in a month;
+        alerts compare each store's bottles so far with that cap pro-rated to today. Employees can still change a single store by hand.
+      </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
           <input type="checkbox" className="h-4 w-4 accent-brand-500" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
           Overwrite caps already set in the CRM
         </label>
-        <Button size="sm" variant="secondary" onClick={() => sheet.mutate()} isLoading={sheet.isPending}>
-          <IconRefresh className="h-3.5 w-3.5" /> Fetch from Google sheet
-        </Button>
+        {canSyncSheet && (
+          <Button size="sm" variant="secondary" onClick={() => sheet.mutate()} isLoading={sheet.isPending}>
+            <IconRefresh className="h-3.5 w-3.5" /> Fetch from Google sheet
+          </Button>
+        )}
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-surface-border bg-surface px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-surface-subtle">
-          <IconUpload className="h-3.5 w-3.5" /> Upload file
+          <IconUpload className="h-3.5 w-3.5" /> {file.isPending ? "Uploading…" : "Upload sheet"}
           <input type="file" accept=".csv,.xlsx,.xlsm" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) file.mutate(f); }} />
         </label>
       </div>
       {result && (
         <div className="mt-3 rounded-lg bg-surface-subtle p-3 text-sm text-gray-700">
-          {result.added} added · {result.updated} updated · {result.kept} kept · {result.rowsRead} rows read
+          {result.added} added · {result.updated} updated · {result.kept} unchanged · {result.rowsRead} rows read
           {result.warnings.length > 0 && (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-status-warning">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
           )}
@@ -205,7 +212,7 @@ export function CappingPage() {
     const needle = q.trim().toLowerCase();
     const out = rows.filter(
       (r) =>
-        (filter === "ALL" || (filter === "ATTENTION" ? r.alert === "OVER" || r.alert === "NEAR" : r.alert === filter)) &&
+        (filter === "ALL" || (filter === "ATTENTION" ? r.alert === "OVER" || r.alert === "AHEAD" || r.alert === "NEAR" : r.alert === filter)) &&
         (!state || r.state === state) &&
         (!city || r.city === city) &&
         (!needle || r.outletName.toLowerCase().includes(needle) || r.outletId.toLowerCase().includes(needle)),
@@ -225,7 +232,7 @@ export function CappingPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Monthly capping"
-        subtitle={data ? `${data.monthLabel} · every live Zepto store · warns at ${data.warnPercent}% of the cap` : "Bottles used against each store's monthly cap."}
+        subtitle={data ? `${data.monthLabel} · every live Zepto store · warns when ahead of the cap's pace for the month and at ${data.warnPercent}% of the cap` : "Bottles used against each store's monthly cap."}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <SelectField className="h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm" value={month || data?.month || ""} onChange={(e) => setMonth(e.target.value)} aria-label="Month">
@@ -243,15 +250,18 @@ export function CappingPage() {
         }
       />
 
-      {hasPermission("sheets.sync") && <LoadCaps onDone={() => void qc.invalidateQueries({ queryKey: ["capping"] })} />}
+      {(hasPermission("sheets.sync") || hasPermission("orders.correct")) && (
+        <LoadCaps canSyncSheet={hasPermission("sheets.sync")} onDone={() => void qc.invalidateQueries({ queryKey: ["capping"] })} />
+      )}
 
       {isLoading && <Skeleton className="h-64" />}
       {isError && <ErrorState message={error instanceof Error ? error.message : "Couldn't load the capping report."} onRetry={() => refetch()} />}
 
       {data && s && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Stat label="Over cap" value={s.over} tone="text-status-danger" active={filter === "OVER"} onClick={() => toggle("OVER")} />
+            <Stat label="Ahead of pace" value={s.ahead} tone="text-status-warning" active={filter === "AHEAD"} onClick={() => toggle("AHEAD")} />
             <Stat label={`Near cap (${data.warnPercent}%+)`} value={s.near} tone="text-status-warning" active={filter === "NEAR"} onClick={() => toggle("NEAR")} />
             <Stat label="Within limit" value={s.ok} tone="text-status-success" active={filter === "OK"} onClick={() => toggle("OK")} />
             <Stat label="No cap set" value={s.noCap} tone="text-gray-700" active={filter === "NO_CAP"} onClick={() => toggle("NO_CAP")} />
@@ -280,7 +290,7 @@ export function CappingPage() {
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
               <button type="button" className={`rounded-lg px-3 py-1.5 text-sm font-medium ${filter === "ATTENTION" ? "bg-brand-500 text-white" : "bg-surface-subtle text-gray-700 hover:bg-surface-border/60"}`} onClick={() => toggle("ATTENTION")}>
-                Only over / near cap
+                Only over / ahead / near cap
               </button>
               {(filter !== "ALL" || q || state || city) && (
                 <button type="button" className="font-semibold text-brand-600 hover:text-brand-700" onClick={() => { setFilter("ALL"); setQ(""); setState(""); setCity(""); }}>
@@ -315,6 +325,7 @@ export function CappingPage() {
                       <td data-label="Used" className="px-3 py-3 font-semibold tabular-nums">{n(r.used)}</td>
                       <td data-label="Left" className="px-3 py-3 tabular-nums">
                         {r.alert === "OVER" ? <span className="font-semibold text-status-danger">+{n(r.excess)} over</span> : n(r.remaining)}
+                        {r.alert === "AHEAD" && <p className="text-xs font-semibold text-status-warning">{n(r.aheadBy)} ahead of today's {n(r.allowedToDate)}</p>}
                       </td>
                       <td data-label="Usage" className="px-3 py-3"><UsageBar row={r} /></td>
                       <td data-label="Status" className="px-3 py-3"><Badge tone={LEVEL[r.alert].tone}>{LEVEL[r.alert].label}</Badge></td>

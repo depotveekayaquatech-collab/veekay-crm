@@ -7,6 +7,12 @@ const FRESH = 30_000;
 export const useAttendanceToday = () =>
   useQuery({ queryKey: ["s-attendance"], queryFn: staffApi.attendanceToday, staleTime: 15_000, refetchInterval: 60_000 });
 
+export const usePayslips = () => useQuery({ queryKey: ["s-payslips"], queryFn: staffApi.payslips, staleTime: FRESH });
+
+/** Salaries paid to this employee whose "salary received" popup has not been shown yet. */
+export const useUnseenPayslips = (enabled = true) =>
+  useQuery({ queryKey: ["s-payslips-unseen"], queryFn: staffApi.unseenPayslips, staleTime: 15_000, enabled, retry: false });
+
 export const useLeaves = () => useQuery({ queryKey: ["s-leaves"], queryFn: staffApi.leaves, staleTime: FRESH });
 
 export const useMyStores = (enabled = true) => useQuery({ queryKey: ["s-stores"], queryFn: staffApi.myStores, staleTime: FRESH, enabled });

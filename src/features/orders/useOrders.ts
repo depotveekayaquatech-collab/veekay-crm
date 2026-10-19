@@ -43,7 +43,7 @@ export function useMarkOrder() {
       markOrder(storeId, date, count),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
-      for (const key of ["daily-overview", "my-stores", "pending"]) qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["daily-overview", "my-stores", "pending", "capping"]) qc.invalidateQueries({ queryKey: [key] });
       pushToast("Order marked.", "success");
     },
   });
@@ -61,7 +61,7 @@ export function useMarkManyOrders() {
     }) => markManyOrders(storeId, entries),
     onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
-      for (const key of ["daily-overview", "my-stores", "pending", "order-insights"]) {
+      for (const key of ["daily-overview", "my-stores", "pending", "order-insights", "capping"]) {
         qc.invalidateQueries({ queryKey: [key] });
       }
       if (data.failed === 0) {
@@ -82,7 +82,7 @@ export function useCorrectEntry() {
       correctEntry(storeId, date, count),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
-      for (const key of ["daily-overview", "my-stores", "pending"]) qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["daily-overview", "my-stores", "pending", "capping"]) qc.invalidateQueries({ queryKey: [key] });
       pushToast(vars.count === null ? "Entry cleared." : "Entry corrected.", "success");
     },
   });
@@ -95,7 +95,7 @@ export function useImportOrders() {
       importOrdersFile(platform, file, overwrite),
     onSuccess: (r) => {
       // everything that shows order numbers must refetch
-      for (const key of ["calendar", "daily-overview", "order-insights", "report", "pending", "my-stores"]) {
+      for (const key of ["calendar", "daily-overview", "order-insights", "report", "pending", "my-stores", "capping"]) {
         qc.invalidateQueries({ queryKey: [key] });
       }
       pushToast(`Order sheet imported — ${r.created} added, ${r.updated} updated.`, "success");
@@ -108,7 +108,7 @@ export function useSyncOrders() {
   return useMutation({
     mutationFn: ({ platform, overwrite }: { platform?: string; overwrite?: boolean } = {}) => syncOrders(platform, overwrite),
     onSuccess: (results) => {
-      for (const key of ["calendar", "daily-overview", "order-insights", "report", "pending", "my-stores"]) {
+      for (const key of ["calendar", "daily-overview", "order-insights", "report", "pending", "my-stores", "capping"]) {
         qc.invalidateQueries({ queryKey: [key] });
       }
       const added = results.reduce((n, r) => n + r.created, 0);
