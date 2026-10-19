@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiBlob, apiRequest } from "@/services/api";
+import { ApiError, apiBlob, apiRequest } from "@/services/api";
 import { camelize } from "@/lib/camel";
 import { pushToast } from "@/lib/toast";
 
@@ -29,6 +29,8 @@ export interface CashOptions {
 
 export interface CashPurchase {
   id: string;
+  /** Recorded although it looked like an earlier purchase (the person said it is a different one). */
+  possibleDuplicate: boolean;
   kind: PurchaseKind;
   purchaseDate: string;
   storeId: string | null;
@@ -73,6 +75,34 @@ export interface CashInput {
   notes: string;
   /** Photo or PDF of the payment proof (required). */
   proof: File;
+  /** The person has looked at the earlier purchase and says this one is different. */
+  confirmDuplicate?: boolean;
+}
+
+/** An earlier purchase that looks like the one being added (the server's POSSIBLE_DUPLICATE answer). */
+export interface DuplicateMatch {
+  id: string;
+  purchaseDate: string;
+  amount: string;
+  kind: PurchaseKind;
+  storeName: string | null;
+  categoryLabel: string;
+  addedBy: string;
+  createdAt: string;
+  sameDetails: boolean;
+  sameFile: boolean;
+}
+
+export interface DuplicateAnswer {
+  code: "POSSIBLE_DUPLICATE";
+  message: string;
+  matches: DuplicateMatch[];
+}
+
+export function asDuplicate(err: unknown): DuplicateAnswer | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null;
+  const b = err.body as { code?: string; detail?: unknown; matches?: unknown } | undefined;
+  return b && b.code === "POSSIBLE_DUPLICATE" ? camelize<DuplicateAnswer>({ code: b.code, message: String(b.detail ?? ""), matches: b.matches ?? [] }) : null;
 }
 
 export const PAGE_SIZE = 20;
@@ -121,7 +151,9 @@ export function useAddCashPurchase() {
       form.set("amount", i.amount);
       if (i.notes.trim()) form.set("notes", i.notes.trim());
       form.set("proof", i.proof);
-      return camelize<CashPurchase>(await apiRequest("/cash-purchases", { method: "POST", body: form }));
+      if (i.confirmDuplicate) form.set("confirm_duplicate", "true");
+      // silent: the form shows the reason itself, and a possible duplicate is a question for the person, not an error toast
+      return camelize<CashPurchase>(await apiRequest("/cash-purchases", { method: "POST", body: form, silent: true }));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cash-purchases"] });

@@ -1,5 +1,6 @@
 """Cash purchases: who may add / see, validation of reasons and stores, and the Excel sheet."""
 import io
+import uuid
 from datetime import date, timedelta
 
 import pytest
@@ -26,7 +27,7 @@ def _post(client, headers, body=None, proof="default", **kw):
     """POST a purchase as multipart with a payment-proof photo (pass proof=None to leave it out)."""
     fields = {k: str(v) for k, v in (body or _body(**kw)).items() if v is not None}
     if proof == "default":
-        proof = ("proof.jpg", jpeg(), "image/jpeg")
+        proof = ("proof.jpg", jpeg(f"#{uuid.uuid4().hex[:6]}"), "image/jpeg")   # a different photo each time, so only the details can match
     return client.post(URL, headers=headers, data=fields, files={"proof": proof} if proof else None)
 
 
@@ -161,3 +162,78 @@ def test_sheet_says_whether_proof_is_attached(client, admin):
     _post(client, admin)
     rows = list(load_workbook(io.BytesIO(client.get(f"{URL}/export", headers=admin).content)).active.iter_rows(values_only=True))
     assert rows[0][8] == "Proof attached" and rows[1][8] == "Yes"
+
+
+# ---------------------------------------------------------------- the same purchase recorded twice
+
+def _photo(color="#102030"):
+    return ("bill.jpg", jpeg(color), "image/jpeg")
+
+
+def test_same_details_are_flagged_and_nothing_is_saved_until_the_person_confirms(client, db, emp, admin):
+    assert _post(client, emp, proof=_photo("#111111")).status_code == 201
+    r = _post(client, emp, proof=_photo("#222222"))                      # same date, amount and reason; a different photo
+    assert r.status_code == 409, r.text
+    d = r.json()
+    assert d["code"] == "POSSIBLE_DUPLICATE" and "same purchase, or a different one" in d["detail"]       # `detail` is plain text for older apps
+    assert len(d["matches"]) == 1 and d["matches"][0]["same_details"] is True and d["matches"][0]["same_file"] is False
+    assert d["matches"][0]["amount"] == "120.50" and d["matches"][0]["added_by"] == "You"
+    assert db.query(CashPurchase).count() == 1                           # nothing was saved by the warning
+    log = client.get(f"{API}/activity", headers=admin, params={"page_size": 50}).json()
+    assert "cash_purchase.duplicate_flagged" in str(log)                 # but the warning itself is on record
+
+
+def test_confirming_it_is_different_saves_it_and_marks_it_in_the_records(client, db, emp, admin):
+    first = _post(client, emp, proof=_photo("#111111")).json()
+    r = _post(client, emp, body=_body(confirm_duplicate="true"), proof=_photo("#222222"))
+    assert r.status_code == 201 and r.json()["possible_duplicate"] is True
+    assert db.query(CashPurchase).count() == 2
+    again = db.query(CashPurchase).filter(CashPurchase.id == r.json()["id"]).one()
+    assert str(again.duplicate_of_id) == first["id"] and again.proof_sha256
+    listed = {x["id"]: x["possible_duplicate"] for x in client.get(URL, headers=admin).json()["items"]}
+    assert listed[r.json()["id"]] is True and listed[first["id"]] is False
+    sheet = io.BytesIO(client.get(f"{URL}/export", headers=admin).content)
+    from openpyxl import load_workbook
+    ws = load_workbook(sheet).active
+    assert ws.cell(1, 13).value == "Possible duplicate" and any("recorded as different" in str(c.value) for c in ws["M"])
+    assert "confirmed_different_from" in str(client.get(f"{API}/activity", headers=admin, params={"page_size": 50}).json())
+
+
+def test_the_same_bill_photo_is_flagged_even_when_the_details_differ(client, db, emp):
+    photo = _photo("#333333")
+    assert _post(client, emp, proof=photo).status_code == 201
+    r = _post(client, emp, category="STATIONERY", amount=999, proof=photo)
+    assert r.status_code == 409 and "bill photo was already used" in r.json()["detail"]
+    assert r.json()["matches"][0]["same_file"] is True and r.json()["matches"][0]["same_details"] is False
+
+
+def test_a_genuinely_different_purchase_is_not_flagged(client, emp, make_store):
+    assert _post(client, emp, proof=_photo("#111111")).status_code == 201
+    assert _post(client, emp, amount=121, proof=_photo("#222222")).status_code == 201                              # another amount
+    assert _post(client, emp, category="STATIONERY", proof=_photo("#333333")).status_code == 201                  # another reason
+    assert _post(client, emp, purchase_date=(date.today() - timedelta(days=1)).isoformat(), proof=_photo("#444444")).status_code == 201   # another day
+    assert _post(client, emp, category="OTHER", other_reason="Tea cups", proof=_photo("#555555")).status_code == 201
+    assert _post(client, emp, category="OTHER", other_reason="Light bulbs", proof=_photo("#666666")).status_code == 201   # "other" for a different thing
+
+
+def test_store_purchases_are_compared_store_by_store(client, emp, make_store):
+    a, b = make_store(region="NORTH"), make_store(region="NORTH")
+    body = lambda s, **kw: _body(kind="STORE", store_id=s.id, category="SUPPLY_DELAYED", amount="500", **kw)  # noqa: E731
+    assert _post(client, emp, body=body(a), proof=_photo("#111111")).status_code == 201
+    assert _post(client, emp, body=body(b), proof=_photo("#222222")).status_code == 201               # same details, another store
+    assert _post(client, emp, body=body(a), proof=_photo("#333333")).status_code == 409               # same store again
+
+
+def test_another_employees_name_is_only_shown_to_someone_who_may_see_everything(client, emp, zepto_emp, make_user):
+    assert _post(client, emp, proof=_photo("#111111")).status_code == 201
+    r = _post(client, zepto_emp, proof=_photo("#222222"))
+    assert r.status_code == 409 and r.json()["matches"][0]["added_by"] == "Another employee"
+    acc = _token(client, make_user, "accountant")                         # accounts hold cash.view
+    r = _post(client, acc, proof=_photo("#333333"))
+    assert r.status_code == 409 and r.json()["matches"][0]["added_by"] not in ("You", "Another employee")
+
+
+def test_the_proof_hash_is_kept_for_every_purchase(client, db, emp):
+    assert _post(client, emp, proof=_photo("#777777")).status_code == 201
+    row = db.query(CashPurchase).one()
+    assert row.proof_sha256 and len(row.proof_sha256) == 64 and row.duplicate_of_id is None

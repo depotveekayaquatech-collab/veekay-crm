@@ -61,6 +61,7 @@ def create(
     store_id: uuid.UUID | None = Form(None),
     other_reason: str | None = Form(None),
     notes: str | None = Form(None),
+    confirm_duplicate: bool = Form(False, description="true = the person has looked at the earlier purchase and says this one is different"),
     proof: UploadFile = File(..., description="Photo (JPG/PNG/WEBP) or PDF of the payment proof"),
     user: User = Depends(require_permission("cash.add")),
     perms: set[str] = Depends(get_current_permissions),
@@ -68,7 +69,9 @@ def create(
     idem: str | None = Depends(idempotency_key_header),
 ) -> CashPurchaseOut:
     """Multipart: the purchase fields plus the payment-proof file (required). Resending with the same Idempotency-Key
-    returns the original purchase instead of recording it twice."""
+    returns the original purchase instead of recording it twice. A purchase that looks like one already recorded (same details,
+    or the same bill file) is answered with 409, code POSSIBLE_DUPLICATE and the earlier purchase(s); send it again with
+    confirm_duplicate=true once the person says it is a different purchase."""
     try:
         body = CashPurchaseCreate(
             kind=kind, purchase_date=purchase_date, category=category, amount=Decimal(amount.strip()),
@@ -79,7 +82,7 @@ def create(
     data = proof.file.read(settings.COMPLIANCE_MAX_FILE_MB * 1024 * 1024 + 1)
     return run_once(
         db, owner=str(user.id), endpoint="cash.purchase.create", key=idem,
-        produce=lambda: svc.create(db, user, perms, body, proof.filename or "", data),
+        produce=lambda: svc.create(db, user, perms, body, proof.filename or "", data, confirm_duplicate=confirm_duplicate),
     )
 
 

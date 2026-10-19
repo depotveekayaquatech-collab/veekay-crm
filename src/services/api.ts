@@ -77,10 +77,13 @@ function announceNetworkFailure(message: string, silent?: boolean) {
 
 export class ApiError extends Error {
   status: number;
+  /** The whole error body as sent, for answers that carry more than a message (such as a possible-duplicate question). */
+  body?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body?: unknown) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -138,6 +141,9 @@ interface RequestOptions {
 /** FastAPI sends `detail` as a string, or (for validation errors) a list of {loc, msg} — always turn it into text. */
 function errorMessage(detail: unknown): string {
   if (typeof detail === "string" && detail) return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail) && typeof (detail as { message?: unknown }).message === "string") {
+    return (detail as { message: string }).message;
+  }
   if (Array.isArray(detail)) {
     const parts = detail
       .map((d) => {
@@ -195,7 +201,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
     const message = errorMessage(body.detail);
     if (!options.silent) pushToast(message, "error");
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, body);
   }
 
   if (res.status === 204) return undefined as T;

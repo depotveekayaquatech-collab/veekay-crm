@@ -69,7 +69,7 @@ function Row({
           ) : (
             <>
               <Select label="Store" searchable value={r.storeId ?? ""} options={stores} placeholder="Pick a store" onChange={(e) => save({ storeId: e.target.value })} />
-              {!r.storeId && r.outletName && <p className="mt-1 text-xs text-status-warning">Sheet says: {r.outletName}{r.outletCode ? ` (${r.outletCode})` : ""}</p>}
+              {!r.storeId && (r.outletName || r.outletCode) && <p className="mt-1 text-xs text-status-warning">Not matched to a store. Sheet says: {[r.outletName, r.outletCode ? `(${r.outletCode})` : ""].filter(Boolean).join(" ")}</p>}
             </>
           )}
         </Td>
@@ -245,7 +245,7 @@ export function SyncTab() {
             </div>
             <p className="mt-1 text-gray-700">
               Added for review <b>{uploaded.added}</b> · Already in the app <b>{uploaded.alreadyInApp}</b> · Uploaded before <b>{uploaded.alreadyUploaded}</b>
-              {" · "}Office rows ignored <b>{uploaded.officeRows}</b> · Skipped <b>{uploaded.invalidRows}</b>
+              {" · "}Office rows ignored <b>{uploaded.officeRows}</b> · Skipped <b>{uploaded.invalidRows}</b>{uploaded.rematched ? <> · Matched now <b>{uploaded.rematched}</b></> : null}
             </p>
             {uploaded.warnings.length > 0 && (
               <ul className="mt-2 list-disc rounded-lg bg-status-warning-soft px-4 py-2 pl-8 text-xs text-status-warning">

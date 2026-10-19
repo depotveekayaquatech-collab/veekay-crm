@@ -2,7 +2,8 @@ import { useSubmissionKey } from "@/lib/submissionKey";
 import { useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { staffApi } from "@/api/staff";
+import { ApiError } from "@/api/client";
+import { staffApi, type DuplicateAnswer } from "@/api/staff";
 import { useCashOptions, useStaffWrite } from "@/api/staffHooks";
 import { Button, Chips, ErrorNote, Field, Screen } from "@/components/ui";
 import { PhotoField } from "@/components/PhotoField";
@@ -37,7 +38,22 @@ export default function NewExpense() {
     amt === null || amt <= 0 ? "Enter the amount" : max && amt > max ? `The most you can enter is ₹${max.toLocaleString("en-IN")}` :
     !category ? "Choose what it was for" : kind === "STORE" && !store ? "Choose the store" : needsOther && !other.trim() ? "Say what it was for" : proof.length === 0 ? "Attach a photo of the bill" : null;
 
-  function submit() {
+  /** The server says this looks like a purchase already recorded: show it and let the person decide. Nothing is saved until they do. */
+  function askAboutDuplicate(d: DuplicateAnswer) {
+    const m = d.matches[0];
+    const line = `${fmtDate(m.purchase_date)} · ₹${Number(m.amount).toLocaleString("en-IN")} · ${m.store_name ?? "Office"} · ${m.category_label}\nRecorded by ${m.added_by} on ${fmtDate(m.created_at)}${m.same_file ? "\nThe same bill photo" : ""}`;
+    Alert.alert(
+      "Is this the same purchase?",
+      `${d.message}\n\n${line}${d.matches.length > 1 ? `\n(and ${d.matches.length - 1} more like it)` : ""}`,
+      [
+        { text: "It is the same: don't save", style: "cancel", onPress: () => router.back() },
+        { text: "It is different: save it", onPress: () => submit(true) },
+      ],
+      { cancelable: false },
+    );
+  }
+
+  function submit(confirmDuplicate = false) {
     setError(null);
     const f = new FormData();
     f.append("kind", kind);
@@ -46,11 +62,16 @@ export default function NewExpense() {
     f.append("amount", amount);
     if (kind === "STORE") f.append("store_id", store);
     if (needsOther) f.append("other_reason", other.trim());
+    if (confirmDuplicate) f.append("confirm_duplicate", "true");
     if (notes.trim()) f.append("notes", notes.trim());
     appendFile(f, "proof", proof[0]);
     add.mutate(f, {
       onSuccess: () => { idem.renew(); Alert.alert("Saved", "Your purchase was recorded."); router.back(); },
-      onError: (e) => setError(e.message),
+      onError: (e) => {
+        const b = e instanceof ApiError && e.status === 409 ? (e.body as { code?: string; detail?: string; matches?: DuplicateAnswer["matches"] } | undefined) : undefined;
+        if (b && b.code === "POSSIBLE_DUPLICATE" && b.matches?.length) askAboutDuplicate({ code: "POSSIBLE_DUPLICATE", message: b.detail ?? "", matches: b.matches });
+        else setError(e.message);
+      },
     });
   }
 
@@ -112,7 +133,7 @@ export default function NewExpense() {
 
         {error ? <ErrorNote message={error} /> : null}
         {problem && amount ? <Text style={{ color: colors.textMuted, fontSize: 13 }}>{problem}</Text> : null}
-        <Button title="Save purchase" onPress={submit} loading={add.isPending} disabled={!!problem} />
+        <Button title="Save purchase" onPress={() => submit()} loading={add.isPending} disabled={!!problem} />
       </View>
     </Screen>
   );

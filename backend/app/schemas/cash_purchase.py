@@ -33,6 +33,8 @@ class CashPurchaseOut(BaseModel):
     proof_name: str | None
     added_by: str | None
     created_at: datetime
+    # Recorded although it looked like an earlier purchase: the person said it is a different one.
+    possible_duplicate: bool = False
 
 
 class CashPurchaseList(BaseModel):

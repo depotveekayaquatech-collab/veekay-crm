@@ -14,6 +14,7 @@ Rules enforced here:
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -189,21 +190,91 @@ def _money(raw: str | None) -> Decimal | None:
     return value if 0 < value <= MAX_AMOUNT else None
 
 
-def _resolve_store(by_code: dict, by_name: dict, code: str | None, name: str | None) -> Store | None:
-    """The store a sheet row means, or None when it is unknown or ambiguous (the developer then picks it in review)."""
-    if code:
-        found = by_code.get(code.lower(), [])
-        if len(found) > 1 and name:
-            found = [s for s in found if s.name.strip().lower() == name.strip().lower()]
+def _code_key(text: str | None) -> str:
+    """A store code for comparing: case, spaces, dashes and other punctuation ignored; "8696.0" is 8696; leading zeros ignored."""
+    t = (text or "").replace("\u00a0", " ").strip().lower()
+    if re.fullmatch(r"\d+\.0+", t):
+        t = t.split(".")[0]
+    k = re.sub(r"[^a-z0-9]+", "", t)
+    return (k.lstrip("0") or "0") if k.isdigit() else k
+
+
+def _name_key(text: str | None) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).split())
+
+
+class _StoreIndex:
+    """Every store of the organisation, looked up by code or by name the way a person would read them."""
+
+    def __init__(self, stores: list[Store]):
+        self.stores = stores
+        self.by_code: dict[str, list[Store]] = {}
+        self.by_name: dict[str, list[Store]] = {}
+        for s in stores:
+            self.by_code.setdefault(_code_key(s.external_code), []).append(s)
+            self.by_name.setdefault(_name_key(s.name), []).append(s)
+        self.named = [(_name_key(s.name), s) for s in stores]
+
+
+def _resolve_store(index: _StoreIndex, code: str | None, name: str | None) -> Store | None:
+    """The store a sheet row means, or None when it is unknown or ambiguous (the developer then picks it in review).
+
+    The sheet's store id comes first (ignoring case, spaces, dashes, a trailing ".0" and leading zeros), then the name (ignoring
+    punctuation), whichever column it was written in. After that: a store code written inside a longer label ("KS105 (8696)"),
+    then a name that is the start of the store's name, or the other way round. Each step needs exactly one candidate, so a
+    guess is never made between two stores."""
+    values = [v for v in (code, name) if v and v.strip()]
+    for v in values:                                              # 1) the id
+        found = index.by_code.get(_code_key(v), [])
+        if len(found) > 1:
+            others = [_name_key(o) for o in values if o is not v]
+            found = [s for s in found if _name_key(s.name) in others] or found
+        if len(found) == 1:
+            return found[0]
+        if found:
+            return None                                           # two stores share it and the name does not settle it
+    for v in values:                                              # 2) the full name
+        found = index.by_name.get(_name_key(v), [])
         if len(found) == 1:
             return found[0]
         if found:
             return None
-    if name and not code:
-        found = by_name.get(name.strip().lower(), [])
+    for v in values:                                              # 3) a store code inside a longer label
+        tokens = {_code_key(t) for t in re.findall(r"[A-Za-z0-9]+", v)}
+        found = [s for s in index.stores if len(_code_key(s.external_code)) >= 3 and _code_key(s.external_code) in tokens]
         if len(found) == 1:
             return found[0]
+    for v in values:                                              # 4) the start of the name
+        key = _name_key(v)
+        if len(key) >= 6:
+            found = [s for nk, s in index.named if len(nk) >= 6 and (nk.startswith(key) or key.startswith(nk))]
+            if len(found) == 1:
+                return found[0]
     return None
+
+
+def _fix_store_columns(rows: list[dict], cols: dict[str, str | None], index: _StoreIndex) -> dict[str, str | None]:
+    """When the sheet's store headings are not the usual words (or the named column holds something else), pick the column(s)
+    whose values actually are this organisation's store ids / names."""
+    sample = rows[:300]
+
+    def rate(col: str) -> float:
+        vals = [(r.get(col) or "").strip() for r in sample]
+        vals = [v for v in vals if v]
+        return sum(1 for v in vals if _resolve_store(index, v, None) is not None) / len(vals) if vals else 0.0
+
+    taken = {cols[f] for f in ("date", "amount", "price", "type") if cols.get(f)}
+    scores = {c: rate(c) for c in rows[0] if c not in taken}
+    out = dict(cols)
+    for field in ("code", "name"):
+        have = out.get(field)
+        if have and scores.get(have, 0) > 0:
+            continue
+        other = out.get("name" if field == "code" else "code")
+        pool = {c: s for c, s in scores.items() if s > 0 and c != other}
+        if pool:
+            out[field] = max(pool, key=pool.get)
+    return out
 
 
 def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> UploadResult:
@@ -215,8 +286,12 @@ def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> Uplo
     rows = store_sync_service.rows_from_upload(filename, content)
     if not rows:
         raise store_sync_service.SyncError("The sheet has no data rows.")
+    org = user.organization_id
+    stores = db.execute(select(Store).where(Store.organization_id == org)).scalars().unique().all()
+    index = _StoreIndex(stores)
     lower = {k.strip().lower(): k for k in rows[0]}
     cols = {f: next((lower[a] for a in aliases if a in lower), None) for f, aliases in _UPLOAD_COLUMNS.items()}
+    cols = _fix_store_columns(rows, cols, index)
     if not cols["date"] or not cols["amount"] or not (cols["code"] or cols["name"]):
         raise store_sync_service.SyncError(
             "Could not find the columns. The sheet needs a Date column, an Amount column and a Store code (or Store name) column."
@@ -225,14 +300,7 @@ def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> Uplo
     def cell(row: dict, field: str) -> str | None:
         return store_sync_service._clean(row.get(cols[field])) if cols[field] else None
 
-    org = user.organization_id
     today = _today()
-    stores = db.execute(select(Store).where(Store.organization_id == org)).scalars().unique().all()
-    by_code: dict[str, list[Store]] = {}
-    by_name: dict[str, list[Store]] = {}
-    for s in stores:
-        by_code.setdefault(s.external_code.strip().lower(), []).append(s)
-        by_name.setdefault(s.name.strip().lower(), []).append(s)
     in_app = {
         (sid, d, a): n for sid, d, a, n in db.execute(
             select(CashPurchase.store_id, CashPurchase.purchase_date, CashPurchase.amount, func.count())
@@ -266,7 +334,7 @@ def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> Uplo
             if len(problems) < 5:
                 problems.append(f"Row {i}: skipped, {why}.")
             continue
-        store = _resolve_store(by_code, by_name, code, name)
+        store = _resolve_store(index, code, name)
         # Identity comes from what the sheet says, not from the store we matched, so a store added to the CRM later
         # (or a different pick made in review) never turns an old row into a "new" one on the next upload.
         key = (f"{(code or '').lower()}|{(name or '').lower() if not code else ''}", day, amount)
@@ -288,6 +356,24 @@ def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> Uplo
         ).scalars())
     fresh = [c for c in candidates if c["pid"] not in known]
     already_uploaded = len(candidates) - len(fresh)
+
+    # Rows uploaded earlier that were left without a store: the sheet may match one now (better matching, or a store added since).
+    rematched = 0
+    by_pid = {c["pid"]: c for c in candidates if c["store"] is not None}
+    if by_pid:
+        for rec in db.execute(
+            select(CashSyncRecord).where(
+                CashSyncRecord.organization_id == org, CashSyncRecord.purchase_id.in_(list(by_pid)),
+                CashSyncRecord.store_id.is_(None), CashSyncRecord.status == SyncStatus.PENDING,
+            )
+        ).scalars():
+            s = by_pid[rec.purchase_id]["store"]
+            rec.store_id = s.id
+            for field in ("baseline", "current_source"):
+                snap = dict(getattr(rec, field) or {})
+                snap.update({"store_id": str(s.id), "store_code": s.external_code, "store_name": s.name})
+                setattr(rec, field, snap)
+            rematched += 1
 
     run = CashSyncRun(
         organization_id=org, created_by_user_id=user.id, created_by_name=user.full_name,
@@ -313,7 +399,9 @@ def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> Uplo
         ))
     if unmatched:
         shown = ", ".join(sorted(unmatched)[:8]) + (" …" if len(unmatched) > 8 else "")
-        problems.append(f"{sum(unmatched.values())} row(s) have a store that isn't in the CRM ({shown}). Pick the store in the review list.")
+        problems.append(f"{sum(unmatched.values())} row(s) have a store that could not be matched to one store in the CRM ({shown}). Pick the store in the review list.")
+    if rematched:
+        problems.append(f"{rematched} row(s) uploaded earlier without a store were matched this time.")
     if invalid > len(problems):
         problems.append(f"{invalid} row(s) in total were skipped as unreadable.")
     activity_service.record(
@@ -326,7 +414,7 @@ def upload_sheet(db: Session, user: User, filename: str, content: bytes) -> Uplo
     return UploadResult(
         summary=_summary(db, user, run), rows_read=len(rows), added=len(fresh), already_in_app=already_in_app,
         already_uploaded=already_uploaded, unmatched_store=sum(unmatched.values()), office_rows=office, invalid_rows=invalid,
-        warnings=problems[:12],
+        rematched=rematched, warnings=problems[:12],
     )
 
 

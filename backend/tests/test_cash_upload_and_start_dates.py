@@ -297,3 +297,70 @@ def test_an_import_never_turns_live_stores_into_pending_by_accident(client, dev,
     assert db.query(Store).filter_by(external_code="ST-NEW-1").one().status == "PENDING"
     db.query(Store).filter_by(external_code="ST-NEW-1").delete()
     db.commit()
+
+
+# ---- matching the sheet's store to a store in the CRM ---------------------------------------------------------------
+
+def _records(db):
+    return {r.current_source["store_code"] or r.current_source.get("store_name"): r for r in db.query(CashSyncRecord).all()}
+
+
+def test_a_sheet_store_id_is_found_however_it_is_written_and_the_name_is_filled_in(client, dev, db, make_store):
+    tag = "7" + __import__("uuid").uuid4().hex[:5].upper()
+    a = make_store(code=f"KS-{tag}", name=f"Store Alpha {tag}")
+    b = make_store(code="8" + tag.lower(), name=f"Store Beta {tag}")
+    c = make_store(code="00" + tag.replace("A", "1").replace("B", "2").replace("C", "3").replace("D", "4").replace("E", "5").replace("F", "6"), name=f"Store Gamma {tag}")
+    d = make_store(code=f"ZZ{tag}9", name=f"KS Bengaluru JP Nagar {tag} KS105")
+    day = TODAY - timedelta(days=2)
+    rows = [
+        [day, "Store", None, f" ks {tag.lower()} ", None, "Water bottles", None, None, "No", 100, "x", None],        # case, spaces and a dash-less code
+        [day, "Store", None, "8" + tag, None, "Water bottles", None, None, "No", 110, "x", None],                    # upper case
+        [day, "Store", None, c.external_code.lstrip("0") + ".0", None, "Water bottles", None, None, "No", 120, "x", None],   # "8696.0", no leading zeros
+        [day, "Store", f"KS Bengaluru JP Nagar {tag} KS105 (ZZ{tag}9)", None, None, "Water bottles", None, None, "No", 130, "x", None],   # a label with the code inside
+    ]
+    r = _upload(client, dev, _sheet(rows))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["added"] == 4 and body["unmatched_store"] == 0, body
+    by_store = {x.store_id: x for x in db.query(CashSyncRecord).all()}
+    assert set(by_store) == {a.id, b.id, c.id, d.id}                      # every row found its store; the CRM's name is shown, not the sheet's
+    assert by_store[a.id].current_source["store_name"] == a.name and by_store[d.id].current_source["store_code"] == d.external_code
+
+
+def test_the_store_columns_are_found_by_what_they_contain_when_the_headings_are_unusual(client, dev, db, make_store):
+    tag = "9" + __import__("uuid").uuid4().hex[:5].upper()
+    a, b = make_store(code=f"HD-{tag}-1", name=f"Head A {tag}"), make_store(code=f"HD-{tag}-2", name=f"Head B {tag}")
+    day = TODAY - timedelta(days=1)
+    header = ["Date", "Type", "Shop", "Payment", "Reason", "Amount (INR)"]
+    rows = [[day, "Store", f"HD-{tag}-1", "Cash", None, 55], [day, "Store", f"head b {tag}", "Cash", None, 66]]
+    r = _upload(client, dev, _sheet(rows, header=header))
+    assert r.status_code == 200 and r.json()["added"] == 2 and r.json()["unmatched_store"] == 0, r.text
+    assert {x.store_id for x in db.query(CashSyncRecord).all()} == {a.id, b.id}
+
+
+def test_uploading_the_same_sheet_again_fills_in_rows_that_were_left_without_a_store(client, dev, db, make_store):
+    code = "LATE-" + __import__("uuid").uuid4().hex[:5].upper()
+    day = TODAY - timedelta(days=2)
+    sheet = _sheet([[day, "Store", None, code, None, "Water bottles", None, None, "No", 75, "x", None]])
+    first = _upload(client, dev, sheet).json()
+    assert first["added"] == 1 and first["unmatched_store"] == 1
+    assert db.query(CashSyncRecord).one().store_id is None
+    store = make_store(code=code, name="Added Later " + code)             # the store reaches the CRM afterwards
+    second = _upload(client, dev, sheet).json()
+    assert second["added"] == 0 and second["already_uploaded"] == 1 and second["rematched"] == 1
+    db.expire_all()
+    rec = db.query(CashSyncRecord).one()
+    assert rec.store_id == store.id and rec.current_source["store_name"] == store.name and rec.baseline["store_code"] == code
+    assert any("matched this time" in w for w in second["warnings"])
+
+
+def test_two_stores_with_the_same_id_are_never_guessed_between(client, dev, db, make_store):
+    code = "DUP-" + __import__("uuid").uuid4().hex[:5].upper()
+    make_store(code=code, name="Twin One " + code, platform="blinkit")
+    make_store(code=code, name="Twin Two " + code, platform="zepto", region=None)
+    day = TODAY - timedelta(days=1)
+    r = _upload(client, dev, _sheet([[day, "Store", None, code, None, "Water bottles", None, None, "No", 40, "x", None]]))
+    assert r.status_code == 200 and r.json()["added"] == 1 and r.json()["unmatched_store"] == 1
+    # the name settles it when the sheet has it
+    r = _upload(client, dev, _sheet([[day, "Store", "Twin Two " + code, code, None, "Water bottles", None, None, "No", 41, "x", None]]))
+    assert r.json()["added"] == 1 and r.json()["unmatched_store"] == 0

@@ -93,6 +93,8 @@ export interface UploadResult {
   unmatchedStore: number;
   officeRows: number;
   invalidRows: number;
+  /** Rows uploaded earlier without a store that were matched to one this time. */
+  rematched?: number;
   warnings: string[];
 }
 

@@ -79,8 +79,10 @@ def test_document_retry_adds_no_extra_version(client, db, world):
     assert db.query(ComplianceDocumentVersion).count() == versions     # a plain re-upload WOULD have added one
 
 
-def _purchase(client, h, key=None):
+def _purchase(client, h, key=None, confirm=False):
     body = {"kind": "OFFICE", "purchase_date": date.today().isoformat(), "category": "MILK", "amount": "120.50"}
+    if confirm:
+        body["confirm_duplicate"] = "true"
     return client.post(f"{API}/cash-purchases", data=body, files={"proof": ("p.jpg", jpeg(), "image/jpeg")},
                        headers=_h(h, key) if key else h)
 
@@ -90,13 +92,14 @@ def test_cash_purchase_retry_records_it_once(client, db, emp):
     r2 = _purchase(client, emp, KEY)
     assert r1.status_code == 201 and r2.status_code == 201 and r2.json()["id"] == r1.json()["id"]
     assert db.query(CashPurchase).count() == 1
-    assert _purchase(client, emp).status_code == 201                    # without a key it is a new purchase, as before
+    assert _purchase(client, emp).status_code == 409                    # without a key it is checked against the earlier one: same details
+    assert _purchase(client, emp, confirm=True).status_code == 201      # ...and recorded once the person says it is a different purchase
     assert db.query(CashPurchase).count() == 2
 
 
 def test_keys_do_not_collide_between_people(client, db, emp, admin):
     r1 = _purchase(client, emp, KEY)
-    r2 = _purchase(client, admin, KEY)
+    r2 = _purchase(client, admin, KEY, confirm=True)      # same details as the first, so the person confirms it is a different purchase
     assert r1.status_code == 201 and r2.status_code == 201 and r1.json()["id"] != r2.json()["id"]
 
 

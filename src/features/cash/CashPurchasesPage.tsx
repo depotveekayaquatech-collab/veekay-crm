@@ -166,6 +166,7 @@ export function CashPurchasesPage() {
                           <span className="font-medium text-gray-900">{p.kind === "STORE" ? "Water bottles" : p.categoryLabel}</span>
                           {p.kind === "STORE" && <p className="text-xs text-gray-600">Reason: {p.categoryLabel}</p>}
                           {(p.otherReason || p.notes) && <p className="mt-0.5 max-w-xs text-xs text-gray-500">{[p.otherReason, p.notes].filter(Boolean).join(" — ")}</p>}
+                          {p.possibleDuplicate && <p className="mt-1"><Badge tone="warning">Looked like an earlier purchase</Badge></p>}
                         </Td>
                         <Td>
                           {p.hasProof ? (

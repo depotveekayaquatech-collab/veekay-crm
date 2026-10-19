@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { SegmentedControl } from "@/features/orders/ui";
-import { useAddCashPurchase, type CashOptions, type PurchaseKind } from "@/features/cash/api";
+import { asDuplicate, useAddCashPurchase, type CashOptions, type DuplicateAnswer, type PurchaseKind } from "@/features/cash/api";
 import { daysAgo } from "@/lib/dates";
 import { policyHint, prepareUpload, useUploadPolicy } from "@/lib/uploads";
 
@@ -22,6 +22,8 @@ export function AddPurchaseModal({ options, onClose }: { options: CashOptions; o
   const [proof, setProof] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // set when the server says this looks like a purchase already recorded: the person decides, nothing is saved until then
+  const [dup, setDup] = useState<DuplicateAnswer | null>(null);
 
   const reasons = kind === "OFFICE" ? options.officeReasons : options.storeReasons;
   const reasonOptions = useMemo(() => reasons.map((r) => ({ value: r.code, label: r.label })), [reasons]);
@@ -47,6 +49,19 @@ export function AddPurchaseModal({ options, onClose }: { options: CashOptions; o
     }
   }
 
+  async function save(confirmDuplicate: boolean) {
+    const value = Number(amount);
+    if (!proof) return;
+    try {
+      await add.mutateAsync({ kind, storeId: storeId || null, purchaseDate: date, category, otherReason, amount: value.toFixed(2), notes, proof, confirmDuplicate });
+      onClose();
+    } catch (err) {
+      const found = asDuplicate(err);
+      if (found) setDup(found);
+      else setError(err instanceof Error ? err.message : "Couldn't save that purchase.");
+    }
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -57,12 +72,7 @@ export function AddPurchaseModal({ options, onClose }: { options: CashOptions; o
     if (!Number.isFinite(value) || value <= 0) return setError("Enter the amount paid.");
     if (value > Number(options.maxAmount)) return setError(`The amount can't be more than ${Number(options.maxAmount).toLocaleString("en-IN")}.`);
     if (!proof) return setError("Attach the payment proof (bill, receipt or UPI / payment screenshot).");
-    try {
-      await add.mutateAsync({ kind, storeId: storeId || null, purchaseDate: date, category, otherReason, amount: value.toFixed(2), notes, proof });
-      onClose();
-    } catch {
-      /* the API layer already showed the reason */
-    }
+    await save(false);
   }
 
   return (
@@ -72,16 +82,43 @@ export function AddPurchaseModal({ options, onClose }: { options: CashOptions; o
       title="Add cash purchase"
       description="Record money paid in cash for the office or for a store."
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose} type="button">
-            Cancel
-          </Button>
-          <Button type="submit" form="cash-purchase-form" isLoading={add.isPending}>
-            Save purchase
-          </Button>
-        </>
+        dup ? (
+          <>
+            <Button variant="secondary" onClick={onClose} type="button">It is the same: don't save</Button>
+            <Button type="button" onClick={() => save(true)} isLoading={add.isPending}>It is different: save it</Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose} type="button">
+              Cancel
+            </Button>
+            <Button type="submit" form="cash-purchase-form" isLoading={add.isPending}>
+              Save purchase
+            </Button>
+          </>
+        )
       }
     >
+      {dup && (
+        <section role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <h3 className="text-sm font-extrabold text-gray-900">Please check: is this the same purchase?</h3>
+          <p className="mt-1 text-sm text-gray-700">{dup.message}</p>
+          <ul className="mt-3 space-y-2">
+            {dup.matches.map((m) => (
+              <li key={m.id} className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm">
+                <p className="font-semibold text-gray-900">
+                  {new Date(`${m.purchaseDate}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} · ₹{Number(m.amount).toLocaleString("en-IN")} · {m.storeName ?? "Office"} · {m.categoryLabel}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Recorded by {m.addedBy} on {new Date(m.createdAt).toLocaleString("en-IN")}
+                  {m.sameDetails && m.sameFile ? " · same details and same bill photo" : m.sameFile ? " · same bill photo" : " · same date, amount and reason"}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-gray-600">Choose <b>It is the same</b> to leave it out, or <b>It is different</b> to record it as well. A purchase recorded this way is marked in the sheet.</p>
+        </section>
+      )}
       <form id="cash-purchase-form" onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <SegmentedControl
           label="Purchase for"

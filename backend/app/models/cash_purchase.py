@@ -4,6 +4,10 @@ bottles ...) or for a specific store (a repair, a part, local transport ...).
 
 `category` is a code from the lists below; `OTHER` requires a free-text `other_reason`. Rows are never edited or
 removed through the app, so the sheet always matches what was entered; mistakes are handled by an admin in the DB.
+
+Every proof file's SHA-256 is kept (`proof_sha256`), so the same bill photo, or a purchase with the same details, is spotted
+when someone records it again and the person is asked whether it is the same or a different purchase. When they say it is
+different, the new row keeps a pointer to the earlier one (`duplicate_of_id`) and is marked as a possible duplicate in the sheet.
 """
 import uuid
 from datetime import date
@@ -64,6 +68,8 @@ class CashPurchase(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     proof_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     proof_content_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     proof_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    proof_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)   # of the file as uploaded
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("cash_purchases.id", ondelete="SET NULL"), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -73,6 +73,13 @@ export interface ScanResult {
 export interface ScanStore { id: string; name: string; code: string; city: string | null }
 
 export interface Reason { code: string; label: string }
+
+/** An earlier purchase that looks like the one being added (the server's POSSIBLE_DUPLICATE answer). */
+export interface DuplicateMatch {
+  id: string; purchase_date: string; amount: string; kind: string; store_name: string | null; category_label: string;
+  added_by: string; created_at: string; same_details: boolean; same_file: boolean;
+}
+export interface DuplicateAnswer { code: "POSSIBLE_DUPLICATE"; message: string; matches: DuplicateMatch[] }
 export interface CashOptions {
   office_reasons: Reason[];
   store_reasons: Reason[];

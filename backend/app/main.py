@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.storage import StorageUnavailable
 from app.db.session import get_db
 from app.services import card_service
+from app.services.cash_purchase_service import DuplicatePurchase
 from app.core.logging_config import request_id_var, setup_logging
 from app.core.middleware import (
     BodyLimitMiddleware,
@@ -104,6 +105,13 @@ async def database_unavailable(request: Request, exc: Exception) -> JSONResponse
         status_code=503,
         headers={"X-Request-ID": rid, "Retry-After": "5"},
     )
+
+
+@app.exception_handler(DuplicatePurchase)
+async def duplicate_purchase(request: Request, exc: DuplicatePurchase) -> JSONResponse:
+    """A cash purchase that looks like an earlier one: nothing was saved. `detail` is plain text (older apps show it as the error);
+    newer apps read `code` and `matches` to ask the person whether it is the same purchase or a different one."""
+    return JSONResponse({"detail": exc.message, "code": "POSSIBLE_DUPLICATE", "matches": exc.matches}, status_code=409)
 
 
 @app.exception_handler(StorageUnavailable)

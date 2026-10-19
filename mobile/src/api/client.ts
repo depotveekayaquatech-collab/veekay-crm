@@ -37,6 +37,8 @@ export class ApiError extends Error {
   status: number;
   /** Set when the request never got an answer (status 0): why, so screens and the banner can word it correctly. */
   kind?: FailureKind;
+  /** The whole error body as sent, for answers that carry more than a message (such as a possible-duplicate question). */
+  body?: unknown;
   constructor(status: number, message: string, kind?: FailureKind) {
     super(message);
     this.name = "ApiError";
@@ -69,6 +71,7 @@ export async function clearSession() {
 
 function messageOf(detail: unknown): string {
   if (typeof detail === "string" && detail) return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail) && typeof (detail as { message?: unknown }).message === "string") return (detail as { message: string }).message;
   if (Array.isArray(detail)) {
     const parts = detail
       .map((d) => (d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : ""))
@@ -162,7 +165,9 @@ export async function request<T>(path: string, o: Options = {}): Promise<T> {
   const res = await send(path, o);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, messageOf((body as { detail?: unknown }).detail));
+    const failure = new ApiError(res.status, messageOf((body as { detail?: unknown }).detail));
+    failure.body = body;
+    throw failure;
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
@@ -217,7 +222,9 @@ export function requestUpload<T>(path: string, form: FormData, o: UploadOptions 
         let body: unknown = null;
         try { body = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
         if (xhr.status >= 200 && xhr.status < 300) return resolve(body as T);
-        reject(new ApiError(xhr.status, messageOf((body as { detail?: unknown } | null)?.detail)));
+        const failure = new ApiError(xhr.status, messageOf((body as { detail?: unknown } | null)?.detail));
+        failure.body = body;
+        reject(failure);
       };
       if (o.signal) {
         if (o.signal.aborted) return reject(new ApiError(0, "The upload was cancelled."));

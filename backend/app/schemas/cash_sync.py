@@ -27,6 +27,7 @@ class UploadResult(BaseModel):
     unmatched_store: int        # added, but the store must be picked in review
     office_rows: int            # office purchases are not bottles, so they are ignored
     invalid_rows: int           # unreadable date / amount, a future date, or a row with no store
+    rematched: int = 0          # uploaded earlier without a store, matched to one this time
     warnings: list[str]
 
 
