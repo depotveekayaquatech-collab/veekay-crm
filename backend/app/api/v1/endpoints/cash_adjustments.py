@@ -10,7 +10,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.cash_adjustment import AdjustmentList, AdjustRequest, ApplyResult, Preview, StoreChoice
 from app.schemas.cash_sync import (
-    RecordEdit, RecordIds, ResolveRequest, StandardRate, StandardRateResult, SyncApplyResult, SyncOverview, SyncPreview, SyncRecordOut, SyncRunOut, SyncSummary, UploadResult,
+    DeleteResult, RecordEdit, RecordIds, ResolveRequest, StandardRate, StandardRateResult, SyncApplyResult, SyncOverview, SyncPreview, SyncRecordOut, SyncRunOut, SyncSummary, UploadResult,
 )
 from app.services import cash_adjustment_service as svc, store_sync_service
 from app.services import cash_analysis_service as analysis_svc
@@ -143,6 +143,12 @@ def edit_record(record_id: uuid.UUID, body: RecordEdit, user: User = Depends(get
 @router.post("/sync/records/{record_id}/resolve", response_model=SyncRecordOut)
 def resolve_record(record_id: uuid.UUID, body: ResolveRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> SyncRecordOut:
     return sync_svc.resolve(db, user, record_id, body.action)
+
+
+@router.post("/sync/delete", response_model=DeleteResult)
+def sync_delete(body: RecordIds, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DeleteResult:
+    """Remove rows from the review list. Applied rows are never touched; rows that mirror an app purchase are marked Skipped instead."""
+    return sync_svc.delete_records(db, user, body.record_ids)
 
 
 @router.post("/sync/standard-rate", response_model=StandardRateResult)

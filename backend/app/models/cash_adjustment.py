@@ -57,6 +57,7 @@ class SyncStatus:
     CHANGED = "CHANGED"    # the source purchase changed after the last sync: needs a decision
     APPLIED = "APPLIED"    # added to the order sheet (never added again)
     SKIPPED = "SKIPPED"    # the developer chose not to apply it
+    DELETED = "DELETED"    # deleted for good from the review list; kept only as a hidden marker so a Sync cannot add it again
 
 
 class CashSyncRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):

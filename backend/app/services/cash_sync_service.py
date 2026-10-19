@@ -35,6 +35,7 @@ from app.schemas.cash_sync import (
     StandardRate,
     StandardRateResult,
     SyncApplyFailure,
+    DeleteResult,
     SyncApplyResult,
     SyncOverview,
     SyncPreview,
@@ -133,6 +134,8 @@ def sync(db: Session, user: User) -> SyncSummary:
     for p in purchases:
         snap = _snapshot(p)
         rec = existing.get(p.id)
+        if rec is not None and rec.status == SyncStatus.DELETED:
+            continue                                  # deleted for good: not shown, not counted, not added again
         if rec is None:
             db.add(CashSyncRecord(
                 organization_id=user.organization_id, purchase_id=p.id, status=SyncStatus.PENDING,
@@ -475,7 +478,7 @@ def _out(r: CashSyncRecord, stores: dict[uuid.UUID, Store], run_codes: dict) -> 
 
 
 def overview(db: Session, user: User, *, status_filter: str | None, page: int, page_size: int) -> SyncOverview:
-    base = select(CashSyncRecord).where(CashSyncRecord.organization_id == user.organization_id)
+    base = select(CashSyncRecord).where(CashSyncRecord.organization_id == user.organization_id, CashSyncRecord.status != SyncStatus.DELETED)
     counts = dict(db.execute(
         select(CashSyncRecord.status, func.count()).where(CashSyncRecord.organization_id == user.organization_id).group_by(CashSyncRecord.status)
     ).all())
@@ -499,9 +502,40 @@ def overview(db: Session, user: User, *, status_filter: str | None, page: int, p
 def _get(db: Session, user: User, record_id: uuid.UUID, *, lock: bool = False) -> CashSyncRecord:
     stmt = select(CashSyncRecord).where(CashSyncRecord.id == record_id, CashSyncRecord.organization_id == user.organization_id)
     r = db.execute(stmt.with_for_update() if lock else stmt).scalar_one_or_none()
-    if r is None:
+    if r is None or r.status == SyncStatus.DELETED:
         raise _err(status.HTTP_404_NOT_FOUND, "Record not found.")
     return r
+
+
+def delete_records(db: Session, user: User, record_ids: list[uuid.UUID]) -> DeleteResult:
+    """Delete the chosen rows for good, from any tab (To review, Changed, Skipped). Never a row that was already applied: it has
+    changed the order sheet and its history must stay. A row uploaded from a sheet is removed outright (uploading the sheet again
+    would add it as new). A row that mirrors a purchase recorded in the app is kept only as a hidden DELETED marker, so the next Sync
+    cannot add that purchase again; nobody sees it anywhere."""
+    ids = list(dict.fromkeys(record_ids))
+    rows = db.execute(
+        select(CashSyncRecord).where(CashSyncRecord.organization_id == user.organization_id, CashSyncRecord.id.in_(ids)).with_for_update()
+    ).scalars().all()
+    from_app = set(db.execute(select(CashPurchase.id).where(
+        CashPurchase.organization_id == user.organization_id, CashPurchase.id.in_([r.purchase_id for r in rows] or [uuid.uuid4()]))).scalars())
+    deleted, codes = 0, []
+    for r in rows:
+        if r.status in (SyncStatus.APPLIED, SyncStatus.DELETED) or r.applied_qty is not None:
+            continue
+        if len(codes) < 20:
+            codes.append(purchase_code(r.purchase_id))
+        if r.purchase_id in from_app:
+            r.status = SyncStatus.DELETED
+        else:
+            db.delete(r)
+        deleted += 1
+    if deleted:
+        activity_service.record(
+            db, actor=user, action="cash_sync.rows_deleted", entity_type="cash_sync", entity_id=user.organization_id,
+            metadata={"deleted": deleted, "codes": codes},
+        )
+    db.commit()
+    return DeleteResult(deleted=deleted, refused=len(ids) - deleted)
 
 
 def edit(db: Session, user: User, record_id: uuid.UUID, body: RecordEdit) -> SyncRecordOut:

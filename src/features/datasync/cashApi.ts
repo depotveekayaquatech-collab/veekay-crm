@@ -309,6 +309,14 @@ export function useSyncActions() {
         pushToast(`Standard rate set on ${r.updated} purchase${r.updated === 1 ? "" : "s"}${r.kept ? ` (${r.kept} already had a price and were kept)` : ""}.`, "success");
       },
     }),
+    remove: useMutation({
+      mutationFn: (ids: string[]) => post<{ deleted: number; refused: number }>("/sync/delete", { record_ids: ids }),
+      onSuccess: (r) => {
+        refresh();
+        const parts = [r.deleted ? `${r.deleted} deleted` : "", r.refused ? `${r.refused} left alone (already applied)` : ""].filter(Boolean);
+        pushToast(parts.length ? parts.join(" · ") + "." : "Nothing to delete.", r.deleted ? "success" : "error");
+      },
+    }),
     preview: useMutation({ mutationFn: (ids: string[]) => post<SyncPreview>("/sync/preview", { record_ids: ids }) }),
     apply: useMutation({
       mutationFn: (ids: string[]) => post<SyncApplyResult>("/sync/apply", { record_ids: ids }),

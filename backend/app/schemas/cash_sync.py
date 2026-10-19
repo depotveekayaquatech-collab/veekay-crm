@@ -115,6 +115,11 @@ class RecordIds(BaseModel):
     record_ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
 
 
+class DeleteResult(BaseModel):
+    deleted: int                # removed for good from the review list
+    refused: int                # already applied to the order sheet, already deleted, or not found: never touched
+
+
 class SyncPreviewPurchase(BaseModel):
     record_id: uuid.UUID
     purchase_code: str

@@ -364,3 +364,78 @@ def test_two_stores_with_the_same_id_are_never_guessed_between(client, dev, db, 
     # the name settles it when the sheet has it
     r = _upload(client, dev, _sheet([[day, "Store", "Twin Two " + code, code, None, "Water bottles", None, None, "No", 41, "x", None]]))
     assert r.json()["added"] == 1 and r.json()["unmatched_store"] == 0
+
+
+# ---- deleting the selected rows from the review list (any tab, for good) -----------------------------------------------
+
+def _ids(db):
+    return {r.current_source["store_code"] or r.current_source.get("store_name"): str(r.id) for r in db.query(CashSyncRecord).all()}
+
+
+def _records_api(client, dev, status=None):
+    params = {"page_size": 200, **({"status": status} if status else {})}
+    return client.get(f"{CASH}/sync/records", headers=dev, params=params).json()
+
+
+def test_selected_uploaded_rows_can_be_deleted_and_uploading_again_brings_them_back(client, dev, db, make_store):
+    a, b = make_store(code="DEL-A"), make_store(code="DEL-B")
+    day = TODAY - timedelta(days=2)
+    sheet = _sheet([_row(day, a, 100), _row(day, b, 200)])
+    assert _upload(client, dev, sheet).json()["added"] == 2
+    ids = _ids(db)
+    r = client.post(f"{CASH}/sync/delete", headers=dev, json={"record_ids": [ids["DEL-A"]]})
+    assert r.status_code == 200 and r.json() == {"deleted": 1, "refused": 0}
+    assert db.query(CashSyncRecord).count() == 1
+    again = _upload(client, dev, sheet).json()                            # only the deleted row is new
+    assert again["added"] == 1 and again["already_uploaded"] == 1
+    assert "cash_sync.rows_deleted" in str(client.get(f"{API}/activity", headers=dev, params={"page_size": 50}).json())
+
+
+def test_rows_can_be_deleted_from_the_skipped_and_changed_tabs_too(client, dev, db, make_store):
+    a, b = make_store(code="DEL-SK"), make_store(code="DEL-CH")
+    day = TODAY - timedelta(days=2)
+    assert _upload(client, dev, _sheet([_row(day, a, 100), _row(day, b, 200)])).json()["added"] == 2
+    ids = _ids(db)
+    assert client.post(f"{CASH}/sync/records/{ids['DEL-SK']}/resolve", headers=dev, json={"action": "skip"}).status_code == 200
+    assert _records_api(client, dev, "SKIPPED")["counts"]["SKIPPED"] == 1
+    r = client.post(f"{CASH}/sync/delete", headers=dev, json={"record_ids": [ids["DEL-SK"], ids["DEL-CH"]]})
+    assert r.json() == {"deleted": 2, "refused": 0}
+    assert db.query(CashSyncRecord).count() == 0
+
+
+def test_a_deleted_app_purchase_stays_deleted_and_is_hidden_everywhere(client, dev, db, make_store):
+    s = make_store(code="DEL-APP")
+    _purchase(db, s, 150, TODAY - timedelta(days=1))
+    client.post(f"{CASH}/sync", headers=dev)
+    rec = db.query(CashSyncRecord).one()
+    client.post(f"{CASH}/sync/records/{rec.id}/resolve", headers=dev, json={"action": "skip"})
+    r = client.post(f"{CASH}/sync/delete", headers=dev, json={"record_ids": [str(rec.id)]})
+    assert r.json() == {"deleted": 1, "refused": 0}
+    db.expire_all()
+    assert db.query(CashSyncRecord).one().status == "DELETED"            # only a hidden marker is left, so a Sync cannot add it again
+    for tab in (None, "PENDING", "SKIPPED", "CHANGED", "APPLIED"):
+        assert _records_api(client, dev, tab)["items"] == []
+    assert sum(_records_api(client, dev)["counts"].values()) == 0
+    client.post(f"{CASH}/sync", headers=dev)                              # syncing again does not bring it back...
+    assert _records_api(client, dev)["items"] == [] and db.query(CashSyncRecord).count() == 1
+    assert client.patch(f"{CASH}/sync/records/{rec.id}", headers=dev, json={"price_per_item": "30"}).status_code == 404   # ...and it can no longer be edited
+    assert client.post(f"{CASH}/sync/delete", headers=dev, json={"record_ids": [str(rec.id)]}).json() == {"deleted": 0, "refused": 1}
+
+
+def test_an_applied_row_and_unknown_ids_are_left_alone(client, dev, db, make_store):
+    import uuid as _uuid
+    s = make_store(code="DEL-APPLIED")
+    day = TODAY - timedelta(days=2)
+    assert _upload(client, dev, _sheet([_row(day, s, 120)])).json()["added"] == 1
+    rid = str(db.query(CashSyncRecord).one().id)
+    assert client.patch(f"{CASH}/sync/records/{rid}", headers=dev, json={"price_per_item": "30"}).status_code == 200
+    assert client.post(f"{CASH}/sync/apply", headers=dev, json={"record_ids": [rid]}).status_code == 200
+    r = client.post(f"{CASH}/sync/delete", headers=dev, json={"record_ids": [rid, str(_uuid.uuid4())]})
+    assert r.json() == {"deleted": 0, "refused": 2}
+    assert db.query(CashSyncRecord).count() == 1
+
+
+def test_only_the_developer_can_delete_rows(client, admin, emp):
+    import uuid as _uuid
+    for who in (admin, emp):
+        assert client.post(f"{CASH}/sync/delete", headers=who, json={"record_ids": [str(_uuid.uuid4())]}).status_code == 403

@@ -58,7 +58,7 @@ function Row({
   return (
     <>
       <tr className={r.status === "CHANGED" ? "bg-status-warning-soft/40" : undefined}>
-        <Td>{r.status === "PENDING" && <input type="checkbox" className="h-4 w-4" checked={selected} onChange={onToggle} aria-label={`Select ${r.purchaseCode}`} />}</Td>
+        <Td>{r.status !== "APPLIED" && <input type="checkbox" className="h-4 w-4" checked={selected} onChange={onToggle} aria-label={`Select ${r.purchaseCode}`} />}</Td>
         <Td className="whitespace-nowrap">
           <span className="font-mono text-xs text-gray-600">{r.purchaseCode}</span>
           <div><Badge tone={TONE[r.status]}>{r.status === "CHANGED" ? "Changed" : r.status.charAt(0) + r.status.slice(1).toLowerCase()}</Badge></div>
@@ -124,6 +124,7 @@ export function SyncTab() {
   const [status, setStatus] = useState<SyncStatus | "">("PENDING");
   const [page, setPage] = useState(1);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [defaultPrice, setDefaultPrice] = useState("");
   const [replacePrices, setReplacePrices] = useState(false);
   const [summary, setSummary] = useState<SyncSummary | null>(null);
@@ -137,7 +138,8 @@ export function SyncTab() {
   const { data: storeList = [] } = useStoreChoices("");
   const stores = storeList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
 
-  const pending = (data?.items ?? []).filter((r) => r.status === "PENDING");
+  // any row that has not been applied can be selected (to delete it); only the ones waiting for review can be previewed and applied
+  const selectable = (data?.items ?? []).filter((r) => r.status !== "APPLIED");
   const counts = data?.counts;
 
   async function doUpload(file: File) {
@@ -306,8 +308,8 @@ export function SyncTab() {
           <thead>
             <tr>
               <Th className="w-10">
-                {status === "PENDING" && pending.length > 0 && (
-                  <input type="checkbox" className="h-4 w-4" aria-label="Select all" checked={pending.every((r) => picked.has(r.id))} onChange={(e) => setPicked(e.target.checked ? new Set(pending.map((r) => r.id)) : new Set())} />
+                {status !== "APPLIED" && selectable.length > 0 && (
+                  <input type="checkbox" className="h-4 w-4" aria-label="Select all" checked={selectable.every((r) => picked.has(r.id))} onChange={(e) => setPicked(e.target.checked ? new Set(selectable.map((r) => r.id)) : new Set())} />
                 )}
               </Th>
               <Th>Purchase</Th>
@@ -350,14 +352,52 @@ export function SyncTab() {
         </section>
       )}
 
-      {status === "PENDING" && (
+      {status !== "APPLIED" && (
         <div className="sticky bottom-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-border bg-surface p-4 shadow-card">
           <p className="text-sm text-gray-600">{picked.size} selected</p>
-          <Button onClick={doPreview} disabled={!picked.size} isLoading={actions.preview.isPending}>
-            Preview order changes
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => setPicked(new Set())} disabled={!picked.size}>Clear selection</Button>
+            <Button variant="danger" onClick={() => setConfirmDelete(true)} disabled={!picked.size}>Delete selected</Button>
+            {status === "PENDING" && (
+              <Button onClick={doPreview} disabled={!picked.size} isLoading={actions.preview.isPending}>
+                Preview order changes
+              </Button>
+            )}
+          </div>
         </div>
       )}
+
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title={`Delete ${picked.size} selected row${picked.size === 1 ? "" : "s"}?`}
+        description="They are deleted for good from this review list. Nothing in the order sheet changes."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              isLoading={actions.remove.isPending}
+              onClick={async () => {
+                try {
+                  await actions.remove.mutateAsync([...picked]);
+                  setPicked(new Set());
+                } finally {
+                  setConfirmDelete(false);
+                }
+              }}
+            >
+              Delete {picked.size}
+            </Button>
+          </>
+        }
+      >
+        <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+          <li>This cannot be undone. A deleted row is gone from every tab, including Skipped.</li>
+          <li>A purchase recorded in the app stays deleted: the next Sync will not add it again. A row from an uploaded sheet comes back only if you upload that sheet again.</li>
+          <li>Anything already applied to the order sheet is left alone.</li>
+        </ul>
+      </Modal>
 
       <Modal
         open={Boolean(preview)}
