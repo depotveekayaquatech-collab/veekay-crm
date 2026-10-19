@@ -5,10 +5,10 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useMyStores } from "@/api/staffHooks";
 import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
 import { PendingPill } from "@/components/PendingPill";
-import { fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
-type Filter = "all" | "pending" | "done";
+type Filter = "all" | "pending" | "done" | "lastmonth";
 type Day = "today" | "yesterday";
 
 /** The server's own calendar day (it decides what "today" means, not the phone), one day earlier when asked. */
@@ -32,6 +32,9 @@ export default function Orders() {
 
   const stores = useMemo(() => (q.data ?? []).filter((s) => s.status === "LIVE"), [q.data]);
   const serverToday = q.data?.[0]?.today;
+  // For the first days of a month, last month can still be completed: which stores still have days to fill
+  const lastOpenUntil = stores.find((s) => s.last_month_open_until)?.last_month_open_until ?? null;
+  const lastMissing = lastOpenUntil ? stores.filter((s) => (s.last_month_missing ?? 0) > 0) : [];
   const dayIso = serverToday ? (day === "today" ? serverToday : shift(serverToday, -1)) : undefined;
   const countOf = useCallback((s: { today_count: number | null; yesterday_count?: number | null }) => (day === "today" ? s.today_count : s.yesterday_count ?? null), [day]);
   const done = stores.filter((s) => countOf(s) !== null).length;
@@ -39,12 +42,17 @@ export default function Orders() {
 
   const shown = useMemo(() => {
     const n = needle.trim().toLowerCase();
+    if (filter === "lastmonth") {
+      return lastMissing
+        .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""}`.toLowerCase().includes(n))
+        .sort((a, b) => (b.last_month_missing ?? 0) - (a.last_month_missing ?? 0) || a.name.localeCompare(b.name));
+    }
     const list = stores
       .filter((s) => (filter === "all" ? true : filter === "done" ? countOf(s) !== null : countOf(s) === null))
       .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""}`.toLowerCase().includes(n));
     // the pending list starts with the stores that have waited longest
     return filter === "pending" ? [...list].sort((a, b) => (b.pending_days ?? 0) - (a.pending_days ?? 0) || a.name.localeCompare(b.name)) : list;
-  }, [stores, filter, needle, countOf]);
+  }, [stores, filter, needle, countOf, lastMissing]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSubtle }}>
@@ -74,22 +82,33 @@ export default function Orders() {
               <Text style={{ flex: 1, fontWeight: "700", color: colors.brand700 }}>My entries: check what you saved in the last days</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.brand600} />
             </Pressable>
+            {lastOpenUntil && lastMissing.length > 0 ? (
+              <Pressable onPress={() => setFilter("lastmonth")} accessibilityRole="button" android_ripple={{ color: colors.brand100 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: radius.md, backgroundColor: colors.warningSoft }}>
+                <Ionicons name="calendar-outline" size={22} color={colors.warning} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: "800", color: colors.warning }}>Last month is still open until {fmtDate(lastOpenUntil)}</Text>
+                  <Text style={font.small}>{lastMissing.length} store{lastMissing.length === 1 ? " has" : "s have"} days of last month with no entry yet. Tap to fill them.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.warning} />
+              </Pressable>
+            ) : null}
             <Chips<Day> options={[{ label: "Today", value: "today" }, { label: "Yesterday", value: "yesterday" }]} value={day} onChange={setDay} />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 48, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: 12 }}>
               <Ionicons name="search" size={18} color={colors.textFaint} />
               <TextInput value={needle} onChangeText={setNeedle} placeholder="Search store, code or city" placeholderTextColor={colors.textFaint} accessibilityLabel="Search stores" style={{ flex: 1, fontSize: 16, color: colors.text }} />
             </View>
-            <Chips<Filter> options={[{ label: `Pending ${stores.length - done}`, value: "pending" }, { label: `Done ${done}`, value: "done" }, { label: "All", value: "all" }]} value={filter} onChange={setFilter} />
+            <Chips<Filter> options={[{ label: `Pending ${stores.length - done}`, value: "pending" }, { label: `Done ${done}`, value: "done" }, { label: "All", value: "all" }, ...(lastOpenUntil ? [{ label: `Last month ${lastMissing.length}`, value: "lastmonth" as Filter }] : [])]} value={filter} onChange={setFilter} />
           </View>
         }
         ListEmptyComponent={
           q.isLoading ? <ListSkeleton /> : q.isError ? <ErrorNote message={q.error.message} onRetry={() => q.refetch()} /> : (
-            <Empty title={filter === "pending" && !needle ? `All stores are marked for ${day}` : "No store matches"} text={filter === "pending" && !needle ? "Nice work. You can still mark earlier days of this month from a store's page." : "Try a different filter or search."} />
+            <Empty title={filter === "lastmonth" && !needle ? "Last month is complete" : filter === "pending" && !needle ? `All stores are marked for ${day}` : "No store matches"} text={filter === "lastmonth" && !needle ? "Every store has all its days of last month." : filter === "pending" && !needle ? "Nice work. You can still mark earlier days of this month from a store's page." : "Try a different filter or search."} />
           )
         }
         renderItem={({ item: s }) => (
           <Pressable
-            onPress={() => router.push(dayIso ? `/staff/mark/${s.id}?day=${dayIso}` : `/staff/mark/${s.id}`)}
+            onPress={() => router.push(filter === "lastmonth" ? `/staff/mark/${s.id}?month=last` : dayIso ? `/staff/mark/${s.id}?day=${dayIso}` : `/staff/mark/${s.id}`)}
             accessibilityRole="button"
             accessibilityLabel={`${s.name}, ${countOf(s) === null ? `not marked ${day}` : `marked ${countOf(s)} ${day}`}`}
             android_ripple={{ color: colors.brand100 }}
@@ -102,7 +121,12 @@ export default function Orders() {
               <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
               <Text numberOfLines={1} style={font.small}>{s.external_code}{s.city ? ` · ${s.city}` : ""}</Text>
               <Text numberOfLines={1} style={font.tiny}>This month {fmtNumber(s.month_bottles ?? 0)} · Last month {fmtNumber(s.last_month_bottles ?? 0)} bottles</Text>
-              {countOf(s) === null ? <View style={{ marginTop: 6 }}><PendingPill days={s.pending_days ?? 0} /></View> : null}
+              {filter === "lastmonth" ? (
+                <View style={{ marginTop: 6, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.warning }} />
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: colors.warning }}>{s.last_month_missing} day{s.last_month_missing === 1 ? "" : "s"} of last month missing</Text>
+                </View>
+              ) : countOf(s) === null ? <View style={{ marginTop: 6 }}><PendingPill days={s.pending_days ?? 0} /></View> : null}
             </View>
             {countOf(s) !== null ? (
               <View style={{ alignItems: "flex-end" }}><Text style={{ fontSize: 18, fontWeight: "800", color: colors.text }}>{countOf(s)}</Text><Text style={font.tiny}>{day}</Text></View>

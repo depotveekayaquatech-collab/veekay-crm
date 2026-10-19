@@ -4,6 +4,14 @@ import { camelize } from "@/lib/camel";
 
 export type LoginKind = "vendor" | "poc";
 
+export interface GeneratePreview {
+  platform: string;
+  dryRun: boolean;
+  vendors: { accounts: number; skipped: number; sharedNames: number; examples: { email: string; name: string; stores: number }[] };
+  pocs: { accounts: number; skipped: number; sharedNames: number; examples: { email: string; name: string; stores: number }[] };
+  applied: { created: number; updated: number } | null;
+}
+
 export interface LoginAccount {
   id: string;
   kind: LoginKind;

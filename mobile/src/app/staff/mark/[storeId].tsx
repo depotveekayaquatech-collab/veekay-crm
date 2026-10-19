@@ -5,9 +5,9 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCalendar, useMarkMany, useMyStores } from "@/api/staffHooks";
-import { Button, Card, ErrorNote, ListSkeleton } from "@/components/ui";
+import { Button, Card, Chips, ErrorNote, ListSkeleton } from "@/components/ui";
 import { MonthGrid, type CellState } from "@/components/MonthGrid";
-import { daysAgo, fmtNumber } from "@/lib/format";
+import { daysAgo, fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
 const MAX = 200;
@@ -38,17 +38,33 @@ function Stepper({ value, onChange, error, label }: { value: string; onChange: (
 }
 
 export default function MarkMany() {
-  const { storeId, day } = useLocalSearchParams<{ storeId: string; day?: string }>();
+  const { storeId, day, month } = useLocalSearchParams<{ storeId: string; day?: string; month?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const cal = useCalendar(storeId);
   const mark = useMarkMany();
   const mine = useMyStores();
   const totals = mine.data?.find((s) => s.id === storeId);
+  // Last month stays open for entries for the first few days of a month: the store list says so (and until when)
+  const lastOpenUntil = totals?.last_month_open_until ?? null;
+  const [period, setPeriod] = useState<"this" | "last">(month === "last" ? "last" : "this");
+  const viewingLast = period === "last" && !!lastOpenUntil && !!totals;
+  const lastYm = useMemo(() => {
+    if (!totals) return undefined;
+    const [y, m] = totals.today.split("-").map(Number);
+    return m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
+  }, [totals]);
+  const cal = useCalendar(storeId, viewingLast ? lastYm : undefined);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [same, setSame] = useState("");
+
+  function switchPeriod(next: "this" | "last") {
+    setPeriod(next);
+    setPicked(null);
+    setValues({});
+    setErrors({});
+  }
 
   const byDate = useMemo(() => new Map((cal.data?.days ?? []).map((d) => [d.date, d])), [cal.data]);
   const open = useMemo(() => (cal.data?.days ?? []).filter((d) => !d.marked && !d.is_future).map((d) => d.date), [cal.data]);
@@ -115,7 +131,7 @@ export default function MarkMany() {
     const d = byDate.get(iso);
     if (!d) return { disabled: true };
     return {
-      disabled: d.marked || d.is_future,
+      disabled: d.marked || d.is_future || cal.data?.can_mark === false,
       selected: selected.includes(iso),
       today: d.is_today,
       badge: d.marked ? d.count : null,
@@ -130,6 +146,21 @@ export default function MarkMany() {
           <>
             <Text style={font.small}>{cal.data!.store_code} · {cal.data!.month_label}</Text>
             <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. Green numbers are already marked.</Text>
+            {lastOpenUntil ? (
+              <View style={{ marginTop: 12, gap: 8 }}>
+                <Chips<"this" | "last"> options={[{ label: "This month", value: "this" }, { label: "Last month", value: "last" }]} value={period} onChange={switchPeriod} />
+                {viewingLast ? (
+                  <View style={{ padding: 12, borderRadius: radius.md, backgroundColor: colors.warningSoft }}>
+                    <Text style={{ color: colors.warning, fontWeight: "700" }}>Last month is open for entries until {fmtDate(lastOpenUntil)}. After that only an admin can add them.</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+            {cal.data?.can_mark === false ? (
+              <View style={{ marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.surfaceMuted }}>
+                <Text style={{ color: colors.textMuted, fontWeight: "600" }}>This month can't be changed here. Ask an admin to add or correct entries.</Text>
+              </View>
+            ) : null}
             {totals ? (
               <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
                 {([["This month", totals.month_bottles ?? 0], ["Last month", totals.last_month_bottles ?? 0]] as const).map(([label, n]) => (
@@ -154,7 +185,7 @@ export default function MarkMany() {
 
             {open.length === 0 ? (
               <View style={{ marginTop: 16, padding: 14, borderRadius: radius.md, backgroundColor: colors.successSoft }}>
-                <Text style={{ color: colors.success, fontWeight: "700" }}>Every date up to today is marked for this store.</Text>
+                <Text style={{ color: colors.success, fontWeight: "700" }}>{viewingLast ? "Every date of last month is marked for this store." : "Every date up to today is marked for this store."}</Text>
               </View>
             ) : null}
 

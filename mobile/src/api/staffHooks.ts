@@ -20,10 +20,21 @@ export const useLeaves = () => useQuery({ queryKey: ["s-leaves"], queryFn: staff
 export const useMyStores = (enabled = true) => useQuery({ queryKey: ["s-stores"], queryFn: staffApi.myStores, staleTime: FRESH, enabled });
 
 export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; is_today: boolean; is_future: boolean }
-export interface Calendar { store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[] }
+export interface Calendar {
+  store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[];
+  /** False when this month cannot be marked by the caller (view only). */
+  can_mark?: boolean;
+  /** For last month: the last day it can still be marked. */
+  open_until?: string | null;
+}
 
-export const useCalendar = (storeId: string) =>
-  useQuery({ queryKey: ["s-calendar", storeId], queryFn: () => request<Calendar>(`/orders/calendar?store_id=${storeId}`), staleTime: 10_000 });
+/** A store's calendar: this month, or the given year and month (last month, while it is open for entries). */
+export const useCalendar = (storeId: string, ym?: { year: number; month: number }) =>
+  useQuery({
+    queryKey: ["s-calendar", storeId, ym?.year ?? 0, ym?.month ?? 0],
+    queryFn: () => request<Calendar>(`/orders/calendar?store_id=${storeId}${ym ? `&year=${ym.year}&month=${ym.month}` : ""}`),
+    staleTime: 10_000,
+  });
 
 /** Polled once a minute: puts the unread badge on the bell. */
 export const useStaffAlerts = () =>

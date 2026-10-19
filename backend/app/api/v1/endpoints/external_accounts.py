@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_user, require_permission
 from app.core.security import generate_temp_password, hash_password
-from app.services import activity_service
+from app.services import activity_service, external_account_service
 from app.db.session import get_db
 from app.models.external_account import AccountKind, ExternalAccount, ExternalAccountStore, ExternalSession
 from app.models.organization import Organization
@@ -50,6 +50,39 @@ def _filters(user: User, kind: str | None, platform: str | None, q: str | None) 
         like = f"%{q.strip()}%"
         conds.append(or_(ExternalAccount.email.ilike(like), ExternalAccount.full_name.ilike(like), ExternalAccount.phone.ilike(like)))
     return conds
+
+
+class GenerateIn(BaseModel):
+    platform: Literal["blinkit", "zepto", "all"] = "blinkit"
+    dry_run: bool = True
+
+
+def _plan_out(plan) -> dict:
+    return {
+        "accounts": len(plan.people), "skipped": len(plan.skipped), "shared_names": len(plan.split_names),
+        "examples": [{"email": p.email, "name": p.name, "stores": len(p.store_ids)} for p in plan.people[:5]],
+    }
+
+
+@router.post("/generate", dependencies=[Depends(require_permission("sheets.sync"))])
+def generate(body: GenerateIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Developer: build the vendor and POC logins from the stores' vendor / POC columns (the same step as scripts/create_external_accounts.py).
+    dry_run (the default) only reports what would be created. Existing accounts keep their password; each account's store list is refreshed."""
+    vendors, pocs = external_account_service.build_plan(db, None if body.platform == "all" else {body.platform})
+    try:
+        external_account_service.check_unique([vendors, pocs])
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    out = {"platform": body.platform, "dry_run": body.dry_run, "vendors": _plan_out(vendors), "pocs": _plan_out(pocs), "applied": None}
+    if body.dry_run:
+        return out
+    out["applied"] = external_account_service.apply(db, user.organization_id, [vendors, pocs])
+    activity_service.record(
+        db, actor=user, action="external_accounts.generated", entity_type="external_account", entity_id=user.organization_id,
+        metadata={"platform": body.platform, **out["applied"]},
+    )
+    db.commit()
+    return out
 
 
 @router.get("", response_model=ExternalAccountList)

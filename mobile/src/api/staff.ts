@@ -72,6 +72,9 @@ export interface MyStore {
   /** Bottles marked for this store so far this month, and in the whole of last month. */
   month_bottles?: number;
   last_month_bottles?: number;
+  /** While last month can still be marked (the first days of a month): its days with no entry yet, and the last day it stays open. */
+  last_month_missing?: number;
+  last_month_open_until?: string | null;
 }
 
 export type Direction = "IN" | "OUT";

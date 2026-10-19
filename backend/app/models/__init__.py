@@ -16,6 +16,7 @@ from app.models.audit_log import AuditLog
 from app.models.refresh_session import RefreshSession
 from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office
 from app.models.payroll import DayMark, EmployeeSalary, PayrollPeriod, Payslip
+from app.models.deleted_row import DeletedRow, OrderEntryChange
 from app.models.compliance_document import BillStatus, ComplianceDocument, ComplianceDocumentVersion, DocKind
 from app.models.ticket import Ticket, TicketComment
 from app.models.test_report import TestReport

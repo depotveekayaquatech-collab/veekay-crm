@@ -70,8 +70,8 @@ def _store_meta(store: Store) -> dict:
 # employee: my stores + calendar + mark
 # --------------------------------------------------------------------------
 
-def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool) -> dict[uuid.UUID, tuple[int, int]]:
-    """{store_id: (bottles marked this month so far, bottles marked in the whole of last month)}. `net` leaves out a developer's cash
+def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool) -> dict[uuid.UUID, tuple[int, int, int]]:
+    """{store_id: (bottles marked this month so far, bottles marked in the whole of last month, days of last month with an entry)}. `net` leaves out a developer's cash
     adjustment, which an employee never sees (what they entered is what they are shown)."""
     if not ids:
         return {}
@@ -83,11 +83,19 @@ def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool) 
             OrderEntry.store_id,
             func.coalesce(func.sum(case((OrderEntry.order_date >= this_start, amount), else_=0)), 0),
             func.coalesce(func.sum(case((OrderEntry.order_date < this_start, amount), else_=0)), 0),
+            func.coalesce(func.sum(case((OrderEntry.order_date < this_start, 1), else_=0)), 0),
         )
         .where(OrderEntry.store_id.in_(ids), OrderEntry.order_date >= last_start, OrderEntry.order_date <= today)
         .group_by(OrderEntry.store_id)
     ).all()
-    return {r[0]: (int(r[1]), int(r[2])) for r in rows}
+    return {r[0]: (int(r[1]), int(r[2]), int(r[3])) for r in rows}
+
+
+def _last_month_missing(entries: int, start: date | None, today: date) -> int:
+    """Days of last month (from the store's start date, if later) that still have no entry."""
+    last_end = today.replace(day=1) - timedelta(days=1)
+    first = max(last_end.replace(day=1), start) if start else last_end.replace(day=1)
+    return 0 if first > last_end else max(0, (last_end - first).days + 1 - entries)
 
 
 def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[MyStore]:
@@ -102,6 +110,11 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
 
     today = _today()
     yesterday = today - timedelta(days=1)
+    until = backmonth_open_until(today)
+    window = until if until is not None and today <= until else None     # last month can still be marked
+
+    def _last_missing(totals: dict, sid: uuid.UUID, start: date | None) -> int:
+        return _last_month_missing(totals.get(sid, (0, 0, 0))[2], start, today) if window else 0
 
     if is_admin:
         # Admins work with every live store: read plain columns instead of building ~1,500 ORM objects.
@@ -133,7 +146,8 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
                 vendor_number=r[7], poc_name=r[8], poc_number=r[9], status=r[10], today=today, partner_slug=r[11],
                 partner_name=r[12], region_id=r[13], today_count=counts.get((r[0], today)),
                 yesterday_count=counts.get((r[0], yesterday)), pending_days=_pending(stats, r[0], today, r[14]),
-                month_bottles=totals.get(r[0], (0, 0))[0], last_month_bottles=totals.get(r[0], (0, 0))[1],
+                month_bottles=totals.get(r[0], (0, 0, 0))[0], last_month_bottles=totals.get(r[0], (0, 0, 0))[1],
+                last_month_missing=_last_missing(totals, r[0], r[14]), last_month_open_until=window,
             )
             for r in rows
         ]
@@ -162,7 +176,8 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             region_id=s.region_id,
             today_count=counts.get((s.id, today)), yesterday_count=counts.get((s.id, yesterday)),
             pending_days=_pending(stats, s.id, today, s.start_date),
-            month_bottles=totals.get(s.id, (0, 0))[0], last_month_bottles=totals.get(s.id, (0, 0))[1],
+            month_bottles=totals.get(s.id, (0, 0, 0))[0], last_month_bottles=totals.get(s.id, (0, 0, 0))[1],
+            last_month_missing=_last_missing(totals, s.id, s.start_date), last_month_open_until=window,
         )
         for s in stores
     ]
@@ -202,6 +217,8 @@ def get_calendar(
         month=month,
         month_label=f"{_MONTHS[month]} {year}",
         days=days,
+        can_mark=is_admin or employee_can_mark_month(year, month, today),
+        open_until=None if is_admin or (year, month) == (today.year, today.month) else backmonth_open_until(today),
     )
 
 
@@ -305,10 +322,12 @@ def admin_set_entry(db: Session, admin: User, payload: AdminEntryRequest) -> Ord
 
     if payload.bottle_count is None:
         if existing is not None:
+            # the database keeps a copy of every deleted entry (deleted_rows, see migration 0043); the log says what was there
+            was = {"previous_count": existing.bottle_count, "previous_cash_adjustment": existing.cash_adjustment, "previous_source": existing.source}
             db.delete(existing)
             activity_service.record(
                 db, actor=admin, action="order.cleared", entity_type="order_entry", entity_id=store.id,
-                metadata={**_store_meta(store), "order_date": payload.order_date.isoformat(), "bottle_count": "CLEARED"},
+                metadata={**_store_meta(store), "order_date": payload.order_date.isoformat(), "bottle_count": "CLEARED", **was},
             )
     else:
         if existing is not None:
@@ -614,12 +633,33 @@ def _resolve_store(db: Session, user: User, store_id: uuid.UUID, *, is_admin: bo
     return store
 
 
+def backmonth_open_until(today: date) -> date | None:
+    """The last day on which employees may still mark LAST month's dates (the Nth day of this month), or None when that is switched off."""
+    grace = settings.BACKMONTH_GRACE_DAYS
+    return today.replace(day=1) + timedelta(days=grace - 1) if grace > 0 else None
+
+
+def _previous_month(today: date) -> tuple[int, int]:
+    last = today.replace(day=1) - timedelta(days=1)
+    return last.year, last.month
+
+
+def employee_can_mark_month(year: int, month: int, today: date) -> bool:
+    """This month always; last month too while the grace days at the start of this month last."""
+    if (year, month) == (today.year, today.month):
+        return True
+    until = backmonth_open_until(today)
+    return until is not None and today <= until and (year, month) == _previous_month(today)
+
+
 def _check_order_date(order_date: date, *, allow_any_month: bool = False) -> None:
     today = _today()
     if order_date > today:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "You can't mark a future date.")
-    if not allow_any_month and (order_date.year, order_date.month) != (today.year, today.month):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Orders can only be marked for dates in the current month.",
-        )
+    if not allow_any_month and not employee_can_mark_month(order_date.year, order_date.month, today):
+        until = backmonth_open_until(today)
+        if (order_date.year, order_date.month) == _previous_month(today):
+            why = f"Last month's entries could only be added until {until:%d %b}. Ask an admin to add this one." if until else "Last month's entries can no longer be added. Ask an admin to add this one."
+        else:
+            why = "Orders can only be marked for dates in the current month" + (f" (and last month until {until:%d %b})" if until else "") + "."
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, why)

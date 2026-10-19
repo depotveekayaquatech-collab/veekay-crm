@@ -30,3 +30,33 @@ def test_logins_page_is_admin_only_and_exports_initial_passwords(client, admin, 
         for a in made:
             db.delete(a)
         db.commit()
+
+
+def test_a_developer_can_build_the_logins_from_the_stores_with_a_preview_first(client, dev, admin, emp, db, make_store):
+    import uuid
+
+    tag = uuid.uuid4().hex[:6]
+    make_store(code=f"LG-{tag}", platform="blinkit", vendor=f"Vendor Gen {tag}")
+    before = {a.email for a in db.query(ExternalAccount).all()}
+    gen = f"{API}/external-accounts/generate"
+    try:
+        for who in (admin, emp):                                                    # only the developer may do this
+            assert client.post(gen, headers=who, json={}).status_code == 403
+        preview = client.post(gen, headers=dev, json={"platform": "blinkit"}).json()
+        assert preview["dry_run"] is True and preview["vendors"]["accounts"] >= 1 and preview["applied"] is None
+        assert {a.email for a in db.query(ExternalAccount).all()} == before        # a preview writes nothing
+        done = client.post(gen, headers=dev, json={"platform": "blinkit", "dry_run": False}).json()
+        assert done["applied"]["created"] >= 1
+        db.expire_all()
+        mine = db.query(ExternalAccount).filter(ExternalAccount.email == f"vendorgen{tag}@supplier.com").one()
+        assert mine.must_change_password is True and mine.store_count == 1
+        listed = client.get(f"{API}/external-accounts?q=vendorgen{tag}", headers=admin).json()
+        assert listed["total"] == 1
+        again = client.post(gen, headers=dev, json={"platform": "blinkit", "dry_run": False}).json()
+        assert again["applied"]["created"] == 0                                    # safe to repeat: nothing is created twice
+        assert "external_accounts.generated" in str(client.get(f"{API}/activity", headers=dev, params={"page_size": 50}).json())
+    finally:
+        for a in db.query(ExternalAccount).all():
+            if a.email not in before:
+                db.delete(a)
+        db.commit()

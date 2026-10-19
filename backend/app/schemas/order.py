@@ -24,6 +24,10 @@ class OrderCalendar(BaseModel):
     month: int
     month_label: str
     days: list[CalendarDay]
+    # False when the caller may not mark this month (an earlier month, or last month after the grace days): view only
+    can_mark: bool = True
+    # For last month during the grace days: the last day on which it can still be marked
+    open_until: date | None = None
 
 
 class MarkRequest(BaseModel):
@@ -61,6 +65,9 @@ class MyStore(BaseModel):
     # bottles marked for this store: so far this month, and in the whole of last month
     month_bottles: int = 0
     last_month_bottles: int = 0
+    # During the first days of a month (while last month can still be marked): days of last month with no entry yet, and until when
+    last_month_missing: int = 0
+    last_month_open_until: date | None = None
 
 
 class EmployeeOverviewRow(BaseModel):

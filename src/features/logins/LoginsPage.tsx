@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { SearchBox, SegmentedControl } from "@/features/orders/ui";
 import { PAGE_SIZE, downloadLogins, resetLoginPassword, useLoginDetail, useLogins, type LoginAccount, type LoginFilters, type PasswordResult } from "@/features/logins/api";
 import { useAuth } from "@/features/auth/useAuth";
+import { GenerateLoginsModal } from "@/features/logins/GenerateLoginsModal";
 import { useDebounced } from "@/hooks/useDebounced";
 import { pushToast } from "@/lib/toast";
 
@@ -111,6 +112,8 @@ export function LoginsPanel() {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<LoginAccount | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const { hasPermission } = useAuth();
   const filters: LoginFilters = { kind, platform: "", q: useDebounced(q) };
   const { data, isLoading, isError, refetch, isFetching } = useLogins(filters, page);
 
@@ -127,9 +130,11 @@ export function LoginsPanel() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        {hasPermission("sheets.sync") && <Button variant="secondary" onClick={() => setGenerating(true)}>Create logins from stores</Button>}
         <Button variant="secondary" onClick={download} isLoading={downloading}>Download list</Button>
       </div>
+      {generating && <GenerateLoginsModal onClose={() => setGenerating(false)} />}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat label="All logins" value={data ? data.vendors + data.pocs : undefined} />

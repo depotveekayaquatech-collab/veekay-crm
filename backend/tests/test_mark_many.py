@@ -42,7 +42,7 @@ def test_one_bad_date_does_not_block_the_others(client, emp, make_store):
     by_date = {x["order_date"]: x for x in out["results"]}
     assert (out["saved"], out["failed"]) == (1, 2)
     assert by_date[str(ok_day)]["ok"] and "future" in by_date[str(today + timedelta(days=1))]["error"]
-    assert "current month" in by_date[str(last_month)]["error"]
+    assert "Last month" in by_date[str(last_month)]["error"] and "admin" in by_date[str(last_month)]["error"]
     assert _calendar(client, emp, str(store.id), today)[str(ok_day)] == 7
 
 

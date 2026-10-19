@@ -9,6 +9,7 @@ import { camelize } from "@/lib/camel";
 import { daysAgo } from "@/lib/dates";
 import { pushToast } from "@/lib/toast";
 import { apiRequest } from "@/services/api";
+import { DeletedEntries } from "@/features/datasync/DeletedEntries";
 
 type Kind = "OK" | "MISSING" | "CLEARED" | "CHANGED" | "HIDDEN_NOT_LIVE";
 
@@ -210,6 +211,8 @@ export function EntryAudit() {
           )}
         </>
       )}
+
+      <DeletedEntries start={start} end={end} />
 
       <Modal
         open={Boolean(confirm)}
