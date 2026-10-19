@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
-import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Text, View } from "react-native";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
@@ -16,6 +15,7 @@ import { shouldRetryQuery } from "@/lib/connectivityCore";
 import { installGlobalErrorHandler, reportError } from "@/lib/crash";
 import { Pressable } from "react-native";
 import { UpdateGate } from "@/components/UpdateGate";
+import { ThemeBoundary, ThemeProvider, ThemedStatusBar } from "@/lib/themeContext";
 import { colors } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -36,13 +36,13 @@ export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Pro
   );
 }
 
-const header = {
+const header = () => ({
   headerStyle: { backgroundColor: colors.surface },
   headerTintColor: colors.brand600,
   headerTitleStyle: { color: colors.text, fontWeight: "700" as const },
   headerShadowVisible: false,
   contentStyle: { backgroundColor: colors.surfaceSubtle },
-};
+});
 
 function Navigator() {
   const { account, staff, loading } = useAuth();
@@ -86,7 +86,7 @@ function Navigator() {
   if (loading) return null;
 
   return (
-    <Stack screenOptions={header}>
+    <Stack screenOptions={header()}>
       <Stack.Protected guard={!!account}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="tickets/new" options={{ title: "Raise a ticket" }} />
@@ -107,6 +107,7 @@ function Navigator() {
         <Stack.Screen name="staff/leave/index" options={{ title: "Leave" }} />
         <Stack.Screen name="staff/leave/new" options={{ title: "Apply for leave" }} />
         <Stack.Screen name="staff/payslips" options={{ title: "Payslips" }} />
+        <Stack.Screen name="staff/entries" options={{ title: "My entries" }} />
         <Stack.Screen name="staff/sync" options={{ title: "Scan sync" }} />
         <Stack.Screen name="staff/alerts" options={{ title: "Alerts" }} />
         <Stack.Screen name="staff/admin/pending" options={{ title: "Stores yet to mark" }} />
@@ -139,15 +140,19 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <ThemeProvider>
       <QueryClientProvider client={client}>
         <AuthProvider>
-          <StatusBar style="dark" />
-          <UpdateGate enabled>
-            <Navigator />
-          </UpdateGate>
-          <ConnectivityBanner />
+          <ThemedStatusBar />
+          <ThemeBoundary>
+            <UpdateGate enabled>
+              <Navigator />
+            </UpdateGate>
+            <ConnectivityBanner />
+          </ThemeBoundary>
         </AuthProvider>
       </QueryClientProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

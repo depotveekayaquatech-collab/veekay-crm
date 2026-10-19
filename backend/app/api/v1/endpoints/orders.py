@@ -61,6 +61,16 @@ def my_stores(
     return order_service.my_stores(db, user, is_admin=_is_admin(perms))
 
 
+@router.get("/my-entries", dependencies=[Depends(require_permission("orders.view"))])
+def my_entries(
+    days: int = Query(7, ge=1, le=14), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Everything the caller entered in the last few days, including stores that are no longer live, so no entry seems to have vanished."""
+    from app.services import order_audit_service
+
+    return order_audit_service.my_entries(db, user, days)
+
+
 @router.get(
     "/calendar", response_model=OrderCalendar,
     dependencies=[Depends(require_permission("orders.view"))],

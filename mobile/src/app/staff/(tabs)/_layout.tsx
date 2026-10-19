@@ -50,6 +50,7 @@ export default function StaffTabs() {
       items: [
         ...(canCompliance ? [{ key: "cards", label: "Store cards", icon: "id-card-outline" as IconName, href: "/staff/cards" as const, path: "/staff/cards" }] : []),
         ...(eligibleForAttendance ? [{ key: "payslips", label: "Payslips", icon: "cash-outline" as IconName, href: "/staff/payslips" as const, path: "/staff/payslips" }] : []),
+        ...(hasPermission("orders.mark") ? [{ key: "entries", label: "My entries", icon: "checkmark-done-outline" as IconName, href: "/staff/entries" as const, path: "/staff/entries" }] : []),
         { key: "leave", label: "Leave", icon: "calendar-outline" as IconName, href: "/staff/leave" as const, path: "/staff/leave" },
         { key: "alerts", label: "Alerts", icon: "notifications-outline" as IconName, href: "/staff/alerts" as const, path: "/staff/alerts", badge: unread },
         { key: "me", label: "Profile", icon: "person-circle-outline" as IconName, href: "/staff/me" as const, path: "/staff/me" },

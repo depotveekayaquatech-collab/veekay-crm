@@ -64,6 +64,12 @@ export default function Orders() {
                 <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.brand500, width: `${percent}%` }} />
               </View>
             </View>
+            <Pressable onPress={() => router.push("/staff/entries")} accessibilityRole="button" accessibilityLabel="See everything you entered in the last days" android_ripple={{ color: colors.brand100 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.brand50 }}>
+              <Ionicons name="checkmark-done-outline" size={20} color={colors.brand600} />
+              <Text style={{ flex: 1, fontWeight: "700", color: colors.brand700 }}>My entries: check what you saved in the last days</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.brand600} />
+            </Pressable>
             <Chips<Day> options={[{ label: "Today", value: "today" }, { label: "Yesterday", value: "yesterday" }]} value={day} onChange={setDay} />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 48, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: 12 }}>
               <Ionicons name="search" size={18} color={colors.textFaint} />

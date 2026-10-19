@@ -21,6 +21,7 @@ from app.api.v1.endpoints import (
     health,
     integrations,
     my_notifications,
+    order_audit,
     orders,
     partner,
     partners,
@@ -45,6 +46,7 @@ api_router.include_router(employees.router)
 api_router.include_router(assignments.router)
 api_router.include_router(permissions.router)
 api_router.include_router(orders.router)
+api_router.include_router(order_audit.router)
 api_router.include_router(capping.router)
 api_router.include_router(vendor_rates.router)
 api_router.include_router(activity.router)

@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isConnectivityMessage } from "@/lib/connectivityCore";
-import { colors, font, radius, shadow, space } from "@/theme";
+import { colors, currentScheme, font, radius, shadow, space } from "@/theme";
 import type { Outcome, TicketStatus } from "@/api/api";
 import { titleCase } from "@/lib/format";
 
@@ -119,13 +119,14 @@ export const Field = forwardRef<TextInput, TextInputProps & { label: string; err
   },
 );
 
-const TONES = {
+type ToneName = "success" | "warning" | "danger" | "info" | "neutral";
+const tones = (): Record<ToneName, readonly [string, string]> => ({
   success: [colors.successSoft, colors.success], warning: [colors.warningSoft, colors.warning], danger: [colors.dangerSoft, colors.danger],
   info: [colors.brand50, colors.brand700], neutral: [colors.surfaceMuted, colors.textMuted],
-} as const;
+});
 
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: keyof typeof TONES }) {
-  const [bg, fg] = TONES[tone];
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: ToneName }) {
+  const [bg, fg] = tones()[tone];
   return (
     <View style={[s.badge, { backgroundColor: bg }]}>
       <Text style={{ color: fg, fontSize: 12, fontWeight: "700" }}>{children}</Text>
@@ -133,7 +134,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
   );
 }
 
-const STATUS_TONE: Record<TicketStatus, keyof typeof TONES> = { OPEN: "warning", IN_PROGRESS: "info", RESOLVED: "success", CLOSED: "neutral" };
+const STATUS_TONE: Record<TicketStatus, ToneName> = { OPEN: "warning", IN_PROGRESS: "info", RESOLVED: "success", CLOSED: "neutral" };
 export const TicketStatusBadge = ({ status }: { status: TicketStatus }) => <Badge tone={STATUS_TONE[status]}>{titleCase(status)}</Badge>;
 export const OutcomeBadge = ({ outcome }: { outcome: Outcome }) => (
   <Badge tone={outcome === "RECEIVED" ? "success" : outcome === "SHORT" ? "warning" : "danger"}>{titleCase(outcome)}</Badge>
@@ -230,7 +231,24 @@ export function Pager({ page, pageSize, total, onPage }: { page: number; pageSiz
   );
 }
 
-const s = StyleSheet.create({
+/** Styles built from the current colours: rebuilt (once) when the theme changes. */
+function lazyStyles<T extends Record<string, object>>(make: () => T): T {
+  let scheme = currentScheme();
+  let cache = make();
+  const out = {} as T;
+  for (const key of Object.keys(cache) as (keyof T)[]) {
+    Object.defineProperty(out, key, {
+      enumerable: true,
+      get: () => {
+        if (scheme !== currentScheme()) { scheme = currentScheme(); cache = make(); }
+        return cache[key];
+      },
+    });
+  }
+  return out;
+}
+
+const s = lazyStyles(() => StyleSheet.create({
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: space.xl, marginBottom: space.sm },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, padding: space.lg, ...shadow.card },
   button: { minHeight: 52, borderRadius: radius.md, paddingHorizontal: space.xl, alignItems: "center", justifyContent: "center" },
@@ -242,4 +260,4 @@ const s = StyleSheet.create({
   chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: 24, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border },
   error: { flexDirection: "row", alignItems: "center", gap: 12, padding: space.md, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
-});
+}));

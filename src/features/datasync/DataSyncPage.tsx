@@ -6,6 +6,7 @@ import { ImportOrdersModal } from "@/features/orders/ImportOrdersModal";
 import { useSyncOrders } from "@/features/orders/useOrders";
 import { DeleteAllStoresModal } from "@/features/stores/DeleteAllStoresModal";
 import { MovePlatformModal } from "@/features/stores/MovePlatformModal";
+import { EntryAudit } from "@/features/datasync/EntryAudit";
 import { ImportStoresModal } from "@/features/stores/ImportStoresModal";
 import { SyncStartDatesModal } from "@/features/stores/SyncStartDatesModal";
 import { useStoreMutations } from "@/features/stores/useStores";
@@ -117,6 +118,9 @@ export function DataSyncPage() {
           {syncOrders.data && <Results title="Last order sync" results={syncOrders.data} onDismiss={() => syncOrders.reset()} />}
         </Card>
       </div>
+      <Card title="Entries audit" description="Compare what employees submitted (the audit log) with what is stored and visible now. It shows every entry that is missing, changed, cleared, or hidden because its store is no longer live, and can restore lost ones.">
+        <EntryAudit />
+      </Card>
       {syncingDates && <SyncStartDatesModal onClose={() => setSyncingDates(false)} />}
       {movingStores && <MovePlatformModal onClose={() => setMovingStores(false)} />}
       {removingStores && <DeleteAllStoresModal onClose={() => setRemovingStores(false)} />}

@@ -19,6 +19,7 @@ class InventoryStore(BaseModel):
     poc_name: str | None
     poc_number: str | None
     start_date: date | None = None
+    status: str = "LIVE"           # a store that has left LIVE is still listed while it holds entries this month
     last_entry_date: date | None   # latest entry this month
     pending_days: int              # days up to yesterday with no entry after the last filled day
     marked_today: bool

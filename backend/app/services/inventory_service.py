@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.order_entry import OrderEntry
@@ -65,8 +65,9 @@ def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | No
     today = _today()
     cols = (
         Store.id, Store.name, Store.external_code, Organization.name, Organization.slug, Region.name, Store.state,
-        Store.city, Store.vendor_name, Store.vendor_number, Store.poc_name, Store.poc_number, Store.start_date,
+        Store.city, Store.vendor_name, Store.vendor_number, Store.poc_name, Store.poc_number, Store.start_date, Store.status,
     )
+    has_entry = exists().where(OrderEntry.store_id == Store.id, OrderEntry.order_date >= today.replace(day=1), OrderEntry.order_date <= today)
     if is_admin:
         # Plain columns, not ~1,500 ORM objects with joined relationships: several times faster and lighter.
         stmt = (
@@ -74,7 +75,8 @@ def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | No
             .select_from(Store)
             .join(Organization, Organization.id == Store.partner_organization_id)
             .outerjoin(Region, Region.id == Store.region_id)
-            .where(Store.organization_id == user.organization_id, Store.status == StoreStatus.LIVE.value)
+            # live stores, plus any store that left LIVE but holds entries this month: its entries must not vanish from the page
+            .where(Store.organization_id == user.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry))
             .order_by(Store.name)
         )
         if partner_slug:
@@ -84,24 +86,25 @@ def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | No
         recs = [
             (s.id, s.name, s.external_code, s.partner_organization.name if s.partner_organization else None,
              s.partner_organization.slug if s.partner_organization else None, s.region.name if s.region else None,
-             s.state, s.city, s.vendor_name, s.vendor_number, s.poc_name, s.poc_number, s.start_date)
+             s.state, s.city, s.vendor_name, s.vendor_number, s.poc_name, s.poc_number, s.start_date, s.status)
             for s in sorted(assignment_service.visible_stores(db, user), key=lambda s: s.name.lower())
         ]
 
     stats = month_stats(db, [r[0] for r in recs], today)
     items: list[InventoryStore] = []
-    for sid, name, code, plat, plat_slug, region, state, city, vendor, vendor_no, poc, poc_no, start in recs:
+    for sid, name, code, plat, plat_slug, region, state, city, vendor, vendor_no, poc, poc_no, start, store_status in recs:
         last, bottles, entries, marked_today = stats.get(sid, (None, 0, 0, False))
         items.append(InventoryStore(
             id=sid, name=name, external_code=code, platform=plat, platform_slug=plat_slug, region_name=region,
             state=state, city=city, vendor_name=vendor, vendor_number=vendor_no, poc_name=poc, poc_number=poc_no,
-            start_date=start,
-            last_entry_date=last, pending_days=pending_days(last, today, start),
+            start_date=start, status=store_status,
+            # only a live store can be behind on its entries
+            last_entry_date=last, pending_days=pending_days(last, today, start) if store_status == StoreStatus.LIVE.value else 0,
             marked_today=marked_today, month_bottles=bottles, month_entries=entries,
         ))
 
     summary = InventorySummary(
-        stores=len(items),
+        stores=sum(1 for i in items if i.status == StoreStatus.LIVE.value),
         behind=sum(1 for i in items if i.pending_days > 0),
         marked_today=sum(1 for i in items if i.marked_today),
         total_pending_days=sum(i.pending_days for i in items),

@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button, Card, Screen, SectionTitle } from "@/components/ui";
+import { AppearanceCard } from "@/components/AppearanceCard";
 import { SyncCard } from "@/components/SyncCard";
 import { niceName } from "@/lib/format";
 import { UpdateCheckRow, versionLabel } from "@/components/UpdateCheckRow";
@@ -49,6 +50,9 @@ export default function Me() {
         <Row icon="calendar-outline" label="Leave" onPress={() => router.push("/staff/leave")} />
         <Row icon="cloud-upload-outline" label="Scan sync status" onPress={() => router.push("/staff/sync")} />
       </Card>
+
+      <SectionTitle>Appearance</SectionTitle>
+      <AppearanceCard />
 
       <SectionTitle>Help and privacy</SectionTitle>
       <Card style={{ padding: 0, overflow: "hidden" }}>

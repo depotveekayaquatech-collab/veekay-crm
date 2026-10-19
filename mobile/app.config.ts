@@ -23,10 +23,10 @@ const config: ExpoConfig = {
   name: "Veekay Partner",
   slug: "veekay-partner",
   scheme: "veekaypartner",
-  version: "1.1.0",   // 1.1.0: adds expo-image-manipulator (a native module), so this needs a new APK, not an over-the-air update
+  version: "1.2.0",   // 1.2.0: follows the phone's light / dark setting and has a dark splash (native settings), so it needs a new APK. 1.1.0: adds expo-image-manipulator (a native module)
   orientation: "portrait",
   icon: "./assets/icon.png",
-  userInterfaceStyle: "light",
+  userInterfaceStyle: "automatic",   // lets the app follow the phone's light / dark setting (the in-app Appearance choice can override it)
   backgroundColor: "#FFFFFF",
   android: {
     package: ANDROID_PACKAGE,
@@ -63,7 +63,7 @@ const config: ExpoConfig = {
     "expo-secure-store",
     [
       "expo-splash-screen",
-      { image: "./assets/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#FFFFFF" },
+      { image: "./assets/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#FFFFFF", dark: { image: "./assets/splash-icon.png", backgroundColor: "#0A0F1C" } },
     ],
     [
       "expo-image-picker",

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button, Card, Screen, SectionTitle } from "@/components/ui";
 import { niceName } from "@/lib/format";
+import { AppearanceCard } from "@/components/AppearanceCard";
 import { UpdateCheckRow, versionLabel } from "@/components/UpdateCheckRow";
 import { colors, font } from "@/theme";
 
@@ -70,6 +71,9 @@ export default function Account() {
         <LinkRow icon="cube-outline" label="Bottles at my stores" onPress={() => router.push("/bottles")} />
         <LinkRow icon="storefront-outline" label="My stores" onPress={() => router.push("/stores")} />
       </Card>
+
+      <SectionTitle>Appearance</SectionTitle>
+      <AppearanceCard />
 
       <SectionTitle>Help and privacy</SectionTitle>
       <Card style={{ padding: 0, overflow: "hidden" }}>

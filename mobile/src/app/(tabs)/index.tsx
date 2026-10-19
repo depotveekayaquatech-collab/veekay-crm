@@ -11,13 +11,13 @@ import { colors, font, radius } from "@/theme";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 type Tone = "brand" | "ok" | "warn" | "bad";
-const TONE: Record<Tone, [string, string]> = {
+const tones = (): Record<Tone, [string, string]> => ({
   brand: [colors.brand50, colors.brand600], ok: [colors.successSoft, colors.success], warn: [colors.warningSoft, colors.warning], bad: [colors.dangerSoft, colors.danger],
-};
+});
 
 function Tile({ href, label, value, icon, tone }: { href: string; label: string; value: number | undefined; icon: IconName; tone: Tone }) {
   const router = useRouter();
-  const [bg, fg] = TONE[tone];
+  const [bg, fg] = tones()[tone];
   return (
     <Card onPress={() => router.push(href as never)} label={`${label}: ${value ?? "loading"}`} style={{ flex: 1, gap: 14 }}>
       <View style={{ width: 38, height: 38, borderRadius: radius.md, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>

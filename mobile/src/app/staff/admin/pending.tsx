@@ -2,10 +2,25 @@ import { useMemo, useState } from "react";
 import { FlatList, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePending } from "@/api/adminHooks";
-import { Badge, Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
-import { colors, font, radius } from "@/theme";
+import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
+import { colors, font, pendingLabel, pendingTone, radius } from "@/theme";
 
 type Day = "0" | "1";
+
+/** How long this store has been waiting: a pill that gets warmer the longer it is. Never wider than the row (the name wraps instead). */
+function PendingPill({ days }: { days: number }) {
+  const t = pendingTone(days);
+  return (
+    <View
+      accessible
+      accessibilityLabel={pendingLabel(days)}
+      style={{ flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: t.bg }}
+    >
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.dot }} />
+      <Text style={{ fontSize: 12, fontWeight: "800", color: t.fg }}>{pendingLabel(days)}</Text>
+    </View>
+  );
+}
 
 /** Live stores nobody has marked for the chosen day, with the POC's number so you can call. */
 export default function Pending() {
@@ -46,7 +61,7 @@ export default function Pending() {
           <View style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 6 }}>
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
               <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
-              {s.pending_days > 1 ? <Badge tone="danger">{s.pending_days} days</Badge> : null}
+              <PendingPill days={s.pending_days} />
             </View>
             <Text numberOfLines={1} style={font.small}>{s.external_code} · {[s.city, s.state].filter(Boolean).join(", ")}{s.region_name ? ` · ${s.region_name}` : ""}</Text>
             {s.poc_name ? (

@@ -7,6 +7,8 @@ const FRESH = 30_000;
 export const useAttendanceToday = () =>
   useQuery({ queryKey: ["s-attendance"], queryFn: staffApi.attendanceToday, staleTime: 15_000, refetchInterval: 60_000 });
 
+export const useMyEntries = (days: number) => useQuery({ queryKey: ["s-my-entries", days], queryFn: () => staffApi.myEntries(days), staleTime: 15_000 });
+
 export const usePayslips = () => useQuery({ queryKey: ["s-payslips"], queryFn: staffApi.payslips, staleTime: FRESH });
 
 /** Salaries paid to this employee whose "salary received" popup has not been shown yet. */

@@ -39,6 +39,13 @@ export interface AttendanceToday {
 
 export interface Reading { latitude?: number; longitude?: number; accuracy?: number }
 
+/** One entry the signed-in employee saved, with the status its store has today. */
+export interface MyEntry {
+  order_date: string; store_id: string; store_name: string; store_code: string; city: string | null; state: string | null;
+  store_status: string; bottles: number; source: string; entered_at: string;
+}
+export interface MyEntries { today: string; days: number; total: number; items: MyEntry[] }
+
 export type LeaveType = "CASUAL" | "SICK" | "PAID" | "UNPAID";
 export interface LeaveItem {
   id: string; leave_type: LeaveType; start_date: string; end_date: string; half_day: boolean; days: number; reason: string;
@@ -121,6 +128,7 @@ export const staffApi = {
   cancelLeave: (id: string) => request<LeaveItem>(`/attendance/leaves/${id}/cancel`, { method: "POST", body: {} }),
 
   myStores: () => request<MyStore[]>("/orders/my-stores"),
+  myEntries: (days: number) => request<MyEntries>(`/orders/my-entries?days=${days}`),
   markOrder: (b: { store_id: string; order_date: string; bottle_count: number }) => request<unknown>("/orders/mark", { method: "POST", body: b }),
 
   scanStores: () => request<ScanStore[]>("/bottles/stores"),
