@@ -3,7 +3,8 @@ import { api } from "@/api/api";
 
 const FRESH = 30_000;
 
-export const useStores = () => useQuery({ queryKey: ["stores"], queryFn: api.stores, staleTime: 5 * 60_000 });
+/** The vendor / POC login's stores. Pass `enabled = false` where the list comes from somewhere else (an employee login). */
+export const useStores = (enabled = true) => useQuery({ queryKey: ["stores"], queryFn: api.stores, staleTime: 5 * 60_000, enabled });
 
 export const useDailyOrders = (p: Parameters<typeof api.dailyOrders>[0]) =>
   useQuery({ queryKey: ["daily", p], queryFn: () => api.dailyOrders(p), placeholderData: keepPreviousData, staleTime: FRESH });

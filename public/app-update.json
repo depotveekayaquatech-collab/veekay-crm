@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 12,
+    "latestVersionCode": 13,
     "latestVersionName": "1.1.0",
     "minVersionCode": 0,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code12.apk",
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code13.apk",
     "notes": "New: Payslips (your salary and day-wise attendance, and a Salary received message when you are paid). New menu: tap the three lines at the top left to reach every screen.",
-    "apkSizeBytes": 56442133,
-    "apkSha256": "5799c72008014184ce27afd92754e425cd983f373cf3795441255b776d959c40"
+    "apkSizeBytes": 56442149,
+    "apkSha256": "249c70b9b86148d057cda4cda4d0c3d54eb242e9d981d5c04bb2c5e3ab7ea77f"
   }
 }

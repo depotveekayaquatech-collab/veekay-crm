@@ -21,6 +21,9 @@ Who is alerted: people holding capping.alerts - see alerts() - for the stores th
 from __future__ import annotations
 
 import calendar
+import csv
+import io
+import re
 import uuid
 from datetime import date, datetime, timezone
 
@@ -266,43 +269,229 @@ def _cap_value(raw: str) -> tuple[int | None, bool]:
     return int(f), False
 
 
-_ID_KEYS = ("outlet id", "outlet_id", "store id", "store code")
+_ID_HEADERS = {"outlet id", "outletid", "outlet code", "store id", "storeid", "store code", "outlet_id", "code", "id"}
+_NAME_HEADERS = {"outlet name", "outletname", "store name", "storename", "outlet", "store", "name", "outlet_name"}
 # The sheet's number is a DAILY cap whatever the column is called (older sheets are headed "Monthly Capping"): x 30 = the monthly limit.
-_CAP_KEYS = ("daily capping", "daily cap", "capping per day", "monthly capping", "monthly cap", "capping", "cap")
+_CAP_HEADERS = {"daily capping", "daily cap", "capping per day", "cap per day", "capping day", "capping", "cap", "monthly capping", "monthly cap", "limit", "daily limit"}
+_HEADER_SCAN_ROWS = 25      # the header may sit under a title or a few blank rows
+_MAX_SHEETS = 8
+
+
+def _norm_name(text: str | None) -> str:
+    """A store name for comparing: lower case, punctuation and repeated spaces ignored ("Zepto - Koramangala" = "zepto koramangala")."""
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).split())
+
+
+def _norm_code(text: str | None) -> str:
+    return re.sub(r"\s+", "", (text or "")).upper()
+
+
+_ID_SET = {_norm_name(x) for x in _ID_HEADERS}
+_NAME_SET = {_norm_name(x) for x in _NAME_HEADERS}
+_CAP_SET = {_norm_name(x) for x in _CAP_HEADERS}
+
+
+def _is_number(text: str) -> bool:
+    value, invalid = _cap_value(text)
+    return value is not None and not invalid
+
+
+# ---------------------------------------------------------------- reading the file into plain rows of text
+
+def rows_to_grid(rows: list[dict[str, str]]) -> list[list[str]]:
+    """The dict rows the Google-sheet reader gives, as a grid again (header row first)."""
+    if not rows:
+        return []
+    keys = list(rows[0].keys())
+    return [list(keys)] + [[(r.get(k) or "") for k in keys] for r in rows]
+
+
+def read_grids(filename: str, content: bytes) -> list[list[list[str]]]:
+    """Every sheet of an upload as a grid of text cells (a .csv is one sheet). No assumption about where the header is."""
+    from app.services import store_sync_service as sync
+
+    if len(content) > sync.MAX_UPLOAD_BYTES:
+        raise sync.SyncError("That file is too large (limit is 5 MB).")
+    name = (filename or "").lower()
+
+    def clean(cells) -> list[str]:
+        out = [sync._cell_text(c).strip()[: sync.MAX_CELL_CHARS] for c in list(cells)[: sync.MAX_COLUMNS]]  # noqa: SLF001
+        while out and not out[-1]:
+            out.pop()
+        return out
+
+    def collect(rows) -> list[list[str]]:
+        grid: list[list[str]] = []
+        blanks = 0
+        for cells in rows:
+            r = clean(cells)
+            blanks = 0 if any(r) else blanks + 1
+            if blanks >= sync.BLANK_ROWS_STOP or len(grid) > sync.MAX_ROWS:
+                break
+            grid.append(r)
+        while grid and not any(grid[-1]):
+            grid.pop()
+        return grid
+
+    if name.endswith(".csv") or name.endswith(".txt"):
+        return [collect(csv.reader(io.StringIO(content.decode("utf-8-sig", "replace"))))]
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:  # pragma: no cover - dependency is in requirements.txt
+            raise sync.SyncError("Excel files need the 'openpyxl' package on the server.") from exc
+        sync._check_unpacked_size(content)  # noqa: SLF001
+        try:
+            wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        except Exception as exc:  # noqa: BLE001 - any parse failure is a bad file
+            raise sync.SyncError("That file could not be read as an Excel workbook.") from exc
+        try:
+            return [collect(ws.iter_rows(values_only=True)) for ws in wb.worksheets[:_MAX_SHEETS]]
+        finally:
+            wb.close()
+    raise sync.SyncError("Upload a .csv or .xlsx file.")
+
+
+# ---------------------------------------------------------------- working out which column is which
+
+def _resolve(code: str, name: str, by_code: dict[str, Store], by_name: dict[str, list[Store]]) -> tuple[Store | None, bool]:
+    """(store, ambiguous). The Outlet ID decides when the row has one we know; otherwise the name, unless two stores share it."""
+    store = by_code.get(_norm_code(code)) if code else None
+    if store is None and name:
+        matches = by_name.get(_norm_name(name), [])
+        if len(matches) > 1:
+            return None, True
+        store = matches[0] if matches else None
+    return store, False
+
+
+def _layouts(grid: list[list[str]], by_code: dict[str, Store], by_name: dict[str, list[Store]]) -> list[dict]:
+    """Candidate readings of one sheet: which row is the header (if any) and which columns hold the store id, the store
+    name and the daily cap. One by the header words, one by what the columns contain, so odd headers still work."""
+    width = max((len(r) for r in grid), default=0)
+    cell = lambda r, j: (grid[r][j] if j < len(grid[r]) else "").strip()  # noqa: E731
+
+    # 1) by the header words
+    header_row, id_col, name_col, cap_col = None, None, None, None
+    for r in range(min(len(grid), _HEADER_SCAN_ROWS)):
+        heads = [_norm_name(cell(r, j)) for j in range(width)]
+        idc = next((j for j, h in enumerate(heads) if h in _ID_SET), None)
+        nmc = next((j for j, h in enumerate(heads) if h in _NAME_SET), None)
+        cpc = next((j for j, h in enumerate(heads) if h in _CAP_SET), None)
+        if cpc is None:
+            cpc = next((j for j, h in enumerate(heads) if re.search(r"\bcap(ping)?\b", h)), None)
+        if (idc is not None or nmc is not None) and cpc is not None:
+            header_row, id_col, name_col, cap_col = r, idc, nmc, cpc
+            break
+    layouts = []
+    if header_row is not None:
+        layouts.append({"header_row": header_row, "id": id_col, "name": name_col, "cap": cap_col})
+
+    # 2) by what the columns contain (the header row is wherever the first line with text in the cap column is not a number)
+    data_start = (header_row + 1) if header_row is not None else 0
+    sample = [r for r in range(data_start, min(len(grid), data_start + 3000))]
+    best_id, best_name = (None, 0.0), (None, 0.0)
+    numeric: list[tuple[int, float]] = []
+    for j in range(width):
+        vals = [cell(r, j) for r in sample if cell(r, j)]
+        if not vals:
+            continue
+        id_hits = sum(1 for v in vals if _norm_code(v) in by_code) / len(vals)
+        name_hits = sum(1 for v in vals if _norm_name(v) in by_name) / len(vals)
+        num_hits = sum(1 for v in vals if _is_number(v)) / len(vals)
+        if id_hits > best_id[1]:
+            best_id = (j, id_hits)
+        if name_hits > best_name[1]:
+            best_name = (j, name_hits)
+        numeric.append((j, num_hits))
+    id_j = best_id[0] if best_id[1] > 0 else None
+    name_j = best_name[0] if best_name[1] > 0 and best_name[0] != id_j else None
+    cap_candidates = [(h, j) for j, h in numeric if j not in (id_j, name_j) and h >= 0.5]
+    cap_j = max(cap_candidates)[1] if cap_candidates else None      # the most numeric column (the right-most on a tie)
+    if (id_j is not None or name_j is not None) and cap_j is not None:
+        layouts.append({"header_row": header_row, "id": id_j, "name": name_j, "cap": cap_j, "guessed": True})
+    return layouts
+
+
+def _read_layout(grid: list[list[str]], lay: dict, by_code: dict[str, Store], by_name: dict[str, list[Store]]) -> dict:
+    """The sheet's lines under this layout: (row number, id, name, cap text), and how many of them match a store."""
+    cell = lambda r, j: (grid[r][j] if j is not None and j < len(grid[r]) else "").strip()  # noqa: E731
+    start = (lay["header_row"] + 1) if lay["header_row"] is not None else 0
+    lines, matched = [], 0
+    for r in range(start, len(grid)):
+        code, name, cap = cell(r, lay["id"]), cell(r, lay["name"]), cell(r, lay["cap"])
+        if not (code or name):
+            continue
+        store, _ = _resolve(code, name, by_code, by_name)
+        counts = store is not None and _is_number(cap)
+        if (lay["header_row"] is None or lay.get("guessed")) and not matched and not counts:
+            continue                                      # headings or a title above the first real store line
+        lines.append((r + 1, code, name, cap))
+        matched += 1 if counts else 0
+    return {"lines": lines, "matched": matched, "layout": lay}
 
 
 def import_caps(db: Session, actor: User, rows: list[dict[str, str]], *, overwrite: bool, source: str) -> dict:
-    """Load caps from sheet rows (Outlet ID + the daily capping number). Existing caps are kept unless `overwrite` is on."""
+    """Load caps from the dict rows of the Google capping tab."""
+    return import_grids(db, actor, [rows_to_grid(rows)], overwrite=overwrite, source=source)
+
+
+def import_grids(db: Session, actor: User, grids: list[list[list[str]]], *, overwrite: bool, source: str) -> dict:
+    """Load caps from a sheet, whatever it looks like: the header can be on any of the first rows, the columns can be called
+    anything (they are recognised by their words or by what they hold), a store is named by Outlet ID or Outlet Name
+    (matched ignoring case, punctuation and spacing; a name two stores share is skipped and reported, never guessed), and an
+    Excel file may have several sheets (the one that matches the most stores is used). The number is the DAILY cap; the
+    monthly limit is that x 30. Existing caps are kept unless `overwrite` is on."""
     partner = _partner(db, actor.organization_id)
-    if not rows:
-        return {"rows_read": 0, "added": 0, "updated": 0, "kept": 0, "unknown_stores": 0, "invalid": 0, "warnings": ["The sheet has no rows."]}
-    keys = {k.strip().lower(): k for k in rows[0]}
-    id_col = next((keys[k] for k in _ID_KEYS if k in keys), None)
-    cap_col = next((keys[k] for k in _CAP_KEYS if k in keys), None)
-    if id_col is None or cap_col is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The sheet needs an 'Outlet ID' column and a 'Capping' column (the daily number per store).")
-    stores = {s.external_code: s for s in db.execute(
-        select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)).scalars()}
-    existing = {c.store_id: c for c in db.execute(select(StoreCap).where(StoreCap.store_id.in_([s.id for s in stores.values()] or [uuid.uuid4()]))).scalars()}
-    res = {"rows_read": 0, "added": 0, "updated": 0, "kept": 0, "unknown_stores": 0, "invalid": 0, "warnings": []}
-    seen: set[str] = set()
+    res = {"rows_read": 0, "added": 0, "updated": 0, "kept": 0, "unknown_stores": 0, "ambiguous": 0, "invalid": 0, "warnings": [], "read_as": None}
+    all_stores = list(db.execute(select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)).scalars())
+    by_code = {_norm_code(s.external_code): s for s in all_stores}
+    by_name: dict[str, list[Store]] = {}
+    for st in all_stores:
+        by_name.setdefault(_norm_name(st.name), []).append(st)
+
+    best = None
+    for grid in grids:
+        for lay in _layouts(grid, by_code, by_name):
+            got = _read_layout(grid, lay, by_code, by_name)
+            if best is None or got["matched"] > best["matched"]:
+                best = got
+    if best is None or not best["lines"]:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "No stores with a capping number were found in this file. It needs a column of store names (or Outlet IDs) and a column with the daily cap.",
+        )
+    lay = best["layout"]
+    by = "Outlet ID and name" if lay["id"] is not None and lay["name"] is not None else "Outlet ID" if lay["id"] is not None else "Outlet Name"
+    res["read_as"] = f"stores matched by {by}; columns found from {'what they contain' if lay.get('guessed') else 'their headings'}"
+
+    existing = {c.store_id: c for c in db.execute(select(StoreCap).where(StoreCap.store_id.in_([s.id for s in all_stores] or [uuid.uuid4()]))).scalars()}
+    seen: set[tuple[str, str]] = set()
     bad_rows: list[int] = []
-    for i, row in enumerate(rows, start=2):
-        code = (row.get(id_col) or "").strip()
-        if not code or code in seen:
+    unknown_first: str | None = None
+    ambiguous_names: list[str] = []
+    for rownum, code, name, raw in best["lines"]:
+        key = ("id", _norm_code(code)) if code else ("name", _norm_name(name))
+        if not key[1] or key in seen:
             continue
-        seen.add(code)
+        seen.add(key)
         res["rows_read"] += 1
-        cap, invalid = _cap_value(row.get(cap_col) or "")
+        cap, invalid = _cap_value(raw)
         if invalid:
             res["invalid"] += 1
-            bad_rows.append(i)
+            bad_rows.append(rownum)
             continue
         if cap is None:
             continue
-        store = stores.get(code)
+        store, ambiguous = _resolve(code, name, by_code, by_name)
+        if ambiguous:
+            res["ambiguous"] += 1
+            if len(ambiguous_names) < 5:
+                ambiguous_names.append(name)
+            continue
         if store is None:
             res["unknown_stores"] += 1
+            unknown_first = unknown_first or (code or name)
             continue
         cur = existing.get(store.id)
         if cur is None:
@@ -320,7 +509,9 @@ def import_caps(db: Session, actor: User, rows: list[dict[str, str]], *, overwri
     if bad_rows:
         res["warnings"].append(f"{res['invalid']} row(s) have a cap that is not a whole number from 0 to {MAX_CAP:,} and were skipped (first: row {bad_rows[0]}).")
     if res["unknown_stores"]:
-        res["warnings"].append(f"{res['unknown_stores']} Outlet ID(s) are not Zepto stores in the CRM and were skipped.")
+        res["warnings"].append(f"{res['unknown_stores']} store(s) in the sheet are not Zepto stores in the CRM and were skipped (first: {unknown_first}).")
+    if res["ambiguous"]:
+        res["warnings"].append(f"{res['ambiguous']} store name(s) match more than one store and were skipped, add an Outlet ID column to settle them: {', '.join(ambiguous_names)}.")
     if res["kept"] and not overwrite:
         res["warnings"].append("Caps already set in the CRM were kept (turn on Overwrite to replace them with the sheet's values).")
     activity_service.record(

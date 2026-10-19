@@ -5,10 +5,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStores } from "@/api/hooks";
 import { colors, font, radius } from "@/theme";
 
+export interface PickerStore { id: string; name: string; code: string; city?: string | null; state?: string | null }
+
 /** Store chooser: a field that opens a searchable full-screen list (a login can have 50+ stores).
- * With a single store it is selected for you. */
-export function StorePicker({ value, onChange, allLabel, label = "Store" }: { value: string; onChange: (id: string) => void; allLabel?: string; label?: string }) {
-  const { data: stores } = useStores();
+ * With a single store it is selected for you. A vendor / POC login lists its own stores; an employee screen passes the
+ * employee's list in `stores` (while that list loads, pass `[]`, not undefined). */
+export function StorePicker({ value, onChange, allLabel, label = "Store", stores: given }: { value: string; onChange: (id: string) => void; allLabel?: string; label?: string; stores?: PickerStore[] }) {
+  const partner = useStores(given === undefined);
+  const stores: PickerStore[] | undefined = given ?? partner.data;
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [needle, setNeedle] = useState("");

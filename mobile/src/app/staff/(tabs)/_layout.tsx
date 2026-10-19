@@ -26,7 +26,8 @@ export default function StaffTabs() {
   // The same permissions the web CRM's Compliance tab and the server use. The server checks them again on every request.
   const canCompliance = hasPermission("compliance.upload") || hasPermission("compliance.manage");
 
-  // People who can see the order overview land on Insights (the Admin tab); everyone else on Today.
+  // Employees always open on Today, so Check in / Check out is the first thing they see. Only admins who can see the order
+  // overview open on Insights (the Admin tab).
   const landsOnInsights = hasPermission("orders.overview");
 
   const canAdminTab = ["orders.overview", "leave.review", "bottles.view", "accounts.view"].some(hasPermission);
@@ -59,7 +60,7 @@ export default function StaffTabs() {
   return (
     <>
     <Tabs
-      initialRouteName={landsOnInsights ? "admin" : "index"}
+      initialRouteName={staff?.is_admin && landsOnInsights ? "admin" : "index"}
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
         headerShadowVisible: false,

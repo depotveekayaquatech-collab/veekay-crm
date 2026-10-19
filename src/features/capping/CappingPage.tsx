@@ -155,7 +155,7 @@ function LoadCaps({ onDone, canSyncSheet }: { onDone: () => void; canSyncSheet: 
     <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
       <h3 className="text-sm font-bold text-gray-900">Upload the capping sheet</h3>
       <p className="mt-1 text-xs text-gray-500">
-        A .csv or .xlsx with an <b>Outlet ID</b> column and a <b>Capping</b> column with the <b>daily</b> number per store. The monthly limit is that × 30;
+        A .csv or .xlsx with an <b>Outlet Name</b> (or <b>Outlet ID</b>) column and a <b>Capping</b> column with the <b>daily</b> number per store. The monthly limit is that × 30;
         alerts compare each store's bottles so far with the daily number × the day of the month. Employees can still change a single store by hand.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -176,6 +176,7 @@ function LoadCaps({ onDone, canSyncSheet }: { onDone: () => void; canSyncSheet: 
       {result && (
         <div className="mt-3 rounded-lg bg-surface-subtle p-3 text-sm text-gray-700">
           {result.added} added · {result.updated} updated · {result.kept} unchanged · {result.rowsRead} rows read
+          {result.readAs ? <p className="mt-1 text-xs text-gray-500">Read as: {result.readAs}.</p> : null}
           {result.warnings.length > 0 && (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-status-warning">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
           )}

@@ -117,7 +117,7 @@ export default function Scan() {
           ))}
         </View>
         <View style={{ backgroundColor: colors.surface, borderRadius: radius.lg, padding: 10 }}>
-          <StorePicker value={store} onChange={setStore} label={direction === "IN" ? "Store (required)" : "Store (optional)"} allLabel={direction === "OUT" ? "The store it is at" : undefined} />
+          <StorePicker value={store} onChange={setStore} stores={stores.data ?? []} label={direction === "IN" ? "Store (required)" : "Store (optional)"} allLabel={direction === "OUT" ? "The store it is at" : undefined} />
         </View>
       </View>
 

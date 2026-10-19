@@ -81,7 +81,7 @@ async def import_file(
 
     content = await file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
     try:
-        rows = await run_in_threadpool(store_sync_service.rows_from_upload, file.filename or "", content)
+        grids = await run_in_threadpool(capping_service.read_grids, file.filename or "", content)
     except store_sync_service.SyncError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
-    return await run_in_threadpool(capping_service.import_caps, db, user, rows, overwrite=overwrite, source="file")
+    return await run_in_threadpool(capping_service.import_grids, db, user, grids, overwrite=overwrite, source="file")

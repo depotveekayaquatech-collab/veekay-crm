@@ -54,7 +54,11 @@ export interface CapImportResult {
   updated: number;
   kept: number;
   unknownStores: number;
+  /** Names that match more than one store (skipped). */
+  ambiguous: number;
   invalid: number;
+  /** How the sheet was read, e.g. "stores matched by Outlet Name; columns found from their headings". */
+  readAs?: string | null;
   warnings: string[];
 }
 

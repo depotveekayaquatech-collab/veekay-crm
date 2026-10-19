@@ -84,7 +84,7 @@ export default function NewExpense() {
           ))}
         </View>
 
-        {kind === "STORE" && <StorePicker value={store} onChange={setStore} />}
+        {kind === "STORE" && <StorePicker value={store} onChange={setStore} stores={opts.data?.stores ?? []} />}
 
         <View style={{ gap: 8 }}>
           <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>What was it for?</Text>

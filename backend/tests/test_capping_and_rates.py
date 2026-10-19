@@ -1,6 +1,7 @@
 """Zepto monthly capping (who may use it, the alert rules, editing, loading from a sheet) and city-wise vendor rates."""
 import csv
 import io
+import uuid
 from datetime import date, timedelta
 
 import pytest
@@ -205,6 +206,98 @@ def test_importing_caps_keeps_existing_ones_unless_overwrite(client, dev, make_s
     assert r["updated"] == 1
     db.expire_all()
     assert db.query(StoreCap).filter_by(store_id=a.id).one().daily_cap == 99
+
+
+def test_a_sheet_with_outlet_names_and_no_ids_loads_by_name(client, admin, make_store, db):
+    tag = uuid.uuid4().hex[:6].upper()
+    a = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru", name=f"Zepto - Alpha {tag}")
+    b = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru", name=f"Zepto Beta {tag}")
+    d1 = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru", name=f"Zepto Twin {tag}")
+    d2 = make_store(platform="zepto", region=None, state="Delhi", city="Delhi", name=f"zepto twin {tag}")
+    sheet = _csv(["Outlet Name", "Capping"], [
+        [f"  ZEPTO  alpha {tag} ", "10"],          # case, punctuation and spacing do not matter
+        [f"Zepto Beta {tag}", "0"],               # 0 is a real cap
+        [f"Zepto Twin {tag}", "7"],               # two stores have this name: skipped and reported, never guessed
+        [f"No Such Store {tag}", "5"],
+        [f"Zepto Gamma {tag}", "abc"],
+    ])
+    r = client.post(f"{API}/capping/import", headers=admin, data={"overwrite": "true"}, files={"file": ("c.csv", sheet, "text/csv")})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["added"], body["unknown_stores"], body["ambiguous"], body["invalid"]) == (2, 1, 1, 1)
+    assert db.query(StoreCap).filter_by(store_id=a.id).one().daily_cap == 10
+    assert db.query(StoreCap).filter_by(store_id=b.id).one().daily_cap == 0
+    assert db.query(StoreCap).filter(StoreCap.store_id.in_([d1.id, d2.id])).count() == 0
+    assert any("more than one store" in w and f"Zepto Twin {tag}" in w for w in body["warnings"])
+    # an ID still wins when the sheet has both
+    both = _csv(["Outlet ID", "Outlet Name", "Capping"], [[d1.external_code, f"Zepto Twin {tag}", "4"]])
+    r = client.post(f"{API}/capping/import", headers=admin, data={"overwrite": "true"}, files={"file": ("c.csv", both, "text/csv")})
+    assert r.json()["added"] == 1 and db.query(StoreCap).filter_by(store_id=d1.id).one().daily_cap == 4
+    # no store column at all is an error
+    r = client.post(f"{API}/capping/import", headers=admin, data={"overwrite": "true"}, files={"file": ("c.csv", _csv(["Capping"], [["5"]]), "text/csv")})
+    assert r.status_code == 422
+
+
+def _upload(client, admin, name, data, ctype="text/csv"):
+    return client.post(f"{API}/capping/import", headers=admin, data={"overwrite": "true"}, files={"file": (name, data, ctype)})
+
+
+def _three_stores(make_store):
+    tag = uuid.uuid4().hex[:6].upper()
+    return tag, [make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru", name=f"Zepto Shop{i} {tag}", code=f"CAPX-{tag}-{i}") for i in (1, 2, 3)]
+
+
+def test_the_upload_finds_its_columns_whatever_the_sheet_looks_like(client, admin, make_store, db):
+    tag, (s1, s2, s3) = _three_stores(make_store)
+    cap = lambda s: db.query(StoreCap).filter_by(store_id=s.id).one().daily_cap  # noqa: E731
+    # a title and a blank line above the header; headings that are not the usual words; numbers with commas and decimals
+    sheet = _csv(["Zepto capping - October", ""], [
+        ["", ""],
+        ["Store Location", "Cap/Day"],
+        [f"Zepto Shop1 {tag}", "12"], [f"Zepto Shop2 {tag}", "1,5"], [f"Zepto Shop3 {tag}", "7.0"],
+    ])
+    r = _upload(client, admin, "c.csv", sheet)
+    assert r.status_code == 200, r.text
+    assert r.json()["added"] == 3 and r.json()["invalid"] == 0
+    assert (cap(s1), cap(s2), cap(s3)) == (12, 15, 7)                   # commas are thousand separators; "7.0" is 7
+
+
+def test_a_sheet_with_no_headings_at_all_still_loads(client, admin, make_store, db):
+    tag, (s1, s2, s3) = _three_stores(make_store)
+    sheet = _csv([f"Zepto Shop1 {tag}", "3"], [[f"Zepto Shop2 {tag}", "4"], [f"zepto shop3 {tag}", "5"]])
+    r = _upload(client, admin, "c.csv", sheet)
+    assert r.status_code == 200 and r.json()["added"] == 3, r.text
+    assert sorted(c.daily_cap for c in db.query(StoreCap).filter(StoreCap.store_id.in_([s1.id, s2.id, s3.id]))) == [3, 4, 5]
+
+
+def test_outlet_ids_match_whatever_their_case_or_spacing(client, admin, make_store, db):
+    tag, (s1, s2, s3) = _three_stores(make_store)
+    sheet = _csv(["Sr", "ID", "Capping"], [["1", f" capx-{tag.lower()}-1 ", "6"], ["2", f"CAPX - {tag} - 2".replace(" - ", "-"), "8"]])
+    r = _upload(client, admin, "c.csv", sheet)
+    assert r.status_code == 200 and r.json()["added"] == 2, r.text
+
+
+def test_an_excel_file_is_read_from_whichever_sheet_has_the_stores(client, admin, make_store, db):
+    from openpyxl import Workbook
+
+    tag, (s1, s2, s3) = _three_stores(make_store)
+    wb = Workbook()
+    wb.active.title = "Notes"
+    wb.active.append(["Read me: the caps are on the next tab"])
+    ws = wb.create_sheet("Capping")
+    ws.append(["Outlet Name", "City", "Capping"])
+    ws.append([f"Zepto Shop1 {tag}", "Bengaluru", 9])
+    ws.append([f"Zepto Shop2 {tag}", "Bengaluru", 0])
+    buf = io.BytesIO()
+    wb.save(buf)
+    r = _upload(client, admin, "caps.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert r.status_code == 200 and r.json()["added"] == 2, r.text
+    assert db.query(StoreCap).filter_by(store_id=s1.id).one().daily_cap == 9 and db.query(StoreCap).filter_by(store_id=s2.id).one().daily_cap == 0
+
+
+def test_a_file_with_nothing_usable_is_refused_with_a_reason(client, admin):
+    r = _upload(client, admin, "c.csv", _csv(["Colour", "Size"], [["red", "big"]]))
+    assert r.status_code == 422 and "No stores" in r.json()["detail"]
 
 
 def test_only_developers_may_read_the_google_sheet(client, zepto_emp, admin):
