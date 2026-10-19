@@ -309,6 +309,14 @@ export function useSyncActions() {
         pushToast(`Standard rate set on ${r.updated} purchase${r.updated === 1 ? "" : "s"}${r.kept ? ` (${r.kept} already had a price and were kept)` : ""}.`, "success");
       },
     }),
+    rematch: useMutation({
+      mutationFn: () => post<{ matched: number; stillUnmatched: number; examples: string[] }>("/sync/rematch"),
+      onSuccess: (r) => {
+        refresh();
+        const left = r.stillUnmatched ? ` ${r.stillUnmatched} still not matched to exactly one store: ${r.examples.join(", ")}${r.stillUnmatched > r.examples.length ? " …" : ""}.` : "";
+        pushToast(`${r.matched} row${r.matched === 1 ? "" : "s"} matched to a store.${left}`, r.stillUnmatched ? "error" : "success");
+      },
+    }),
     remove: useMutation({
       mutationFn: (ids: string[]) => post<{ deleted: number; refused: number }>("/sync/delete", { record_ids: ids }),
       onSuccess: (r) => {

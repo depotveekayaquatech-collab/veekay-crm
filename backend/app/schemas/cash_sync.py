@@ -115,6 +115,12 @@ class RecordIds(BaseModel):
     record_ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
 
 
+class RematchResult(BaseModel):
+    matched: int                # rows waiting for review that now have their store
+    still_unmatched: int        # rows whose store id / name the CRM could not match to exactly one store
+    examples: list[str]         # what the sheet said for the first of those (name and id)
+
+
 class DeleteResult(BaseModel):
     deleted: int                # removed for good from the review list
     refused: int                # already applied to the order sheet, already deleted, or not found: never touched

@@ -439,3 +439,30 @@ def test_only_the_developer_can_delete_rows(client, admin, emp):
     import uuid as _uuid
     for who in (admin, emp):
         assert client.post(f"{CASH}/sync/delete", headers=who, json={"record_ids": [str(_uuid.uuid4())]}).status_code == 403
+
+
+# ---- "Match stores again" -----------------------------------------------------------------------------------------------
+
+def test_match_stores_again_fills_in_rows_from_what_the_sheet_said_without_a_new_upload(client, dev, db, make_store):
+    import uuid as _uuid
+    tag = _uuid.uuid4().hex[:5].upper()
+    day = TODAY - timedelta(days=2)
+    rows = [
+        [day, "Store", f"Later Store {tag}", f"LATE-{tag}", None, "Water bottles", None, None, "No", 60, "x", None],      # its store is added afterwards
+        [day, "Store", f"Never Store {tag}", f"NEVER-{tag}", None, "Water bottles", None, None, "No", 70, "x", None],      # never in the CRM
+    ]
+    up = _upload(client, dev, _sheet(rows)).json()
+    assert up["added"] == 2 and up["unmatched_store"] == 2
+    nothing = client.post(f"{CASH}/sync/rematch", headers=dev).json()
+    assert nothing["matched"] == 0 and nothing["still_unmatched"] == 2
+    store = make_store(code=f"LATE-{tag}", name=f"Later Store {tag}")
+    r = client.post(f"{CASH}/sync/rematch", headers=dev).json()
+    assert r["matched"] == 1 and r["still_unmatched"] == 1 and r["examples"] == [f"Never Store {tag} (NEVER-{tag})"]
+    db.expire_all()
+    assert {x.store_id for x in db.query(CashSyncRecord).all()} == {store.id, None}
+    assert client.post(f"{CASH}/sync/rematch", headers=dev).json()["matched"] == 0         # nothing left to find
+
+
+def test_only_the_developer_can_rematch(client, admin, emp):
+    for who in (admin, emp):
+        assert client.post(f"{CASH}/sync/rematch", headers=who).status_code == 403

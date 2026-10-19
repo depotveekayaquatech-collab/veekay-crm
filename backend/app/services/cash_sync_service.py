@@ -36,6 +36,7 @@ from app.schemas.cash_sync import (
     StandardRateResult,
     SyncApplyFailure,
     DeleteResult,
+    RematchResult,
     SyncApplyResult,
     SyncOverview,
     SyncPreview,
@@ -505,6 +506,40 @@ def _get(db: Session, user: User, record_id: uuid.UUID, *, lock: bool = False) -
     if r is None or r.status == SyncStatus.DELETED:
         raise _err(status.HTTP_404_NOT_FOUND, "Record not found.")
     return r
+
+
+def rematch_unmatched(db: Session, user: User) -> RematchResult:
+    """Look again for the store of every row waiting for review that has none, using the store id and name the sheet gave (kept on
+    the row). Needs no new upload. Rows that match exactly one store get it; for the rest the answer says what the sheet said."""
+    index = _StoreIndex(db.execute(select(Store).where(Store.organization_id == user.organization_id)).scalars().unique().all())
+    recs = db.execute(
+        select(CashSyncRecord).where(
+            CashSyncRecord.organization_id == user.organization_id, CashSyncRecord.status == SyncStatus.PENDING,
+            CashSyncRecord.store_id.is_(None),
+        ).with_for_update()
+    ).scalars().all()
+    matched, still = 0, {}
+    for rec in recs:
+        src = rec.current_source or {}
+        code, name = src.get("store_code"), src.get("store_name")
+        store = _resolve_store(index, code, name)
+        if store is None:
+            label = " ".join(x for x in (name, f"({code})" if code else None) if x) or "(no store in the sheet row)"
+            still[label] = still.get(label, 0) + 1
+            continue
+        rec.store_id = store.id
+        for field in ("baseline", "current_source"):
+            snap = dict(getattr(rec, field) or {})
+            snap.update({"store_id": str(store.id), "store_code": store.external_code, "store_name": store.name})
+            setattr(rec, field, snap)
+        matched += 1
+    if matched:
+        activity_service.record(
+            db, actor=user, action="cash_sync.rows_rematched", entity_type="cash_sync", entity_id=user.organization_id,
+            metadata={"matched": matched, "still_unmatched": sum(still.values())},
+        )
+    db.commit()
+    return RematchResult(matched=matched, still_unmatched=sum(still.values()), examples=sorted(still)[:10])
 
 
 def delete_records(db: Session, user: User, record_ids: list[uuid.UUID]) -> DeleteResult:

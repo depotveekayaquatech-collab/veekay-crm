@@ -294,6 +294,7 @@ export function SyncTab() {
               <input type="checkbox" className="h-4 w-4" checked={replacePrices} onChange={(e) => setReplacePrices(e.target.checked)} />
               Replace prices already set
             </label>
+            <Button variant="secondary" onClick={() => actions.rematch.mutate()} isLoading={actions.rematch.isPending}>Match stores again</Button>
             <Button variant="secondary" onClick={applyStandardRate} isLoading={actions.standardRate.isPending} disabled={!(Number(defaultPrice) > 0) || !(counts?.PENDING ?? 0)}>
               Apply to all ({counts?.PENDING ?? 0})
             </Button>
