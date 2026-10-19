@@ -21,10 +21,13 @@ class RestoreIn(BaseModel):
 
 @router.get("")
 def run_audit(
-    start: date = Query(...), end: date = Query(...), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+    start: date = Query(...), end: date = Query(...),
+    employee: str | None = Query(None, max_length=80, description="an employee's name or code: only their entries"),
+    show_all: bool = Query(False, description="also list the entries that are fine"),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
     """For each entry employees logged in the window: fine, changed, cleared, missing (and why), or hidden because its store is no longer live."""
-    return order_audit_service.audit(db, user, start, end)
+    return order_audit_service.audit(db, user, start, end, employee=employee, show_all=show_all)
 
 
 @router.post("/restore")

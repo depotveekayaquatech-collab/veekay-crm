@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useMyStores } from "@/api/staffHooks";
 import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
+import { PendingPill } from "@/components/PendingPill";
 import { colors, font, radius } from "@/theme";
 
 type Filter = "all" | "pending" | "done";
@@ -37,9 +38,11 @@ export default function Orders() {
 
   const shown = useMemo(() => {
     const n = needle.trim().toLowerCase();
-    return stores
+    const list = stores
       .filter((s) => (filter === "all" ? true : filter === "done" ? countOf(s) !== null : countOf(s) === null))
       .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""}`.toLowerCase().includes(n));
+    // the pending list starts with the stores that have waited longest
+    return filter === "pending" ? [...list].sort((a, b) => (b.pending_days ?? 0) - (a.pending_days ?? 0) || a.name.localeCompare(b.name)) : list;
   }, [stores, filter, needle, countOf]);
 
   return (
@@ -97,6 +100,7 @@ export default function Orders() {
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
               <Text numberOfLines={1} style={font.small}>{s.external_code}{s.city ? ` · ${s.city}` : ""}</Text>
+              {countOf(s) === null ? <View style={{ marginTop: 6 }}><PendingPill days={s.pending_days ?? 0} /></View> : null}
             </View>
             {countOf(s) !== null ? (
               <View style={{ alignItems: "flex-end" }}><Text style={{ fontSize: 18, fontWeight: "800", color: colors.text }}>{countOf(s)}</Text><Text style={font.tiny}>{day}</Text></View>

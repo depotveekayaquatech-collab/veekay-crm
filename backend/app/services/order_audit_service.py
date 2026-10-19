@@ -71,7 +71,10 @@ def _final_events(db: Session, org_id: uuid.UUID, start: date, end: date) -> dic
     return last
 
 
-def audit(db: Session, user: User, start: date, end: date) -> dict:
+def audit(db: Session, user: User, start: date, end: date, *, employee: str | None = None, show_all: bool = False) -> dict:
+    """`employee` (a name or employee code) keeps only that person's rows; `show_all` also lists the entries that are fine.
+    Besides the rows, the answer has `days` (entries stored each day, how many an employee marked in the app, how many came
+    some other way such as the sheet import) and `people` (what each employee logged, per day)."""
     _window(start, end)
     org = user.organization_id
     events = _final_events(db, org, start, end)
@@ -80,7 +83,17 @@ def audit(db: Session, user: User, start: date, end: date) -> dict:
     by_code = {(partners.get(s.partner_organization_id), s.external_code): s for s in stores.values()}
     entries = {(e.store_id, e.order_date): e for e in db.execute(
         select(OrderEntry).where(OrderEntry.organization_id == org, OrderEntry.order_date >= start, OrderEntry.order_date <= end)).scalars()}
-    names = {u.id: u.full_name for u in db.execute(select(User).where(User.organization_id == org)).scalars()}
+    people_rows = list(db.execute(select(User).where(User.organization_id == org)).scalars())
+    names = {u.id: u.full_name for u in people_rows}
+    codes = {u.id: u.employee_code for u in people_rows}
+    needle = (employee or "").strip().lower()
+    wanted = lambda uid: not needle or needle in (names.get(uid) or "").lower() or needle in (codes.get(uid) or "").lower()  # noqa: E731
+    stored_by_day: dict[date, int] = {}
+    for (_sid, d) in entries:
+        stored_by_day[d] = stored_by_day.get(d, 0) + 1
+    logged_by_day: dict[date, int] = {}
+    present_by_day: dict[date, int] = {}
+    people: dict[uuid.UUID, dict] = {}
     status_changes: dict[str, dict] = {}
     for ev in db.execute(select(AuditLog).where(AuditLog.organization_id == org, AuditLog.action == "store.status_changed",
                                                 AuditLog.created_at >= _since(start)).order_by(AuditLog.created_at)).scalars():
@@ -95,9 +108,17 @@ def audit(db: Session, user: User, start: date, end: date) -> dict:
             logged_store = None
         store = logged_store or by_code.get((ev["partner"], ev["store_code"]))
         entry = entries.get((store.id, d)) if store else None
+        if ev["action"] != "order.cleared":
+            logged_by_day[d] = logged_by_day.get(d, 0) + 1
+            if entry is not None:
+                present_by_day[d] = present_by_day.get(d, 0) + 1
+            if ev["user_id"] is not None:
+                p = people.setdefault(ev["user_id"], {"name": names.get(ev["user_id"]), "code": codes.get(ev["user_id"]), "entries": 0, "days": {}})
+                p["entries"] += 1
+                p["days"][d.isoformat()] = p["days"].get(d.isoformat(), 0) + 1
         base = {
             "order_date": d, "store_id": store.id if store else None, "store_code": ev["store_code"], "store_name": ev["store_name"],
-            "state": ev["state"], "employee": names.get(ev["user_id"]), "logged_count": ev["count"], "logged_at": ev["at"],
+            "state": ev["state"], "employee": names.get(ev["user_id"]), "employee_code": codes.get(ev["user_id"]), "logged_count": ev["count"], "logged_at": ev["at"],
         }
         if ev["action"] == "order.cleared":
             if entry is None:
@@ -124,6 +145,8 @@ def audit(db: Session, user: User, start: date, end: date) -> dict:
                          "detail": f"The employee entered {ev['count']}; it now holds {entry.bottle_count} (source: {entry.source}, changed by an admin, a sheet import or a cash adjustment)."})
         else:
             counts["ok"] += 1
+            if show_all:
+                rows.append({**base, "kind": "OK", "current_count": entry.bottle_count, "restorable": False, "detail": "Saved and unchanged."})
         if store is not None and store.status != "LIVE":
             counts["hidden_not_live"] += 1
             ch = status_changes.get(str(store.id))
@@ -131,7 +154,15 @@ def audit(db: Session, user: User, start: date, end: date) -> dict:
             rows.append({**base, "kind": "HIDDEN_NOT_LIVE", "current_count": entry.bottle_count, "restorable": False,
                          "store_status": store.status,
                          "detail": f"The entry is saved, but this store is now {store.status}{when}, so the employee list and live-only views leave it out."})
-    return {"start": start, "end": end, "summary": counts, "rows": rows[:MAX_ROWS], "truncated": len(rows) > MAX_ROWS}
+    rows = [r for r in rows if not needle or needle in (r["employee"] or "").lower() or needle in (r["employee_code"] or "").lower()]
+    days = []
+    d = start
+    while d <= end:
+        stored, present = stored_by_day.get(d, 0), present_by_day.get(d, 0)
+        days.append({"date": d, "stored": stored, "logged": logged_by_day.get(d, 0), "from_other_sources": max(0, stored - present)})
+        d += timedelta(days=1)
+    team = sorted((p for uid, p in people.items() if wanted(uid)), key=lambda p: -p["entries"])[:200]
+    return {"start": start, "end": end, "summary": counts, "days": days, "people": team, "rows": rows[:MAX_ROWS], "truncated": len(rows) > MAX_ROWS}
 
 
 def restore(db: Session, user: User, start: date, end: date, *, dry_run: bool) -> dict:

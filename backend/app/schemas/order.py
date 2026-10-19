@@ -56,6 +56,8 @@ class MyStore(BaseModel):
     today: date  # the server's "today" — the date the quick-entry list marks against
     today_count: int | None = None
     yesterday_count: int | None = None
+    # days up to yesterday with no entry since the store's last filled day (this month); 0 = only today is still due
+    pending_days: int = 0
 
 
 class EmployeeOverviewRow(BaseModel):

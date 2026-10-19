@@ -161,3 +161,47 @@ def test_inventory_keeps_a_store_that_left_live_but_still_has_entries_this_month
     assert rows["INV-GONE"]["pending_days"] == 0                           # a store that is not live is never "behind"
     assert "INV-NEVER" not in rows                                         # no entries this month: not listed, as before
     assert inv["summary"]["stores"] == sum(1 for i in inv["items"] if i["status"] == "LIVE")
+
+
+# ---- the day-by-day and per-employee breakdown, and looking up one person ---------------------------------------------
+
+def test_the_audit_breaks_the_period_down_by_day_and_employee_and_can_list_every_entry(client, dev, emp, zepto_emp, db, make_store):
+    a, b, c = make_store(code="DY-A"), make_store(code="DY-B"), make_store(code="DY-SHEET")
+    _mark(client, emp, a, 11)
+    _mark(client, emp, b, 22)
+    # an entry that did not come from an employee marking (a sheet import / admin edit): stored, but no marking event in the log
+    db.add(OrderEntry(organization_id=c.organization_id, store_id=c.id, order_date=TODAY, bottle_count=5, source="admin"))
+    db.commit()
+    rep = _audit(client, dev)
+    today = next(d for d in rep["days"] if d["date"] == TODAY.isoformat())
+    assert today["stored"] >= 3 and today["logged"] >= 2 and today["from_other_sources"] >= 1
+    people = {p["code"]: p for p in rep["people"]}
+    assert people["EMP001"]["entries"] >= 2 and people["EMP001"]["days"][TODAY.isoformat()] >= 2
+    # nothing is wrong, so only the numbers are shown; "show every entry" lists the fine ones too
+    assert not [x for x in rep["rows"] if x["store_code"] in ("DY-A", "DY-B")]
+    every = client.get(AUDIT, headers=dev, params={"start": TODAY.isoformat(), "end": TODAY.isoformat(), "show_all": "true"}).json()
+    got = {x["store_code"]: x for x in every["rows"]}
+    assert got["DY-A"]["kind"] == "OK" and got["DY-A"]["current_count"] == 11 and got["DY-B"]["logged_count"] == 22
+    # look up one person: by code or by part of the name
+    only = client.get(AUDIT, headers=dev, params={"start": TODAY.isoformat(), "end": TODAY.isoformat(), "show_all": "true", "employee": "emp001"}).json()
+    assert {x["employee_code"] for x in only["rows"]} == {"EMP001"} and [p["code"] for p in only["people"]] == ["EMP001"]
+    nobody = client.get(AUDIT, headers=dev, params={"start": TODAY.isoformat(), "end": TODAY.isoformat(), "show_all": "true", "employee": "zzz-nobody"}).json()
+    assert nobody["rows"] == [] and nobody["people"] == []
+
+
+# ---- days pending on the stores list (the app's Orders tab) -------------------------------------------------------------
+
+def test_my_stores_says_how_many_days_each_store_has_been_pending(client, emp, admin, make_store):
+    import pytest
+
+    if TODAY.day < 4:
+        pytest.skip("needs a few days of the month to have passed")
+    never, old, fresh = make_store(code="PD-NEVER"), make_store(code="PD-OLD"), make_store(code="PD-FRESH")
+    first = TODAY.replace(day=1)
+    _mark(client, emp, old, 10, first)                              # last entry on the 1st: behind since the 2nd
+    _mark(client, emp, fresh, 10, TODAY)                            # marked today: nothing pending
+    for who in (emp, admin):                                         # the employee's own list and the admin's shared one
+        got = {s["external_code"]: s for s in client.get(f"{API}/orders/my-stores", headers=who).json()}
+        assert got["PD-NEVER"]["pending_days"] == TODAY.day - 1       # every day of the month up to yesterday
+        assert got["PD-OLD"]["pending_days"] == TODAY.day - 2         # the 2nd up to yesterday
+        assert got["PD-FRESH"]["pending_days"] == 0

@@ -71,6 +71,15 @@ def _store_meta(store: Store) -> dict:
 # --------------------------------------------------------------------------
 
 def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[MyStore]:
+    from app.services import inventory_service
+
+    def _month_stats(ids: list[uuid.UUID], day: date) -> dict:
+        return inventory_service.month_stats(db, ids, day)
+
+    def _pending(stats: dict, sid: uuid.UUID, day: date, start: date | None) -> int:
+        # a store that has not started yet, or has no live status, is never "behind"; the same rule as the Inventory page
+        return inventory_service.pending_days(stats.get(sid, (None,))[0], day, start)
+
     today = _today()
     yesterday = today - timedelta(days=1)
 
@@ -80,7 +89,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             select(
                 Store.id, Store.name, Store.external_code, Store.state, Store.city, Region.name, Store.vendor_name,
                 Store.vendor_number, Store.poc_name, Store.poc_number, Store.status, Organization.slug, Organization.name,
-                Store.region_id,
+                Store.region_id, Store.start_date,
             )
             .select_from(Store)
             .outerjoin(Region, Region.id == Store.region_id)
@@ -96,12 +105,13 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
                 )
             )
         }
+        stats = _month_stats([r[0] for r in rows], today)
         return [
             MyStore(
                 id=r[0], name=r[1], external_code=r[2], state=r[3], city=r[4], region_name=r[5], vendor_name=r[6],
                 vendor_number=r[7], poc_name=r[8], poc_number=r[9], status=r[10], today=today, partner_slug=r[11],
                 partner_name=r[12], region_id=r[13], today_count=counts.get((r[0], today)),
-                yesterday_count=counts.get((r[0], yesterday)),
+                yesterday_count=counts.get((r[0], yesterday)), pending_days=_pending(stats, r[0], today, r[14]),
             )
             for r in rows
         ]
@@ -116,6 +126,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             )
         )
         counts = {(r[0], r[1]): int(r[2]) for r in rows}
+    stats = _month_stats([s.id for s in stores], today)
     return [
         MyStore(
             id=s.id, name=s.name, external_code=s.external_code, state=s.state, city=s.city,
@@ -127,6 +138,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             partner_name=s.partner_organization.name if s.partner_organization else None,
             region_id=s.region_id,
             today_count=counts.get((s.id, today)), yesterday_count=counts.get((s.id, yesterday)),
+            pending_days=_pending(stats, s.id, today, s.start_date),
         )
         for s in stores
     ]
