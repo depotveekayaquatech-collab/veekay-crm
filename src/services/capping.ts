@@ -12,6 +12,9 @@ export interface CapRow {
   city: string | null;
   ownerCode: string | null;
   ownerName: string | null;
+  /** Bottles per day, as in the capping sheet. */
+  dailyCap: number | null;
+  /** The most the store may take in a month: dailyCap x 30. */
   monthlyCap: number | null;
   used: number;
   entries: number;
@@ -64,9 +67,9 @@ export async function getCappingAlerts(): Promise<CapAlerts> {
   return camelize<CapAlerts>(await apiRequest("/capping/alerts"));
 }
 
-/** Set a store's monthly cap; null removes it. */
-export async function setStoreCap(storeId: string, monthlyCap: number | null): Promise<void> {
-  await apiRequest(`/capping/stores/${storeId}`, { method: "PUT", body: { monthly_cap: monthlyCap } });
+/** Set a store's DAILY cap (its monthly limit is that x 30); null removes it. */
+export async function setStoreCap(storeId: string, dailyCap: number | null): Promise<void> {
+  await apiRequest(`/capping/stores/${storeId}`, { method: "PUT", body: { daily_cap: dailyCap } });
 }
 
 /** Developer: load caps from the configured Google sheet. Existing CRM caps are kept unless `overwrite`. */
@@ -74,7 +77,7 @@ export async function syncCapsFromSheet(overwrite: boolean): Promise<CapImportRe
   return camelize<CapImportResult>(await apiRequest(`/capping/sync?overwrite=${overwrite}`, { method: "POST" }));
 }
 
-/** Developer or administrator: load caps from an uploaded .csv / .xlsx (Outlet ID + Monthly Capping). */
+/** Developer or administrator: load caps from an uploaded .csv / .xlsx (Outlet ID + the daily capping number). */
 export async function importCapsFile(file: File, overwrite: boolean): Promise<CapImportResult> {
   const form = new FormData();
   form.append("file", file);

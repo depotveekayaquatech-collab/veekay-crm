@@ -73,14 +73,6 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         back_populates="user", cascade="all, delete-orphan"
     )
 
-    @property
-    def display_name(self) -> str:
-        """The name other people see for this account: the developer always appears as "Admin" (the real account is still
-        what the audit log row points at). Use this wherever one user's name is shown to another."""
-        if any(ur.role.code == "developer" for ur in self.user_roles):
-            return "Admin"
-        return self.full_name
-
 
 class UserRole(Base, TimestampMixin):
     """Many-to-many: a user can hold more than one role (rare but the

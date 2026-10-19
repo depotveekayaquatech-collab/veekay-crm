@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 10,
+    "latestVersionCode": 12,
     "latestVersionName": "1.1.0",
     "minVersionCode": 0,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code10.apk",
-    "notes": "New: Compliance and Store cards on your phone (upload card photos, invoices, payment proofs), a clearer home screen, faster photo uploads. Please update to keep using the app.",
-    "apkSizeBytes": 56429021,
-    "apkSha256": "b27cd768bf8018d6a896d3132aec7eb105d1539a3fa3ee85278273eab691b49a"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code12.apk",
+    "notes": "New: Payslips (your salary and day-wise attendance, and a Salary received message when you are paid). New menu: tap the three lines at the top left to reach every screen.",
+    "apkSizeBytes": 56442133,
+    "apkSha256": "5799c72008014184ce27afd92754e425cd983f373cf3795441255b776d959c40"
   }
 }

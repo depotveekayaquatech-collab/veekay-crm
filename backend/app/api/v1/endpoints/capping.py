@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_permissions, get_current_user, require_permission
@@ -24,7 +24,10 @@ def require_bulk_upload(user: User = Depends(get_current_user), perms: set[str] 
 
 
 class CapIn(BaseModel):
-    monthly_cap: int | None = Field(default=None, ge=0, le=capping_service.MAX_CAP, description="null clears the cap")
+    # An unknown field is an error: a page still sending the old `monthly_cap` must not be read as "no cap" (which clears it).
+    model_config = ConfigDict(extra="forbid")
+
+    daily_cap: int | None = Field(default=None, ge=0, le=capping_service.MAX_CAP, description="bottles per day; the monthly limit is this x 30. null clears the cap")
 
 
 @router.get("")
@@ -49,7 +52,7 @@ def set_cap(
     store_id: uuid.UUID, payload: CapIn,
     user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
 ) -> dict:
-    return capping_service.set_cap(db, user, perms, store_id, payload.monthly_cap)
+    return capping_service.set_cap(db, user, perms, store_id, payload.daily_cap)
 
 
 @router.post("/sync", dependencies=[Depends(require_permission("sheets.sync"))])

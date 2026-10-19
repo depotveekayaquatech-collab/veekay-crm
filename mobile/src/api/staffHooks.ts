@@ -11,7 +11,7 @@ export const usePayslips = () => useQuery({ queryKey: ["s-payslips"], queryFn: s
 
 /** Salaries paid to this employee whose "salary received" popup has not been shown yet. */
 export const useUnseenPayslips = (enabled = true) =>
-  useQuery({ queryKey: ["s-payslips-unseen"], queryFn: staffApi.unseenPayslips, staleTime: 15_000, enabled, retry: false });
+  useQuery({ queryKey: ["s-payslips-unseen"], queryFn: staffApi.unseenPayslips, staleTime: 15_000, refetchInterval: 60_000, enabled, retry: false });
 
 export const useLeaves = () => useQuery({ queryKey: ["s-leaves"], queryFn: staffApi.leaves, staleTime: FRESH });
 

@@ -59,11 +59,11 @@ function UsageBar({ row }: { row: CapRow }) {
   );
 }
 
-/** Pick a store (or arrive from a row), type its cap, save. One store at a time. */
+/** Pick a store (or arrive from a row), type its daily cap, save. One store at a time. The monthly limit is the daily cap x 30. */
 function EditCapModal({ rows, initial, onClose }: { rows: CapRow[]; initial: CapRow | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [storeId, setStoreId] = useState(initial?.storeId ?? "");
-  const [text, setText] = useState(initial?.monthlyCap?.toString() ?? "");
+  const [text, setText] = useState(initial?.dailyCap?.toString() ?? "");
   const store = rows.find((r) => r.storeId === storeId) ?? null;
   const sorted = useMemo(() => [...rows].sort((a, b) => a.outletName.localeCompare(b.outletName)), [rows]);
 
@@ -89,12 +89,12 @@ function EditCapModal({ rows, initial, onClose }: { rows: CapRow[]; initial: Cap
     <Modal
       open
       onClose={onClose}
-      title="Set monthly cap"
-      description="The cap is the most bottles a store may take in a month. It applies to every month until changed."
+      title="Set daily cap"
+      description="Bottles per day, as in the capping sheet. The most a store may take in a month is this number × 30. It applies to every month until changed."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          {store?.monthlyCap !== null && store?.monthlyCap !== undefined && (
+          {store?.dailyCap !== null && store?.dailyCap !== undefined && (
             <Button variant="secondary" onClick={() => save.mutate(null)} disabled={save.isPending}>Remove cap</Button>
           )}
           <Button onClick={() => save.mutate(parsed)} isLoading={save.isPending} disabled={!storeId || invalid || parsed === null}>Save cap</Button>
@@ -110,7 +110,7 @@ function EditCapModal({ rows, initial, onClose }: { rows: CapRow[]; initial: Cap
             onChange={(e) => {
               const id = e.target.value;
               setStoreId(id);
-              setText(rows.find((r) => r.storeId === id)?.monthlyCap?.toString() ?? "");
+              setText(rows.find((r) => r.storeId === id)?.dailyCap?.toString() ?? "");
             }}
           >
             <option value="">Choose a store…</option>
@@ -121,11 +121,11 @@ function EditCapModal({ rows, initial, onClose }: { rows: CapRow[]; initial: Cap
         </label>
         {store && (
           <p className="rounded-lg bg-surface-subtle px-3 py-2 text-xs text-gray-600">
-            {store.city ?? "—"}, {store.state ?? "—"} · used this month: <b>{n(store.used)}</b> bottles · current cap: <b>{n(store.monthlyCap)}</b>
+            {store.city ?? "—"}, {store.state ?? "—"} · used this month: <b>{n(store.used)}</b> bottles · current cap: <b>{n(store.dailyCap)}</b> a day (<b>{n(store.monthlyCap)}</b> a month)
           </p>
         )}
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
-          Monthly cap (bottles)
+          Daily cap (bottles per day)
           <input
             className={field}
             inputMode="numeric"
@@ -136,6 +136,7 @@ function EditCapModal({ rows, initial, onClose }: { rows: CapRow[]; initial: Cap
           />
           <span className="text-xs font-normal text-gray-500">0 is allowed (no bottles). Leave empty and use “Remove cap” for no limit.</span>
         </label>
+        {!invalid && parsed !== null && <p className="text-sm text-gray-600">Monthly limit: <b>{(parsed * 30).toLocaleString("en-IN")}</b> bottles ({parsed.toLocaleString("en-IN")} × 30).</p>}
         {invalid && <p role="alert" className="text-sm text-status-danger">Enter a whole number from 0 to 1,000,000.</p>}
         <button type="submit" className="hidden" />
       </form>
@@ -154,8 +155,8 @@ function LoadCaps({ onDone, canSyncSheet }: { onDone: () => void; canSyncSheet: 
     <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
       <h3 className="text-sm font-bold text-gray-900">Upload the capping sheet</h3>
       <p className="mt-1 text-xs text-gray-500">
-        A .csv or .xlsx with an <b>Outlet ID</b> column and a <b>Monthly Capping</b> column. The cap is the most bottles a store may take in a month;
-        alerts compare each store's bottles so far with that cap pro-rated to today. Employees can still change a single store by hand.
+        A .csv or .xlsx with an <b>Outlet ID</b> column and a <b>Capping</b> column with the <b>daily</b> number per store. The monthly limit is that × 30;
+        alerts compare each store's bottles so far with the daily number × the day of the month. Employees can still change a single store by hand.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -231,8 +232,8 @@ export function CappingPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Monthly capping"
-        subtitle={data ? `${data.monthLabel} · every live Zepto store · warns when ahead of the cap's pace for the month and at ${data.warnPercent}% of the cap` : "Bottles used against each store's monthly cap."}
+        title="Capping"
+        subtitle={data ? `${data.monthLabel} · every live Zepto store · monthly limit = daily cap × 30 · warns when ahead of pace and at ${data.warnPercent}% of the limit` : "Bottles used against each store's monthly cap."}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <SelectField className="h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm" value={month || data?.month || ""} onChange={(e) => setMonth(e.target.value)} aria-label="Month">
@@ -305,10 +306,10 @@ export function CappingPage() {
             <EmptyState title="No stores match" description={rows.length ? "Change the search or filters." : "There are no live Zepto stores yet."} />
           ) : (
             <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
-              <table className="w-full min-w-[900px] border-collapse text-sm">
+              <table className="w-full min-w-[1000px] border-collapse text-sm">
                 <thead>
                   <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                    {["Store", "State / City", "Cap", "Used", "Left", "Usage", "Status", "Owner", ""].map((h) => (
+                    {["Store", "State / City", "Daily cap", "Monthly limit", "Used", "Left", "Usage", "Status", "Owner", ""].map((h) => (
                       <th key={h} className="border-b border-surface-border px-3 py-3 first:pl-4">{h}</th>
                     ))}
                   </tr>
@@ -321,7 +322,8 @@ export function CappingPage() {
                         <p className="break-all text-xs text-gray-500">{r.outletId}</p>
                       </td>
                       <td data-label="State / City" className="px-3 py-3 text-gray-600">{[r.city, r.state].filter(Boolean).join(", ") || "—"}</td>
-                      <td data-label="Cap" className="px-3 py-3 tabular-nums">{n(r.monthlyCap)}</td>
+                      <td data-label="Daily cap" className="px-3 py-3 tabular-nums">{n(r.dailyCap)}</td>
+                      <td data-label="Monthly limit" className="px-3 py-3 tabular-nums">{n(r.monthlyCap)}</td>
                       <td data-label="Used" className="px-3 py-3 font-semibold tabular-nums">{n(r.used)}</td>
                       <td data-label="Left" className="px-3 py-3 tabular-nums">
                         {r.alert === "OVER" ? <span className="font-semibold text-status-danger">+{n(r.excess)} over</span> : n(r.remaining)}

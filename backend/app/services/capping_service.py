@@ -1,17 +1,19 @@
 """
-Zepto monthly capping: how many bottles each store may take in a month, and how close it is.
+Zepto capping: how many bottles each store may take, and how close it is.
 
 Who may use it (always re-checked on the server, whatever the app shows):
   * every ACTIVE employee whose platform is Zepto, whatever their state or region, and
   * administrators (they hold orders.correct), so the Capping page works for them too.
   Blinkit employees and partner logins are refused. Viewing and editing a store's cap are the same right.
 
-The cap is one number per store (store_caps). No row = no cap; 0 is a real cap. Usage is the sum of the month's order
-entries for the store, whoever entered them, so every employee sees the same figures. Alert levels:
-  OVER   usage > cap
-  AHEAD  usage is ahead of the pro-rated cap (cap x day of month / days in month) - current month only, not yet over
-  NEAR   usage >= 80% of the cap (and not over / ahead)        OK  below that        NO_CAP  no cap set
-There is no per-day entry rule: the only limit is the cap from the capping sheet (or set by hand).
+The capping sheet gives ONE DAILY number per store (store_caps.daily_cap). The monthly limit a store must not exceed is that
+number x 30 (always 30, whatever the month's length). No row = no cap; 0 is a real cap. Usage is the sum of the month's
+order entries for the store, whoever entered them, so every employee sees the same figures. Alert levels:
+  OVER   usage > monthly limit (daily x 30)
+  AHEAD  usage is ahead of the pace: more than daily x day of the month (day 31 counts as 30) - current month only, not yet over
+  NEAR   usage >= 80% of the monthly limit (and not over / ahead)        OK  below that        NO_CAP  no cap set
+Example: sheet says 10 -> limit 300; on the 15th up to 150 is on pace, 160 marked gives an AHEAD alert.
+Nothing limits a single day's entry: the only limit is the sheet's cap (or the one set by hand).
 
 Who loads caps in bulk: developers and administrators (an uploaded sheet). Employees only change one store at a time.
 Who is alerted: people holding capping.alerts - see alerts() - for the stores they cover.
@@ -36,7 +38,8 @@ from app.services import activity_service, assignment_service
 
 PLATFORM = "zepto"
 WARN_PERCENT = 80
-MAX_CAP = 1_000_000
+CAP_DAYS = 30            # the monthly limit is the daily cap x 30, in every month
+MAX_CAP = 1_000_000      # the largest daily cap accepted
 _ORDER = {"OVER": 0, "AHEAD": 1, "NEAR": 2, "OK": 3, "NO_CAP": 4}
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 
@@ -89,26 +92,31 @@ def available_months(today: date | None = None) -> list[str]:
     return out
 
 
-def alert_for(used: int, cap: int | None, day: int | None = None, days_in_month: int | None = None) -> str:
-    """OVER / AHEAD / NEAR / OK / NO_CAP. Cap 0 is valid: zero used is OK, any use is OVER (no division).
-    Pass `day` and `days_in_month` for the month in progress to also get AHEAD (used more than cap x day / days_in_month)."""
-    if cap is None:
+def monthly_limit(daily: int | None) -> int | None:
+    """The most a store may take in a month: its daily cap x 30."""
+    return None if daily is None else daily * CAP_DAYS
+
+
+def alert_for(used: int, daily: int | None, day: int | None = None) -> str:
+    """OVER / AHEAD / NEAR / OK / NO_CAP from the bottles used and the store's DAILY cap. Cap 0 is valid: zero used is OK,
+    any use is OVER (no division). Pass `day` (the day of the month in progress) to also get AHEAD (used more than daily x day)."""
+    if daily is None:
         return "NO_CAP"
-    if used > cap:
+    limit = daily * CAP_DAYS
+    if used > limit:
         return "OVER"
-    if cap == 0:
+    if limit == 0:
         return "OK"
-    if day is not None and days_in_month and used * days_in_month > cap * day:
+    if day is not None and used > daily * min(day, CAP_DAYS):
         return "AHEAD"
-    return "NEAR" if used * 100 >= WARN_PERCENT * cap else "OK"
+    return "NEAR" if used * 100 >= WARN_PERCENT * limit else "OK"
 
 
-def pace_for(cap: int | None, month: date, today: date) -> tuple[int | None, int | None, int | None]:
-    """(day, days_in_month, allowed so far) for the month in progress; (None, None, None) for a finished month or no cap."""
-    if cap is None or (month.year, month.month) != (today.year, today.month):
-        return None, None, None
-    dim = calendar.monthrange(month.year, month.month)[1]
-    return today.day, dim, cap * today.day // dim
+def pace_for(daily: int | None, month: date, today: date) -> tuple[int | None, int | None]:
+    """(day, bottles allowed so far) for the month in progress; (None, None) for a finished month or a store with no cap."""
+    if daily is None or (month.year, month.month) != (today.year, today.month):
+        return None, None
+    return today.day, daily * min(today.day, CAP_DAYS)
 
 
 def _partner(db: Session, org_id: uuid.UUID) -> Organization:
@@ -137,7 +145,7 @@ def _rows(db: Session, user: User, partner: Organization, month: date, store_ids
     today = _today()
     end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
     q = (
-        select(Store.id, Store.external_code, Store.name, Store.state, Store.city, StoreCap.monthly_cap)
+        select(Store.id, Store.external_code, Store.name, Store.state, Store.city, StoreCap.daily_cap)
         .select_from(Store)
         .outerjoin(StoreCap, StoreCap.store_id == Store.id)
         .where(Store.organization_id == user.organization_id, Store.partner_organization_id == partner.id, Store.status == StoreStatus.LIVE.value)
@@ -156,15 +164,16 @@ def _rows(db: Session, user: User, partner: Organization, month: date, store_ids
     owners = _owners(db, user.organization_id, partner)
 
     rows = []
-    for sid, code, name, state, city, cap in stores:
+    for sid, code, name, state, city, daily in stores:
         used, entries = usage.get(sid, (0, 0))
-        day, dim, allowed = pace_for(cap, month, today)
-        level = alert_for(used, cap, day, dim)
+        day, allowed = pace_for(daily, month, today)
+        level = alert_for(used, daily, day)
+        cap = monthly_limit(daily)          # everything below is measured against the monthly limit (daily x 30)
         owner = owners.get(sid)
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
             "owner_code": owner[0] if owner else None, "owner_name": owner[1] if owner else None,
-            "monthly_cap": cap, "used": used, "entries": entries,
+            "daily_cap": daily, "monthly_cap": cap, "used": used, "entries": entries,
             "remaining": None if cap is None else max(cap - used, 0),
             "excess": 0 if cap is None else max(used - cap, 0),
             "percent": None if not cap else round(used * 100 / cap, 1),   # cap 0 or none: no percentage
@@ -208,37 +217,37 @@ def alerts(db: Session, user: User, perms: set[str]) -> dict:
     rows = [r for r in _rows(db, user, partner, month, scope) if r["alert"] in ("OVER", "AHEAD")]
     return {
         "success": True, "month": f"{month:%Y-%m}", "month_label": f"{_MONTHS[month.month]} {month.year}",
-        "day": today.day, "days_in_month": calendar.monthrange(month.year, month.month)[1],
+        "day": today.day, "days_in_month": CAP_DAYS,
         "over": sum(1 for r in rows if r["alert"] == "OVER"), "ahead": sum(1 for r in rows if r["alert"] == "AHEAD"),
         "rows": rows[:50],
     }
 
 
 def set_cap(db: Session, user: User, perms: set[str], store_id: uuid.UUID, cap: int | None) -> dict:
-    """Set (or clear, with None) one store's monthly cap. Logged with the old and new value."""
+    """Set (or clear, with None) one store's DAILY cap (its monthly limit is that x 30). Logged with the old and new value."""
     require_eligible(user, perms)
     partner = _partner(db, user.organization_id)
     store = db.get(Store, store_id)
     if store is None or store.organization_id != user.organization_id or store.partner_organization_id != partner.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Store not found.")
     if cap is not None and not (0 <= cap <= MAX_CAP):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The cap must be a whole number from 0 to {MAX_CAP:,}.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The daily cap must be a whole number from 0 to {MAX_CAP:,}.")
     row = db.execute(select(StoreCap).where(StoreCap.store_id == store_id)).scalar_one_or_none()
-    before = row.monthly_cap if row else None
+    before = row.daily_cap if row else None
     if before == cap:
-        return {"store_id": store_id, "monthly_cap": cap, "changed": False}
+        return {"store_id": store_id, "daily_cap": cap, "monthly_cap": monthly_limit(cap), "changed": False}
     if cap is None and row is not None:
         db.delete(row)
     elif row is None:
-        db.add(StoreCap(store_id=store_id, monthly_cap=cap, source="manual", updated_by_user_id=user.id))
+        db.add(StoreCap(store_id=store_id, daily_cap=cap, source="manual", updated_by_user_id=user.id))
     else:
-        row.monthly_cap, row.source, row.updated_by_user_id = cap, "manual", user.id
+        row.daily_cap, row.source, row.updated_by_user_id = cap, "manual", user.id
     activity_service.record(
         db, actor=user, action="store.cap_changed", entity_type="store", entity_id=store_id,
         metadata={"outlet": store.external_code, "name": store.name, "from": before, "to": cap},
     )
     db.commit()
-    return {"store_id": store_id, "monthly_cap": cap, "changed": True}
+    return {"store_id": store_id, "daily_cap": cap, "monthly_cap": monthly_limit(cap), "changed": True}
 
 
 # ---------------------------------------------------------------- loading caps from the sheet / a file (developer)
@@ -258,11 +267,12 @@ def _cap_value(raw: str) -> tuple[int | None, bool]:
 
 
 _ID_KEYS = ("outlet id", "outlet_id", "store id", "store code")
-_CAP_KEYS = ("monthly capping", "monthly cap", "capping", "cap")
+# The sheet's number is a DAILY cap whatever the column is called (older sheets are headed "Monthly Capping"): x 30 = the monthly limit.
+_CAP_KEYS = ("daily capping", "daily cap", "capping per day", "monthly capping", "monthly cap", "capping", "cap")
 
 
 def import_caps(db: Session, actor: User, rows: list[dict[str, str]], *, overwrite: bool, source: str) -> dict:
-    """Load caps from sheet rows (Outlet ID + Monthly Capping). Existing caps are kept unless `overwrite` is on."""
+    """Load caps from sheet rows (Outlet ID + the daily capping number). Existing caps are kept unless `overwrite` is on."""
     partner = _partner(db, actor.organization_id)
     if not rows:
         return {"rows_read": 0, "added": 0, "updated": 0, "kept": 0, "unknown_stores": 0, "invalid": 0, "warnings": ["The sheet has no rows."]}
@@ -270,7 +280,7 @@ def import_caps(db: Session, actor: User, rows: list[dict[str, str]], *, overwri
     id_col = next((keys[k] for k in _ID_KEYS if k in keys), None)
     cap_col = next((keys[k] for k in _CAP_KEYS if k in keys), None)
     if id_col is None or cap_col is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The sheet needs an 'Outlet ID' column and a 'Monthly Capping' column.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The sheet needs an 'Outlet ID' column and a 'Capping' column (the daily number per store).")
     stores = {s.external_code: s for s in db.execute(
         select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)).scalars()}
     existing = {c.store_id: c for c in db.execute(select(StoreCap).where(StoreCap.store_id.in_([s.id for s in stores.values()] or [uuid.uuid4()]))).scalars()}
@@ -296,14 +306,14 @@ def import_caps(db: Session, actor: User, rows: list[dict[str, str]], *, overwri
             continue
         cur = existing.get(store.id)
         if cur is None:
-            row_new = StoreCap(store_id=store.id, monthly_cap=cap, source=source, updated_by_user_id=actor.id)
+            row_new = StoreCap(store_id=store.id, daily_cap=cap, source=source, updated_by_user_id=actor.id)
             db.add(row_new)
             existing[store.id] = row_new
             res["added"] += 1
-        elif cur.monthly_cap == cap:
+        elif cur.daily_cap == cap:
             res["kept"] += 1
         elif overwrite:
-            cur.monthly_cap, cur.source, cur.updated_by_user_id = cap, source, actor.id
+            cur.daily_cap, cur.source, cur.updated_by_user_id = cap, source, actor.id
             res["updated"] += 1
         else:
             res["kept"] += 1
