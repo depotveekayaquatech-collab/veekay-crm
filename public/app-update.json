@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 13,
+    "latestVersionCode": 14,
     "latestVersionName": "1.1.0",
     "minVersionCode": 0,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code13.apk",
-    "notes": "New: Payslips (your salary and day-wise attendance, and a Salary received message when you are paid). New menu: tap the three lines at the top left to reach every screen.",
-    "apkSizeBytes": 56442149,
-    "apkSha256": "249c70b9b86148d057cda4cda4d0c3d54eb242e9d981d5c04bb2c5e3ab7ea77f"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.1.0-code14.apk",
+    "notes": "Fixed: the store list in Add expense and Scan bottles now shows your stores. Your app now opens on Today so Check in and Check out are first. Plus Payslips and the new menu.",
+    "apkSizeBytes": 56442277,
+    "apkSha256": "82d02fef99a64b161165b2d756e63a7b99fe1244d633753fff21c93a6e01ae17"
   }
 }
