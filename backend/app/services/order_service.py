@@ -70,6 +70,26 @@ def _store_meta(store: Store) -> dict:
 # employee: my stores + calendar + mark
 # --------------------------------------------------------------------------
 
+def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool) -> dict[uuid.UUID, tuple[int, int]]:
+    """{store_id: (bottles marked this month so far, bottles marked in the whole of last month)}. `net` leaves out a developer's cash
+    adjustment, which an employee never sees (what they entered is what they are shown)."""
+    if not ids:
+        return {}
+    this_start = today.replace(day=1)
+    last_start = (this_start - timedelta(days=1)).replace(day=1)
+    amount = (OrderEntry.bottle_count - OrderEntry.cash_adjustment) if net else OrderEntry.bottle_count
+    rows = db.execute(
+        select(
+            OrderEntry.store_id,
+            func.coalesce(func.sum(case((OrderEntry.order_date >= this_start, amount), else_=0)), 0),
+            func.coalesce(func.sum(case((OrderEntry.order_date < this_start, amount), else_=0)), 0),
+        )
+        .where(OrderEntry.store_id.in_(ids), OrderEntry.order_date >= last_start, OrderEntry.order_date <= today)
+        .group_by(OrderEntry.store_id)
+    ).all()
+    return {r[0]: (int(r[1]), int(r[2])) for r in rows}
+
+
 def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[MyStore]:
     from app.services import inventory_service
 
@@ -106,12 +126,14 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             )
         }
         stats = _month_stats([r[0] for r in rows], today)
+        totals = _month_totals(db, [r[0] for r in rows], today, net=False)
         return [
             MyStore(
                 id=r[0], name=r[1], external_code=r[2], state=r[3], city=r[4], region_name=r[5], vendor_name=r[6],
                 vendor_number=r[7], poc_name=r[8], poc_number=r[9], status=r[10], today=today, partner_slug=r[11],
                 partner_name=r[12], region_id=r[13], today_count=counts.get((r[0], today)),
                 yesterday_count=counts.get((r[0], yesterday)), pending_days=_pending(stats, r[0], today, r[14]),
+                month_bottles=totals.get(r[0], (0, 0))[0], last_month_bottles=totals.get(r[0], (0, 0))[1],
             )
             for r in rows
         ]
@@ -127,6 +149,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
         )
         counts = {(r[0], r[1]): int(r[2]) for r in rows}
     stats = _month_stats([s.id for s in stores], today)
+    totals = _month_totals(db, [s.id for s in stores], today, net=True)
     return [
         MyStore(
             id=s.id, name=s.name, external_code=s.external_code, state=s.state, city=s.city,
@@ -139,6 +162,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             region_id=s.region_id,
             today_count=counts.get((s.id, today)), yesterday_count=counts.get((s.id, yesterday)),
             pending_days=_pending(stats, s.id, today, s.start_date),
+            month_bottles=totals.get(s.id, (0, 0))[0], last_month_bottles=totals.get(s.id, (0, 0))[1],
         )
         for s in stores
     ]

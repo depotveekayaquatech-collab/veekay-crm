@@ -69,6 +69,9 @@ export interface MyStore {
   status: string; partner_name: string | null; today: string; today_count: number | null; yesterday_count?: number | null;
   /** Days up to yesterday with no entry since the store's last filled day this month (0: only today is still due). */
   pending_days?: number;
+  /** Bottles marked for this store so far this month, and in the whole of last month. */
+  month_bottles?: number;
+  last_month_bottles?: number;
 }
 
 export type Direction = "IN" | "OUT";

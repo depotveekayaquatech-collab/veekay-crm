@@ -58,6 +58,9 @@ class MyStore(BaseModel):
     yesterday_count: int | None = None
     # days up to yesterday with no entry since the store's last filled day (this month); 0 = only today is still due
     pending_days: int = 0
+    # bottles marked for this store: so far this month, and in the whole of last month
+    month_bottles: int = 0
+    last_month_bottles: int = 0
 
 
 class EmployeeOverviewRow(BaseModel):

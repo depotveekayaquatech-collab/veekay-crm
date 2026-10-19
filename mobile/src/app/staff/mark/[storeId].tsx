@@ -4,10 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCalendar, useMarkMany } from "@/api/staffHooks";
+import { useCalendar, useMarkMany, useMyStores } from "@/api/staffHooks";
 import { Button, Card, ErrorNote, ListSkeleton } from "@/components/ui";
 import { MonthGrid, type CellState } from "@/components/MonthGrid";
-import { daysAgo } from "@/lib/format";
+import { daysAgo, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
 const MAX = 200;
@@ -43,6 +43,8 @@ export default function MarkMany() {
   const insets = useSafeAreaInsets();
   const cal = useCalendar(storeId);
   const mark = useMarkMany();
+  const mine = useMyStores();
+  const totals = mine.data?.find((s) => s.id === storeId);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -128,6 +130,16 @@ export default function MarkMany() {
           <>
             <Text style={font.small}>{cal.data!.store_code} · {cal.data!.month_label}</Text>
             <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. Green numbers are already marked.</Text>
+            {totals ? (
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                {([["This month", totals.month_bottles ?? 0], ["Last month", totals.last_month_bottles ?? 0]] as const).map(([label, n]) => (
+                  <View key={label} style={{ flex: 1, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 12 }}>
+                    <Text style={font.tiny}>{label} marked</Text>
+                    <Text style={{ fontSize: 22, fontWeight: "800", color: colors.text }}>{fmtNumber(n)}<Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}> bottles</Text></Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
               {today && !byDate.get(today)?.marked ? <Shortcut label="Today" onPress={() => add([today])} /> : null}

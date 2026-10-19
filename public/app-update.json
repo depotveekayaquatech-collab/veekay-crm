@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 16,
+    "latestVersionCode": 17,
     "latestVersionName": "1.2.0",
     "minVersionCode": 0,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code16.apk",
-    "notes": "New: My entries (Orders tab): check everything you entered in the last days, day by day. Dark mode (Profile, then Appearance). The Pending screen shows how many days each store has been pending. Also: store list fix in Add expense and Scan bottles, Today opens first, payslips and the new menu.",
-    "apkSizeBytes": 56562945,
-    "apkSha256": "71725698f1daf6b25848a58bf0305c5f1bde44b5174bf6a1812a8f6691b269fa"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code17.apk",
+    "notes": "The Orders tab's Pending list now shows how many days each store has been pending (longest first). New: My entries (Orders tab) to check what you entered in the last days. Dark mode (Profile, Appearance). Also: store list fix in Add expense and Scan bottles, Today opens first, payslips and the new m",
+    "apkSizeBytes": 56563229,
+    "apkSha256": "3b77468c9aa5ba85678d54e277f283e0e22b9b184dd556459e67fe8669346856"
   }
 }

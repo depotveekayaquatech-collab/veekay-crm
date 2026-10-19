@@ -205,3 +205,38 @@ def test_my_stores_says_how_many_days_each_store_has_been_pending(client, emp, a
         assert got["PD-NEVER"]["pending_days"] == TODAY.day - 1       # every day of the month up to yesterday
         assert got["PD-OLD"]["pending_days"] == TODAY.day - 2         # the 2nd up to yesterday
         assert got["PD-FRESH"]["pending_days"] == 0
+
+
+# ---- bottles marked this month and last month, per store ----------------------------------------------------------------
+
+def test_my_stores_shows_the_bottles_marked_this_month_and_last_month(client, emp, admin, db, make_store):
+    s, quiet = make_store(code="MT-A"), make_store(code="MT-NONE")
+    first = TODAY.replace(day=1)
+    last_month = (first - timedelta(days=1)).replace(day=1)
+    _mark(client, emp, s, 40, first)                                   # this month
+    if TODAY != first:
+        _mark(client, emp, s, 25, TODAY)                               # this month, another day
+    me = db.query(OrderEntry).filter(OrderEntry.store_id == s.id).first().marked_by_user_id
+    for day, n in ((last_month, 100), (last_month + timedelta(days=9), 50)):
+        db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=day, bottle_count=n, source="employee", marked_by_user_id=me))
+    db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=last_month - timedelta(days=1), bottle_count=999, source="employee"))   # the month before: not counted
+    db.commit()
+    expected_this = 40 if TODAY == first else 65
+    got = {x["external_code"]: x for x in client.get(f"{API}/orders/my-stores", headers=emp).json()}
+    assert got["MT-A"]["month_bottles"] == expected_this and got["MT-A"]["last_month_bottles"] == 150
+    assert got["MT-NONE"]["month_bottles"] == 0 and got["MT-NONE"]["last_month_bottles"] == 0
+    adm = {x["external_code"]: x for x in client.get(f"{API}/orders/my-stores", headers=admin).json()}
+    assert adm["MT-A"]["month_bottles"] == expected_this and adm["MT-A"]["last_month_bottles"] == 150
+
+
+def test_the_employee_is_never_shown_a_developer_cash_adjustment_in_the_month_totals(client, emp, admin, db, make_store):
+    s = make_store(code="MT-CASH")
+    day = TODAY.replace(day=1)
+    _mark(client, emp, s, 30, day)
+    e = db.query(OrderEntry).filter(OrderEntry.store_id == s.id).one()
+    e.bottle_count, e.cash_adjustment = 38, 8                          # a developer added 8 on top of their 30
+    db.commit()
+    mine = next(x for x in client.get(f"{API}/orders/my-stores", headers=emp).json() if x["external_code"] == "MT-CASH")
+    assert mine["month_bottles"] == 30
+    theirs = next(x for x in client.get(f"{API}/orders/my-stores", headers=admin).json() if x["external_code"] == "MT-CASH")
+    assert theirs["month_bottles"] == 38                               # admins see the final number, as in every report
