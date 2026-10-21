@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.role import Role
 from app.models.state_assignment import StateAssignment
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 
 EMPLOYEE_ROLE_CODE = "employee"
 
@@ -37,6 +37,7 @@ class EmployeeRepository:
             .where(
                 User.organization_id == org_id,
                 User.id == user_id,
+                User.status != UserStatus.DELETED.value,
                 User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant", "partner", "manager", "admin")),
                 *([] if include_admins else [User.id.not_in(self._role_ids_subquery("admin"))]),
             )
@@ -74,6 +75,7 @@ class EmployeeRepository:
             select(User)
             .where(
                 User.organization_id == org_id,
+                User.status != UserStatus.DELETED.value,
                 User.id.in_(self._role_ids_subquery(EMPLOYEE_ROLE_CODE, "accountant", "partner", "manager", "admin")),
             )
             .options(joinedload(User.region), joinedload(User.platform_organization))

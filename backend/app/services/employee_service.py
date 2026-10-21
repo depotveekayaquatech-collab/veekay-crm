@@ -261,16 +261,40 @@ def deactivate_employee(db: Session, actor: User, employee_id: uuid.UUID) -> Non
     db.commit()
 
 
-def delete_employee_permanently(db: Session, actor: User, employee_id: uuid.UUID, confirm_code: str) -> dict:
-    """Developer only. Remove a DEACTIVATED user for good. Their attendance, leave, salary and notification rows go with them
-    (attendance / leave / salary rows are first copied to deleted_rows by the database); things they entered elsewhere stay,
-    just no longer tied to a name. Refused while a paid payslip exists. A snapshot of the account is kept in the activity log."""
+# Rows that only exist to run the account (sign-in sessions, devices, notifications, access settings). Everything else that points
+# at a user is business data or history, and is never removed or left without its author.
+_ACCOUNT_ONLY = {
+    ("refresh_sessions", "user_id"), ("staff_devices", "user_id"), ("staff_notifications", "user_id"),
+    ("user_permissions", "user_id"), ("user_roles", "user_id"), ("employee_regions", "user_id"),
+    ("employee_exclusions", "user_id"), ("state_assignments", "assigned_user_id"),
+}
+
+
+def records_tied_to_user(db: Session, user_id: uuid.UUID) -> dict[str, int]:
+    """{table: rows} for every table (other than account-only ones) that points at this user. Read from the real foreign keys, so a
+    table added later is protected automatically."""
     from sqlalchemy import func
 
-    from app.models.attendance import AttendanceRecord, LeaveRequest
-    from app.models.order_entry import OrderEntry
-    from app.models.payroll import Payslip
+    from app.db.base import Base
 
+    found: dict[str, int] = {}
+    for table in Base.metadata.sorted_tables:
+        for fk in table.foreign_keys:
+            if fk.column.table.name != "users" or (table.name, fk.parent.name) in _ACCOUNT_ONLY:
+                continue
+            n = db.execute(select(func.count()).select_from(table).where(fk.parent == user_id)).scalar_one()
+            if n:
+                found[table.name] = found.get(table.name, 0) + n
+    return found
+
+
+def delete_employee_permanently(db: Session, actor: User, employee_id: uuid.UUID, confirm_code: str) -> dict:
+    """Developer only. Delete a DEACTIVATED user.
+    - Nothing points at them: the account row is removed for good.
+    - Records point at them (orders, cash purchases, attendance, leave, salary, uploads, tickets, activity ...): NOTHING is removed. The
+      account is retired instead — no login, no phone / email, no devices, hidden from the Team page — but the row stays so every record
+      keeps its author's name and Employee ID. The Employee ID stays reserved.
+    A snapshot of the account goes to the activity log either way."""
     user = require_employee(db, actor, employee_id)
     if user.id == actor.id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "You cannot delete yourself.")
@@ -278,25 +302,27 @@ def delete_employee_permanently(db: Session, actor: User, employee_id: uuid.UUID
         raise HTTPException(status.HTTP_409_CONFLICT, "Deactivate this user first; only a deactivated user can be deleted.")
     if (confirm_code or "").strip().upper() != user.employee_code.upper():
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Type the user's Employee ID exactly to confirm.")
-    if db.execute(select(func.count()).select_from(Payslip).where(Payslip.user_id == user.id)).scalar_one():
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This user has paid payslips, which are salary records. Keep the account deactivated instead of deleting it.",
-        )
 
-    def count(model, col) -> int:
-        return db.execute(select(func.count()).select_from(model).where(col == user.id)).scalar_one()
-
+    tied = records_tied_to_user(db, user.id)
     snapshot = {
         "employee_code": user.employee_code, "full_name": user.full_name, "email": user.email, "phone": user.phone,
         "roles": sorted(EmployeeRepository(db).role_codes(user.id)),
         "platform": user.platform_organization.slug if user.platform_organization else None,
-        "attendance_days_removed": count(AttendanceRecord, AttendanceRecord.user_id),
-        "leave_requests_removed": count(LeaveRequest, LeaveRequest.user_id),
-        "order_entries_kept_unnamed": count(OrderEntry, OrderEntry.marked_by_user_id),
+        "records_kept": tied, "mode": "retired" if tied else "removed",
     }
     activity_service.record(db, actor=actor, action="employee.deleted_permanently", entity_type="employee", entity_id=user.id, metadata=snapshot)
-    db.delete(user)
+    if not tied:
+        db.delete(user)
+    else:
+        from app.models.external_activity import StaffDevice
+
+        session_service.revoke_user_sessions(db, user.id)
+        db.query(StaffDevice).filter(StaffDevice.user_id == user.id).delete(synchronize_session=False)
+        user.status = UserStatus.DELETED.value
+        user.is_active = False
+        user.email = user.phone = None
+        user.password_hash = hash_password(generate_temp_password())   # nobody knows it
+        user.must_change_password = False
     db.commit()
     return snapshot
 

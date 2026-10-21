@@ -227,6 +227,11 @@ def import_employees(
             result.created += 1
             continue
 
+        if user.status == UserStatus.DELETED.value:   # removed by a developer: a sheet never brings them back
+            result.warnings.append(f"Row {n} ({code}): this user was deleted — skipped.")
+            result.unchanged += 1
+            continue
+
         # existing user: refresh profile + add roles; never touch password or direct permissions
         changed = False
         for attr, val in (

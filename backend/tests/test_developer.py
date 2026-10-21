@@ -125,18 +125,12 @@ def test_create_developer_script_makes_the_account(db):
         db.commit()
 
 
-def test_only_the_developer_can_permanently_delete_a_deactivated_user(client, admin, dev, make_user, db):
-    from datetime import datetime, timezone
-
-    from app.models.attendance import AttendanceRecord
+def test_only_the_developer_can_permanently_delete_a_deactivated_user_with_no_records(client, admin, dev, make_user, db):
     from app.models.user import User
 
     _, _, uid = make_user()
     code = db.get(User, uid).employee_code
     url = f"{API}/employees/{uid}/delete-permanently"
-    now = datetime.now(timezone.utc)
-    db.add(AttendanceRecord(organization_id=db.get(User, uid).organization_id, user_id=uid, work_date=now.date(), check_in_at=now))
-    db.commit()
 
     assert client.post(url, headers=admin, json={"confirm_code": code}).status_code == 403              # an admin cannot
     assert client.post(url, headers=dev, json={"confirm_code": code}).status_code == 409                # still active
@@ -144,12 +138,48 @@ def test_only_the_developer_can_permanently_delete_a_deactivated_user(client, ad
     assert client.post(url, headers=dev, json={"confirm_code": "WRONG"}).status_code == 422             # code must match
     r = client.post(url, headers=dev, json={"confirm_code": code.lower()})
     assert r.status_code == 200, r.text
-    assert r.json()["employee_code"] == code and r.json()["attendance_days_removed"] == 1
+    assert r.json()["employee_code"] == code
 
     db.expire_all()
     assert db.get(User, uid) is None
-    assert db.query(AttendanceRecord).filter_by(user_id=uid).count() == 0
     assert client.post(url, headers=dev, json={"confirm_code": code}).status_code == 404
+
+
+def test_deleting_a_user_with_records_keeps_every_record_and_its_author(client, admin, dev, make_user, make_store, db):
+    from datetime import date, datetime, timezone
+
+    from app.models.attendance import AttendanceRecord
+    from app.models.order_entry import OrderEntry
+    from app.models.user import User
+
+    code_pw = "Pass@12345"
+    login_code, pw, uid = make_user(password=code_pw)
+    user = db.get(User, uid)
+    name, code, user.email, user.phone = user.full_name, user.employee_code, "gone@example.com", "9999999999"
+    store = make_store()
+    entry = OrderEntry(organization_id=user.organization_id, store_id=store.id, order_date=date.today(), bottle_count=7, marked_by_user_id=uid)
+    now = datetime.now(timezone.utc)
+    db.add_all([entry, AttendanceRecord(organization_id=user.organization_id, user_id=uid, work_date=now.date(), check_in_at=now)])
+    db.commit()
+    entry_id = entry.id
+    assert client.post(f"{API}/employees/{uid}/deactivate", headers=dev).status_code == 204
+
+    r = client.post(f"{API}/employees/{uid}/delete-permanently", headers=dev, json={"confirm_code": code})
+    assert r.status_code == 200, r.text
+    assert r.json()["mode"] == "retired" and r.json()["records_kept"]["order_entries"] == 1 and r.json()["records_kept"]["attendance_records"] == 1
+
+    db.expire_all()
+    kept = db.get(User, uid)
+    assert kept is not None and kept.status == "deleted" and not kept.is_active          # the row stays so nothing loses its author ...
+    assert kept.full_name == name and kept.employee_code == code                          # ... still by name and ID
+    assert kept.email is None and kept.phone is None                                      # personal details are gone
+    assert db.get(OrderEntry, entry_id).marked_by_user_id == uid and db.get(OrderEntry, entry_id).bottle_count == 7
+    assert db.query(AttendanceRecord).filter_by(user_id=uid).count() == 1
+
+    assert login(client, login_code, pw).status_code in (401, 403)                        # cannot sign in any more
+    team = client.get(f"{API}/employees?pageSize=100&q={code}", headers=dev).json()
+    assert code not in {e["employee_code"] for e in team["items"]}                        # gone from the Team page
+    assert client.post(f"{API}/employees/{uid}/delete-permanently", headers=dev, json={"confirm_code": code}).status_code == 404
 
 
 def test_cannot_permanently_delete_yourself(client, dev):

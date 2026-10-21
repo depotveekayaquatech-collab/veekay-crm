@@ -20,6 +20,7 @@ class UserStatus(StrEnum):
     ACTIVE = "active"
     DEACTIVATED = "deactivated"
     LOCKED = "locked"  # temporary, from failed-login protection
+    DELETED = "deleted"  # removed by a developer: no login, hidden from the Team page, but kept so everything they did keeps its author
 
 
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
