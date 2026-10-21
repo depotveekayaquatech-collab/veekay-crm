@@ -358,3 +358,34 @@ def test_correction_rules(client, dev, office, make_user, clock):
     clock(18, 0)
     client.post(f"{API}/attendance/check-out", headers=h, json={})
     assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "18:00"}).status_code == 422  # not before check-out
+
+
+def test_developer_can_force_late_and_half_day_and_payroll_counts_the_half(client, dev, make_user, clock):
+    from app.services import payroll_service
+
+    clock(9, 30)
+    h, uid = _fresh_employee(client, make_user)
+    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    day = datetime.now(IST).date().isoformat()
+    base = {"user_id": str(uid), "work_date": day}
+
+    e = client.patch(f"{API}/attendance/record", headers=dev, json={**base, "late": True, "half_day": True}).json()
+    assert e["late"] is True and e["half_day"] is True
+    # a new time recomputes lateness, but an explicit late alongside it wins
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "09:00"}).json()["late"] is False
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "09:00", "late": True}).json()["late"] is True
+    # half day is kept until changed
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "late": False}).json()["half_day"] is True
+
+    # the day views carry it, and payroll counts the day as 0.5 (an admin's mark would still win)
+    rows = {x["user_id"]: x for x in client.get(f"{API}/attendance/day", headers=dev).json()["rows"]}
+    assert rows[str(uid)]["half_day"] is True
+    entry = {"status": "CHECKED_IN", "half_day": True, "minutes": 0, "late": False, "check_in_at": None, "check_out_at": None, "location": {"label": "x"}}
+    plain = {**entry, "half_day": False}
+    month = datetime.now(IST).date().replace(day=1)
+    d = payroll_service.build_days(month, {month.isoformat(): entry}, month, {})[0]
+    assert d["counted"] == 0.5 and d["default"] == 0.5
+    assert payroll_service.build_days(month, {month.isoformat(): plain}, month, {})[0]["counted"] == 1
+    assert payroll_service.build_days(month, {month.isoformat(): entry}, month, {month: "FULL"})[0]["counted"] == 1
+
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "half_day": False}).json()["half_day"] is False

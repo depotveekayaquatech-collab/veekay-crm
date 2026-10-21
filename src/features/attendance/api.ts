@@ -51,9 +51,19 @@ export interface DayRow extends Person {
   checkOutAt: string | null;
   minutes: number;
   late: boolean;
+  halfDay?: boolean; // a developer marked this worked day as a half day (payroll counts 0.5)
   location: LocationInfo;
   checkOutLocation: LocationInfo | null;
   leaveType: LeaveType | null;
+}
+
+export interface RecordCorrection {
+  user_id: string;
+  work_date: string;
+  check_in_time?: string;
+  presence?: "office" | "away";
+  late?: boolean;
+  half_day?: boolean;
 }
 
 export interface DayOverview {
@@ -182,11 +192,11 @@ export function useCheckMutations() {
   };
 }
 
-/** Developer only (`attendance.edit`): fix a day's check-in time and / or office vs away. */
+/** Developer only (`attendance.edit`): fix a day's check-in time, office vs away, late and half day. */
 export function useCorrectRecord() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { user_id: string; work_date: string; check_in_time?: string; presence?: "office" | "away" }) =>
+    mutationFn: (v: RecordCorrection) =>
       apiRequest("/attendance/record", { method: "PATCH", body: v }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["attendance"] });

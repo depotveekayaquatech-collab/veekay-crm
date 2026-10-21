@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { IconPlus, IconUpload } from "@/components/ui/icons";
 import { ImportEmployeesModal } from "@/features/team/ImportEmployeesModal";
 import { ResetPasswordModal } from "@/features/team/ResetPasswordModal";
+import { DeleteUserModal } from "@/features/team/DeleteUserModal";
 import { usePermission } from "@/hooks/usePermission";
 import { EmployeeAccessModal } from "@/features/team/EmployeeAccessModal";
 import { AdminAccountModal } from "@/features/team/AdminAccountModal";
@@ -35,6 +36,8 @@ export function TeamPage() {
   const canCreate = usePermission("employees.create");
   const canAssign = usePermission("assignments.manage");
   const canDeactivate = usePermission("employees.deactivate");
+  const canDelete = usePermission("employees.delete"); // developer only
+  const [deleting, setDeleting] = useState<Employee | null>(null);
   const canLogins = usePermission("logins.view");
   const [view, setView] = useState<"team" | "logins">("team");
   const { deactivate } = useTeamMutations();
@@ -188,6 +191,11 @@ export function TeamPage() {
                             Deactivate
                           </button>
                         )}
+                        {canDelete && !e.isActive && (
+                          <button className="text-status-danger hover:underline" onClick={() => setDeleting(e)}>
+                            Delete permanently
+                          </button>
+                        )}
                       </div>
                       )}
                     </Td>
@@ -214,6 +222,7 @@ export function TeamPage() {
       )}
       {importing && <ImportEmployeesModal onClose={() => setImporting(false)} />}
       {resetting && <ResetPasswordModal employee={resetting} onClose={() => setResetting(null)} />}
+      {deleting && <DeleteUserModal employee={deleting} onClose={() => setDeleting(null)} />}
     </div>
   );
 }

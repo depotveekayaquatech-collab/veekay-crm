@@ -261,6 +261,46 @@ def deactivate_employee(db: Session, actor: User, employee_id: uuid.UUID) -> Non
     db.commit()
 
 
+def delete_employee_permanently(db: Session, actor: User, employee_id: uuid.UUID, confirm_code: str) -> dict:
+    """Developer only. Remove a DEACTIVATED user for good. Their attendance, leave, salary and notification rows go with them
+    (attendance / leave / salary rows are first copied to deleted_rows by the database); things they entered elsewhere stay,
+    just no longer tied to a name. Refused while a paid payslip exists. A snapshot of the account is kept in the activity log."""
+    from sqlalchemy import func
+
+    from app.models.attendance import AttendanceRecord, LeaveRequest
+    from app.models.order_entry import OrderEntry
+    from app.models.payroll import Payslip
+
+    user = require_employee(db, actor, employee_id)
+    if user.id == actor.id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "You cannot delete yourself.")
+    if user.is_active:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Deactivate this user first; only a deactivated user can be deleted.")
+    if (confirm_code or "").strip().upper() != user.employee_code.upper():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Type the user's Employee ID exactly to confirm.")
+    if db.execute(select(func.count()).select_from(Payslip).where(Payslip.user_id == user.id)).scalar_one():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This user has paid payslips, which are salary records. Keep the account deactivated instead of deleting it.",
+        )
+
+    def count(model, col) -> int:
+        return db.execute(select(func.count()).select_from(model).where(col == user.id)).scalar_one()
+
+    snapshot = {
+        "employee_code": user.employee_code, "full_name": user.full_name, "email": user.email, "phone": user.phone,
+        "roles": sorted(EmployeeRepository(db).role_codes(user.id)),
+        "platform": user.platform_organization.slug if user.platform_organization else None,
+        "attendance_days_removed": count(AttendanceRecord, AttendanceRecord.user_id),
+        "leave_requests_removed": count(LeaveRequest, LeaveRequest.user_id),
+        "order_entries_kept_unnamed": count(OrderEntry, OrderEntry.marked_by_user_id),
+    }
+    activity_service.record(db, actor=actor, action="employee.deleted_permanently", entity_type="employee", entity_id=user.id, metadata=snapshot)
+    db.delete(user)
+    db.commit()
+    return snapshot
+
+
 def _is_full_admin(db: Session, actor: User) -> bool:
     """Full admins, and the developer (who holds every right an admin has, and more)."""
     return bool({ADMIN, DEVELOPER} & set(EmployeeRepository(db).role_codes(actor.id)))

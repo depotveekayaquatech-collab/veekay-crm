@@ -62,6 +62,7 @@ PERMISSIONS = [
     ("attendance.view", "View everyone's attendance (sign-in / sign-out times and location)"),
     ("attendance.manage", "Set the office locations used to recognise 'at the office'"),
     ("attendance.edit", "Correct a person's check-in time and whether they were at the office or away (developer only)"),
+    ("employees.delete", "Permanently delete a deactivated user and their attendance, leave and salary records (developer only)"),
     ("leave.review", "Approve or reject leave requests"),
     ("payroll.manage", "Payroll: set salaries, review attendance for payslips, mark days and pay salaries"),
     ("reports.delivery", "Download delivery reports (partner accounts)"),

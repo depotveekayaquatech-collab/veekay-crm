@@ -43,6 +43,11 @@ export async function deactivateEmployee(id: string): Promise<void> {
   await apiRequest(`/employees/${id}/deactivate`, { method: "POST" });
 }
 
+/** Developer only: removes a deactivated user for good. `confirmCode` must be their Employee ID. */
+export async function deleteEmployeePermanently(id: string, confirmCode: string): Promise<void> {
+  await apiRequest(`/employees/${id}/delete-permanently`, { method: "POST", body: { confirm_code: confirmCode } });
+}
+
 export async function setEmployeePermissions(id: string, codes: string[]): Promise<Employee> {
   return toEmployee(
     await apiRequest<EmployeeWire>(`/employees/${id}/permissions`, { method: "PUT", body: { codes } }),

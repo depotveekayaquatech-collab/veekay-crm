@@ -3,6 +3,7 @@ import {
   assignState,
   createEmployee,
   deactivateEmployee,
+  deleteEmployeePermanently,
   getStateBoard,
   listEmployees,
   listPermissionGroups,
@@ -55,6 +56,10 @@ export function useTeamMutations() {
     deactivate: useMutation({
       mutationFn: (id: string) => deactivateEmployee(id),
       onSuccess: () => done("Employee deactivated."),
+    }),
+    deletePermanently: useMutation({
+      mutationFn: ({ id, confirmCode }: { id: string; confirmCode: string }) => deleteEmployeePermanently(id, confirmCode),
+      onSuccess: () => done("User deleted permanently."),
     }),
     setAdminAccess: useMutation({
       mutationFn: ({ id, full }: { id: string; full: boolean }) => setAdminAccess(id, full),

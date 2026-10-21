@@ -146,6 +146,21 @@ def set_admin_access(
     return employee_service.set_admin_access(db, user, employee_id, payload.full)
 
 
+class DeleteConfirm(BaseModel):
+    confirm_code: str
+
+
+@router.post("/{employee_id}/delete-permanently", dependencies=[Depends(require_permission("employees.delete"))])
+def delete_employee_permanently(
+    employee_id: uuid.UUID,
+    payload: DeleteConfirm,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Developer only: permanently delete a deactivated user. Needs their Employee ID typed to confirm."""
+    return employee_service.delete_employee_permanently(db, user, employee_id, payload.confirm_code)
+
+
 @router.post(
     "/{employee_id}/deactivate", status_code=204,
     dependencies=[Depends(require_permission("employees.deactivate"))],

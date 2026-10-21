@@ -123,3 +123,35 @@ def test_create_developer_script_makes_the_account(db):
         db.query(UserRole).filter_by(user_id=u.id).delete()
         db.query(User).filter_by(id=u.id).delete()
         db.commit()
+
+
+def test_only_the_developer_can_permanently_delete_a_deactivated_user(client, admin, dev, make_user, db):
+    from datetime import datetime, timezone
+
+    from app.models.attendance import AttendanceRecord
+    from app.models.user import User
+
+    _, _, uid = make_user()
+    code = db.get(User, uid).employee_code
+    url = f"{API}/employees/{uid}/delete-permanently"
+    now = datetime.now(timezone.utc)
+    db.add(AttendanceRecord(organization_id=db.get(User, uid).organization_id, user_id=uid, work_date=now.date(), check_in_at=now))
+    db.commit()
+
+    assert client.post(url, headers=admin, json={"confirm_code": code}).status_code == 403              # an admin cannot
+    assert client.post(url, headers=dev, json={"confirm_code": code}).status_code == 409                # still active
+    assert client.post(f"{API}/employees/{uid}/deactivate", headers=dev).status_code == 204
+    assert client.post(url, headers=dev, json={"confirm_code": "WRONG"}).status_code == 422             # code must match
+    r = client.post(url, headers=dev, json={"confirm_code": code.lower()})
+    assert r.status_code == 200, r.text
+    assert r.json()["employee_code"] == code and r.json()["attendance_days_removed"] == 1
+
+    db.expire_all()
+    assert db.get(User, uid) is None
+    assert db.query(AttendanceRecord).filter_by(user_id=uid).count() == 0
+    assert client.post(url, headers=dev, json={"confirm_code": code}).status_code == 404
+
+
+def test_cannot_permanently_delete_yourself(client, dev):
+    me = client.get(f"{API}/auth/me", headers=dev).json()["id"]
+    assert client.post(f"{API}/employees/{me}/delete-permanently", headers=dev, json={"confirm_code": "x"}).status_code in (404, 422)

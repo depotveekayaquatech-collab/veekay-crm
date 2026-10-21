@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/Select";
 import { SearchBox } from "@/features/orders/ui";
 import { CategoryChips, GroupRow, LocationBadge, StatusBadge } from "@/features/attendance/parts";
 import { fmtMinutes, fmtTime } from "@/features/attendance/format";
-import { LEAVE_LABEL, useCorrectRecord, useDayAttendance, type DayRow, type DayStatus } from "@/features/attendance/api";
+import { LEAVE_LABEL, useCorrectRecord, useDayAttendance, type DayRow, type DayStatus, type RecordCorrection } from "@/features/attendance/api";
 import { downloadCsv } from "@/lib/csv";
 import { locationText, presenceText } from "@/features/attendance/format";
 import { daysAgo } from "@/lib/dates";
@@ -56,11 +56,16 @@ function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onC
   const correct = useCorrectRecord();
   const [time, setTime] = useState(hhmm(row.checkInAt));
   const [presence, setPresence] = useState(row.location.status === "office" ? "office" : "away");
+  const [late, setLate] = useState(row.late ? "yes" : "no");
+  const [half, setHalf] = useState(row.halfDay ? "yes" : "no");
 
-  const body: { user_id: string; work_date: string; check_in_time?: string; presence?: "office" | "away" } = { user_id: row.userId, work_date: date };
+  const body: RecordCorrection = { user_id: row.userId, work_date: date };
   if (time && time !== hhmm(row.checkInAt)) body.check_in_time = time;
   if (presence !== (row.location.status === "office" ? "office" : "away")) body.presence = presence as "office" | "away";
-  const changed = body.check_in_time !== undefined || body.presence !== undefined;
+  if ((late === "yes") !== row.late) body.late = late === "yes";
+  if ((half === "yes") !== Boolean(row.halfDay)) body.half_day = half === "yes";
+  // Late follows the time unless you set it yourself; if the time moves and you didn't touch Late, the server works it out again.
+  const changed = Object.keys(body).length > 2;
 
   return (
     <Modal
@@ -79,12 +84,24 @@ function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onC
       }
     >
       <div className="flex flex-col gap-4">
-        <Input label="Check-in time" type="time" value={time} onChange={(e) => setTime(e.target.value)} hint="Anything after the start time plus grace shows as Late." />
+        <Input label="Check-in time" type="time" value={time} onChange={(e) => setTime(e.target.value)} hint="Moving the time works out Late again, unless you set Late below as well." />
         <Select
           label="Where"
           value={presence}
           onChange={(e) => setPresence(e.target.value)}
           options={[{ value: "office", label: "At office" }, { value: "away", label: "Away (not from office)" }]}
+        />
+        <Select
+          label="Late"
+          value={late}
+          onChange={(e) => setLate(e.target.value)}
+          options={[{ value: "no", label: "Not late" }, { value: "yes", label: "Late" }]}
+        />
+        <Select
+          label="Half day"
+          value={half}
+          onChange={(e) => setHalf(e.target.value)}
+          options={[{ value: "no", label: "Full day" }, { value: "yes", label: "Half day (payroll counts 0.5)" }]}
         />
       </div>
     </Modal>
@@ -248,6 +265,7 @@ export function DailyView() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <StatusBadge status={r.status} />
                           {r.late && <Badge tone="warning">Late</Badge>}
+                          {r.halfDay && r.status !== "ON_LEAVE" && <Badge tone="neutral">Half day</Badge>}
                         </div>
                         {r.status === "ON_LEAVE" && r.leaveType && <div className="mt-0.5 text-[11px] text-gray-500">{LEAVE_LABEL[r.leaveType]}</div>}
                       </td>
