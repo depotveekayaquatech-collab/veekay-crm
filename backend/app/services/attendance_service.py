@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.roles import ADMIN, CATEGORY_LABELS, staff_category
 from app.models.attendance import AttendanceRecord, Office
+from app.models.payroll import PayrollPeriod, Payslip
 from app.models.role import Role
 from app.models.user import User, UserRole
 
@@ -201,9 +202,10 @@ def check_out(db: Session, user: User, lat: float | None, lng: float | None, acc
 
 def correct_record(
     db: Session, actor: User, user_id: uuid.UUID, day: date, check_in_time: str | None, presence: str | None,
-    office_id: uuid.UUID | None = None,
+    office_id: uuid.UUID | None = None, late: bool | None = None, half_day: bool | None = None,
 ) -> dict:
-    """Developer correction of one person's day: the check-in time (local HH:MM) and/or office vs away. Lateness is recomputed."""
+    """Developer correction of one person's day: check-in time (local HH:MM), office vs away, late or not, half day or not.
+    A new time recomputes lateness; an explicit `late` wins over that."""
     rec = db.execute(
         select(AttendanceRecord).where(
             AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date == day
@@ -211,8 +213,8 @@ def correct_record(
     ).scalar_one_or_none()
     if rec is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That person has no check-in on this day to correct.")
-    if check_in_time is None and presence is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time or office / away.")
+    if check_in_time is None and presence is None and late is None and half_day is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time, office / away, late or half day.")
 
     if check_in_time is not None:
         try:
@@ -238,6 +240,17 @@ def correct_record(
         if rec.check_in_status != "outside":  # a position that was read at the office isn't where they were; keep real outside readings
             rec.check_in_lat = rec.check_in_lng = rec.check_in_accuracy_m = rec.check_in_distance_m = None
         rec.check_in_status, rec.check_in_label = "outside", None
+
+    if late is not None:
+        rec.late = late
+    if half_day is not None and half_day != rec.half_day:
+        paid = db.execute(
+            select(Payslip.id).join(PayrollPeriod, PayrollPeriod.id == Payslip.period_id)
+            .where(Payslip.user_id == user_id, PayrollPeriod.month == day.replace(day=1))
+        ).first()
+        if paid is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This month's salary is already paid, so its days are locked.")
+        rec.half_day = half_day
 
     rec.source = "edited"
     db.commit()
@@ -323,7 +336,7 @@ def _record_status(r: AttendanceRecord, now: datetime) -> str:
 def _entry(r: AttendanceRecord, now: datetime) -> dict:
     return {
         "status": _record_status(r, now), "check_in_at": r.check_in_at, "check_out_at": r.check_out_at,
-        "minutes": _minutes(r, now), "late": r.late, "location": _in_loc(r), "check_out_location": _out_loc(r),
+        "minutes": _minutes(r, now), "late": r.late, "half_day": r.half_day, "location": _in_loc(r), "check_out_location": _out_loc(r),
         "source": r.source,
     }
 

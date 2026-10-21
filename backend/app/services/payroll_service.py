@@ -153,7 +153,9 @@ def _kind(entry: dict | None, d: date, joined: date) -> str:
 
 
 def _default_value(kind: str, entry: dict | None) -> Decimal:
-    if kind in ("PRESENT", "OFF"):
+    if kind == "PRESENT":
+        return Decimal("0.5") if entry is not None and entry.get("half_day") else Decimal("1")   # half day set by a developer
+    if kind == "OFF":
         return Decimal("1")
     if kind == "LEAVE" and entry is not None and entry.get("leave_type") not in _PAID_LEAVES_OFF:
         return Decimal("0.5") if entry.get("half_day") else Decimal("1")

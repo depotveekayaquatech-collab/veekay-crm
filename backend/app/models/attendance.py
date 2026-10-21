@@ -86,6 +86,7 @@ class AttendanceRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     check_in_distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
     check_in_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     late: Mapped[bool] = mapped_column(Boolean, default=False)
+    half_day: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # set by a developer: payroll counts the day as 0.5
 
     check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     check_out_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
