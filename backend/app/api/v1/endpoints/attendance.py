@@ -37,6 +37,15 @@ class Reading(BaseModel):
     accuracy: float | None = Field(default=None, ge=0, le=100000)
 
 
+class RecordCorrection(BaseModel):
+    """Developer fix for one person's day. Send only what changes."""
+    user_id: uuid.UUID
+    work_date: date
+    check_in_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # local HH:MM
+    presence: Literal["office", "away"] | None = None
+    office_id: uuid.UUID | None = None
+
+
 class LeaveApply(BaseModel):
     leave_type: Literal["CASUAL", "SICK", "PAID", "UNPAID"]
     start_date: date
@@ -90,6 +99,12 @@ def day(
 def month(month: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Month grid: per person, per day — check in, check out, hours, location, leave."""
     return attendance_service.month_summary(db, user, attendance_service.parse_month(month))
+
+
+@router.patch("/record", dependencies=[Depends(require_permission("attendance.edit"))])
+def correct_record(payload: RecordCorrection, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Developer only: fix a day's check-in time and / or whether the person was at the office or away. Lateness is recomputed."""
+    return attendance_service.correct_record(db, user, payload.user_id, payload.work_date, payload.check_in_time, payload.presence, payload.office_id)
 
 
 # ---------------------------------------------------------------- leave

@@ -182,6 +182,19 @@ export function useCheckMutations() {
   };
 }
 
+/** Developer only (`attendance.edit`): fix a day's check-in time and / or office vs away. */
+export function useCorrectRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { user_id: string; work_date: string; check_in_time?: string; presence?: "office" | "away" }) =>
+      apiRequest("/attendance/record", { method: "PATCH", body: v }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["attendance"] });
+      pushToast("Attendance updated.", "success");
+    },
+  });
+}
+
 export function useDayAttendance(date: string) {
   return useQuery({
     queryKey: ["attendance", "day", date],

@@ -310,3 +310,51 @@ def test_presence_text_at_office_away_and_not_shared(client, office, make_user, 
     assert at["presence"] == "At office" and at["label"] == "Head Office"
     assert far["presence"] == "Away (not from office)" and "," in far["label"]          # coordinates are shown
     assert none["presence"] == "Away (not from office)" and none["label"] == "Location not shared"
+
+
+# ---------------------------------------------------------------- developer correction
+def test_only_a_developer_can_correct_a_day(client, admin, emp, make_user, clock):
+    clock(9, 30)
+    h, uid = _fresh_employee(client, make_user)
+    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    body = {"user_id": str(uid), "date": datetime.now(IST).date().isoformat(), "check_in_time": "10:30"}
+    body["work_date"] = body.pop("date")
+    for who in (admin, emp, h):
+        assert client.patch(f"{API}/attendance/record", headers=who, json=body).status_code == 403
+
+
+def test_developer_sets_the_check_in_time_and_office_or_away(client, dev, office, make_user, clock):
+    clock(12, 0)
+    h, uid = _fresh_employee(client, make_user)
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(_north(5000))).json()["check_in_location"]["status"] == "outside"
+    day = datetime.now(IST).date().isoformat()
+
+    r = client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": day, "check_in_time": "10:30", "presence": "office"})
+    assert r.status_code == 200, r.text
+    e = r.json()
+    assert e["late"] is True and e["location"]["status"] == "office" and e["location"]["label"] == "Head Office" and e["source"] == "edited"
+    assert datetime.fromisoformat(e["check_in_at"]).astimezone(IST).strftime("%H:%M") == "10:30"
+
+    # on time again, and back to away: no office position is kept
+    r = client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": day, "check_in_time": "09:45", "presence": "away"})
+    e = r.json()
+    assert e["late"] is False and e["location"]["status"] == "unknown" and e["location"]["presence"] == "Away (not from office)"
+
+    # the admin day view reflects it
+    rows = {x["user_id"]: x for x in client.get(f"{API}/attendance/day", headers=dev).json()["rows"]}
+    assert rows[str(uid)]["late"] is False
+
+
+def test_correction_rules(client, dev, office, make_user, clock):
+    clock(12, 0)
+    h, uid = _fresh_employee(client, make_user)
+    day = datetime.now(IST).date().isoformat()
+    base = {"user_id": str(uid), "work_date": day}
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "presence": "office"}).status_code == 404   # no check-in yet
+    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    assert client.patch(f"{API}/attendance/record", headers=dev, json=base).status_code == 422                            # nothing to change
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "25:00"}).status_code == 422
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "13:00"}).status_code == 422  # future
+    clock(18, 0)
+    client.post(f"{API}/attendance/check-out", headers=h, json={})
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "18:00"}).status_code == 422  # not before check-out

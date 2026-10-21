@@ -1,4 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
+import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { usePermission } from "@/hooks/usePermission";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/feedback/Skeleton";
@@ -8,7 +11,7 @@ import { Select } from "@/components/ui/Select";
 import { SearchBox } from "@/features/orders/ui";
 import { CategoryChips, GroupRow, LocationBadge, StatusBadge } from "@/features/attendance/parts";
 import { fmtMinutes, fmtTime } from "@/features/attendance/format";
-import { LEAVE_LABEL, useDayAttendance, type DayStatus } from "@/features/attendance/api";
+import { LEAVE_LABEL, useCorrectRecord, useDayAttendance, type DayRow, type DayStatus } from "@/features/attendance/api";
 import { downloadCsv } from "@/lib/csv";
 import { locationText, presenceText } from "@/features/attendance/format";
 import { daysAgo } from "@/lib/dates";
@@ -38,7 +41,59 @@ const STATUS_OPTIONS = [
   { value: "ABSENT", label: "Absent" },
 ];
 
+function hhmm(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** Developer-only fix for one person's day: when they checked in, and whether that counts as at the office or away. */
+function EditRecordModal({ row, date, onClose }: { row: DayRow | null; date: string; onClose: () => void }) {
+  return row ? <EditRecordForm key={row.userId} row={row} date={date} onClose={onClose} /> : null;
+}
+
+function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onClose: () => void }) {
+  const correct = useCorrectRecord();
+  const [time, setTime] = useState(hhmm(row.checkInAt));
+  const [presence, setPresence] = useState(row.location.status === "office" ? "office" : "away");
+
+  const body: { user_id: string; work_date: string; check_in_time?: string; presence?: "office" | "away" } = { user_id: row.userId, work_date: date };
+  if (time && time !== hhmm(row.checkInAt)) body.check_in_time = time;
+  if (presence !== (row.location.status === "office" ? "office" : "away")) body.presence = presence as "office" | "away";
+  const changed = body.check_in_time !== undefined || body.presence !== undefined;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title={`Edit attendance — ${row.fullName}`}
+      description={`${row.employeeCode} · ${date}. Developer correction; lateness is worked out again from the new time.`}
+      footer={
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!changed || correct.isPending} onClick={() => correct.mutate(body, { onSuccess: onClose })}>
+            {correct.isPending ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Input label="Check-in time" type="time" value={time} onChange={(e) => setTime(e.target.value)} hint="Anything after the start time plus grace shows as Late." />
+        <Select
+          label="Where"
+          value={presence}
+          onChange={(e) => setPresence(e.target.value)}
+          options={[{ value: "office", label: "At office" }, { value: "away", label: "Away (not from office)" }]}
+        />
+      </div>
+    </Modal>
+  );
+}
+
 export function DailyView() {
+  const canEdit = usePermission("attendance.edit");
+  const [editing, setEditing] = useState<DayRow | null>(null);
   const [date, setDate] = useState(daysAgo(0));
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"" | DayStatus>("");
@@ -210,7 +265,14 @@ export function DailyView() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right font-semibold tabular-nums text-heading">{present ? fmtMinutes(r.minutes) : "—"}</td>
-                      <td className="px-4 py-3">{present ? <LocationBadge location={r.location} /> : <span className="text-gray-300">—</span>}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          {present ? <LocationBadge location={r.location} /> : <span className="text-gray-300">—</span>}
+                          {canEdit && present && (
+                            <Button variant="secondary" size="sm" onClick={() => setEditing(r)}>Edit</Button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   </Fragment>
                 );
@@ -219,6 +281,7 @@ export function DailyView() {
           </table>
         </div>
       )}
+      <EditRecordModal row={editing} date={date} onClose={() => setEditing(null)} />
       {isFetching && !isLoading && <p className="-mt-3 text-xs text-gray-400">Refreshing…</p>}
       <p className="text-xs text-gray-400">
         Late means checking in after the work start time plus the grace period. Sundays are the weekly off. Locations come from the device and can be faked.

@@ -199,6 +199,51 @@ def check_out(db: Session, user: User, lat: float | None, lng: float | None, acc
     return today_status(db, user)
 
 
+def correct_record(
+    db: Session, actor: User, user_id: uuid.UUID, day: date, check_in_time: str | None, presence: str | None,
+    office_id: uuid.UUID | None = None,
+) -> dict:
+    """Developer correction of one person's day: the check-in time (local HH:MM) and/or office vs away. Lateness is recomputed."""
+    rec = db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date == day
+        )
+    ).scalar_one_or_none()
+    if rec is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person has no check-in on this day to correct.")
+    if check_in_time is None and presence is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time or office / away.")
+
+    if check_in_time is not None:
+        try:
+            h, m = (int(x) for x in check_in_time.split(":"))
+            new_in = datetime.combine(day, time(h, m), tzinfo=_tz()).astimezone(timezone.utc)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Time must look like 10:30.") from exc
+        if new_in > _now():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The check-in time can't be in the future.")
+        if rec.check_out_at is not None and new_in >= rec.check_out_at:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The check-in must be before the check-out at {_fmt_time(rec.check_out_at)}.")
+        rec.check_in_at = new_in
+        rec.late = _is_late(new_in)
+
+    if presence == "office":
+        q = select(Office).where(Office.organization_id == actor.organization_id, Office.is_active.is_(True))
+        office = (db.get(Office, office_id) if office_id else db.execute(q.order_by(Office.name)).scalars().first())
+        if office is None or office.organization_id != actor.organization_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Add an office first (Attendance > Offices).")
+        rec.check_in_status, rec.check_in_label = "office", office.name
+        rec.check_in_lat, rec.check_in_lng, rec.check_in_accuracy_m, rec.check_in_distance_m = office.latitude, office.longitude, None, 0.0
+    elif presence == "away":
+        if rec.check_in_status != "outside":  # a position that was read at the office isn't where they were; keep real outside readings
+            rec.check_in_lat = rec.check_in_lng = rec.check_in_accuracy_m = rec.check_in_distance_m = None
+        rec.check_in_status, rec.check_in_label = "outside", None
+
+    rec.source = "edited"
+    db.commit()
+    return _entry(rec, _now())
+
+
 def today_status(db: Session, user: User) -> dict:
     from app.services import leave_service
 
