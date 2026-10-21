@@ -466,3 +466,23 @@ def test_match_stores_again_fills_in_rows_from_what_the_sheet_said_without_a_new
 def test_only_the_developer_can_rematch(client, admin, emp):
     for who in (admin, emp):
         assert client.post(f"{CASH}/sync/rematch", headers=who).status_code == 403
+
+
+def test_start_date_sync_can_be_limited_to_one_vendor(client, dev, db, make_store):
+    """RAJ GGN-style fix: a store whose start date is later than its first supply moves back to that supply, and other vendors' stores are untouched."""
+    mine, other = make_store(code="SDV-1", vendor="ZZ Sync Vendor"), make_store(code="SDV-2", vendor="ZZ Other Vendor")
+    first = date(2026, 7, 3)
+    for s in (mine, other):
+        _entry(db, s, first, 5)
+        s.start_date = date(2026, 9, 1)
+    db.commit()
+
+    body = {"platform": "blinkit", "vendor": " zz sync vendor "}
+    preview = client.post(SYNC, headers=dev, json={**body, "dry_run": True}).json()
+    assert preview["stores"] == 1 and preview["move_earlier"] == 1
+    db.expire_all()
+    assert mine.start_date == date(2026, 9, 1)                      # a preview changes nothing
+
+    assert client.post(SYNC, headers=dev, json={**body, "dry_run": False}).status_code == 200
+    db.expire_all()
+    assert mine.start_date == first and other.start_date == date(2026, 9, 1)

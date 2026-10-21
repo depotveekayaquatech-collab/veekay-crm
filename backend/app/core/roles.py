@@ -6,7 +6,7 @@ employees split by the platform they serve. Pure functions — no database acces
 ADMIN = "admin"
 ACCOUNTANT = "accountant"
 MANAGER = "manager"  # a "custom admin": counts as an admin on the Team page, but only holds the permissions ticked for them
-DEVELOPER = "developer"  
+DEVELOPER = "developer" 
 PARTNER = "partner"  # a Blinkit / Zepto login: sees only its own platform, and only what an admin switched on
 
 CATEGORY_LABELS = {

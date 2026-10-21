@@ -59,12 +59,13 @@ export function CardsPage() {
   const [busy, setBusy] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["card-vendors", partner, region, search],
+    queryKey: ["card-vendors", partner, region, search, month],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (partner) qs.set("partner", partner);
       if (region) qs.set("region", region);
       if (search) qs.set("q", search);
+      if (month) qs.set("month", month); // only vendors that have stores in that month
       return camelize<VendorsResponse>(await apiRequest(`/cards/vendors?${qs}`));
     },
     placeholderData: (prev) => prev,

@@ -129,12 +129,12 @@ export interface StartDatesResult {
 }
 
 /** Developer only: set each store's start date to its first supplied day from the order sheet. `dryRun` only counts. */
-export async function syncStartDates(platform: string, replaceExisting: boolean, dryRun: boolean): Promise<StartDatesResult> {
+export async function syncStartDates(platform: string, replaceExisting: boolean, dryRun: boolean, vendor = ""): Promise<StartDatesResult> {
   const w = await apiRequest<{
     stores: number; to_fill: number; move_earlier: number; keep_hand_dates: number; unchanged: number; no_orders: number; to_change: number;
     replace_existing: boolean; dry_run: boolean; no_orders_by_status?: Record<string, number>;
     no_orders_live_sample?: { name: string; code: string; platform: string }[];
-  }>("/stores/sync-start-dates", { method: "POST", body: { platform: platform || null, overwrite: replaceExisting, dry_run: dryRun } });
+  }>("/stores/sync-start-dates", { method: "POST", body: { platform: platform || null, overwrite: replaceExisting, dry_run: dryRun, vendor: vendor.trim() || null } });
   return {
     stores: w.stores, toFill: w.to_fill, moveEarlier: w.move_earlier, keepHandDates: w.keep_hand_dates, unchanged: w.unchanged, noOrders: w.no_orders,
     toChange: w.to_change, replaceExisting: w.replace_existing, dryRun: w.dry_run,

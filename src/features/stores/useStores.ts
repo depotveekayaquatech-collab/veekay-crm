@@ -106,8 +106,8 @@ export function useStoreMutations() {
   });
 
   const startDates = useMutation({
-    mutationFn: ({ platform, replaceExisting, dryRun }: { platform: string; replaceExisting: boolean; dryRun: boolean }) =>
-      syncStartDates(platform, replaceExisting, dryRun),
+    mutationFn: ({ platform, replaceExisting, dryRun, vendor }: { platform: string; replaceExisting: boolean; dryRun: boolean; vendor?: string }) =>
+      syncStartDates(platform, replaceExisting, dryRun, vendor),
     onSuccess: (r) => {
       if (r.dryRun) return;
       invalidate();

@@ -139,6 +139,7 @@ def move_platform(
 class SyncStartDatesRequest(BaseModel):
     platform: str | None = None         # a platform slug; blank = every platform
     overwrite: bool = False             # also replace start dates that are already set
+    vendor: str | None = None           # only this vendor's stores (exact name); blank = all
     dry_run: bool = True
 
 
@@ -152,12 +153,12 @@ def sync_start_dates(
     always filled; dates already set are only replaced with `overwrite`. `dry_run` (default) only counts."""
     partner_id = store_service._partner_by_slug(db, payload.platform).id if (payload.platform or "").strip() else None
     result = vendor_history_service.sync_start_dates(
-        db, user.organization_id, partner_id=partner_id, overwrite=payload.overwrite, dry_run=payload.dry_run
+        db, user.organization_id, partner_id=partner_id, overwrite=payload.overwrite, dry_run=payload.dry_run, vendor=payload.vendor
     )
     if not payload.dry_run and result["to_change"]:
         activity_service.record(
             db, actor=user, action="store.start_dates_synced", entity_type="organization", entity_id=user.organization_id,
-            metadata={"platform": payload.platform or "all", "filled": result["to_fill"],
+            metadata={"platform": payload.platform or "all", "vendor": payload.vendor or "all", "filled": result["to_fill"],
                       "replaced": result["differs"] if payload.overwrite else 0},
         )
         db.commit()

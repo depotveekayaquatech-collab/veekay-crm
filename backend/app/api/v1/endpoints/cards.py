@@ -76,6 +76,7 @@ def vendors(
     partner: str | None = None,
     region: uuid.UUID | None = None,
     q: str | None = None,
+    month: str | None = None,
     perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -87,7 +88,7 @@ def vendors(
         or not settings.PUBLIC_APP_URL.startswith("https://")
     )
     return VendorsOut(
-        vendors=[VendorOut(**v) for v in card_service.list_vendors(db, user, is_admin=_is_admin(perms), partner=partner, region=region, q=q)],
+        vendors=[VendorOut(**v) for v in card_service.list_vendors(db, user, is_admin=_is_admin(perms), partner=partner, region=region, q=q, month=card_service.parse_card_month(month))],
         regions=[RegionOut(**r) for r in card_service.list_regions(db, user, is_admin=_is_admin(perms), partner=partner)],
         months=[MonthOption(**m) for m in card_service.available_months(db, user.organization_id)],
         public_app_url=settings.PUBLIC_APP_URL,

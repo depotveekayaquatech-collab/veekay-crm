@@ -268,8 +268,10 @@ def list_regions(db: Session, user: User, *, is_admin: bool, partner: str | None
 
 def list_vendors(
     db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None, q: str | None = None,
+    month: date | None = None,
 ) -> list[dict]:
-    """Vendors with their live-store counts. With `q`, keep vendors whose name matches or that have a store whose
+    """Vendors with their live-store counts. With `month`, only stores that had started by then count (the same rule the PDF uses), so a
+    vendor never appears for a month it would have no cards in. With `q`, keep vendors whose name matches or that have a store whose
     name / outlet code / city matches, and report up to MAX_MATCHES of those stores."""
     needle = (q or "").strip().lower()
     if len(needle) < 2:
@@ -277,7 +279,7 @@ def list_vendors(
     # Digit-only matching is for phone-style searches only (no letters), so "es117" can't match on "117" alone.
     digits = "" if re.search(r"[a-z]", needle) else re.sub(r"\D", "", needle)  # lets "98765 43210" or "+91-98765…" still find a phone number
     groups: dict[str, list[Store]] = {}
-    for s in _stores(db, user, is_admin=is_admin, partner=partner, region=region):
+    for s in store_activity.filter_active_in_month(_stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
         groups.setdefault(_vendor_key(s), []).append(s)
     out = []
     for v, ss in groups.items():

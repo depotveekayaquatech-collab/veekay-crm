@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useStoreMutations, usePartners } from "@/features/stores/useStores";
 
@@ -10,10 +11,11 @@ export function SyncStartDatesModal({ onClose }: { onClose: () => void }) {
   const { startDates } = useStoreMutations();
   const [platform, setPlatform] = useState("");
   const [replace, setReplace] = useState(false);
+  const [vendor, setVendor] = useState("");
 
   const preview = startDates.data?.dryRun ? startDates.data : null;
   const done = startDates.data && !startDates.data.dryRun ? startDates.data : null;
-  const run = (dryRun: boolean, p = platform, r = replace) => startDates.mutate({ platform: p, replaceExisting: r, dryRun });
+  const run = (dryRun: boolean, p = platform, r = replace, v = vendor) => startDates.mutate({ platform: p, replaceExisting: r, dryRun, vendor: v });
 
   // Show what would change as soon as the window opens, and again whenever an option changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -45,6 +47,15 @@ export function SyncStartDatesModal({ onClose }: { onClose: () => void }) {
           onChange={(e) => { setPlatform(e.target.value); run(true, e.target.value); }}
           placeholder="All platforms"
           options={partners.map((p) => ({ value: p.slug, label: p.name }))}
+        />
+        <Input
+          label="Vendor (optional)"
+          value={vendor}
+          onChange={(e) => setVendor(e.target.value)}
+          onBlur={() => run(true)}
+          onKeyDown={(e) => e.key === "Enter" && run(true)}
+          placeholder="e.g. RAJ GGN — blank = every vendor"
+          hint="Only this vendor's stores are checked and changed."
         />
         <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
           <input

@@ -207,3 +207,16 @@ def test_cards_vendors_returns_public_app_url(client, admin):
     assert "public_app_url" in body
     assert "is_public_app_url_production_ready" in body
 
+
+
+def test_vendor_list_for_a_month_only_has_stores_that_had_started(client, admin, make_store):
+    """A vendor whose stores all started after the chosen month must not be offered for it (its PDF would be empty -> 404)."""
+    late, early = make_store(vendor="ZZ Late Vendor"), make_store(vendor="ZZ Early Vendor")
+    late.start_date, early.start_date = date(2026, 9, 1), date(2026, 5, 1)
+    from sqlalchemy.orm import object_session
+    object_session(late).commit()
+
+    july = {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-07"}).json()["vendors"]}
+    assert "ZZ Early Vendor" in july and "ZZ Late Vendor" not in july
+    assert client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Late Vendor", "month": "2026-07"}).status_code == 404
+    assert "ZZ Late Vendor" in {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin).json()["vendors"]}   # no month: all

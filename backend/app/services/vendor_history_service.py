@@ -121,17 +121,20 @@ def set_start_dates_from_orders(db: Session, partner_id: uuid.UUID) -> int:
 
 def sync_start_dates(
     db: Session, org_id: uuid.UUID, *, partner_id: uuid.UUID | None = None, overwrite: bool = False, dry_run: bool = True,
+    vendor: str | None = None,
 ) -> dict:
     """Developer tool: set each store's start date to the first day it was supplied (earliest order with bottles).
 
     Always applied: empty dates are filled, and a date LATER than the first supply moves back to it (`earlier` in the
     counts). A date EARLIER than the first supply is usually one entered by hand for a store that began before our order
     data starts; it is only replaced when `overwrite` is true (counted as `later`). `dry_run` only counts. Stores with
-    no supplied day yet are never touched."""
+    no supplied day yet are never touched. `vendor` limits it to the stores of that vendor (exact name, any case)."""
     first = _first_supply()
     cond = [Store.organization_id == org_id]
     if partner_id is not None:
         cond.append(Store.partner_organization_id == partner_id)
+    if vendor and vendor.strip():
+        cond.append(func.lower(func.trim(Store.vendor_name)) == vendor.strip().lower())
     stores, fill, earlier, later, same = db.execute(
         select(
             func.count(),
