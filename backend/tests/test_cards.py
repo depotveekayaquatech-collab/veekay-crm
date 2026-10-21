@@ -220,3 +220,21 @@ def test_vendor_list_for_a_month_only_has_stores_that_had_started(client, admin,
     assert "ZZ Early Vendor" in july and "ZZ Late Vendor" not in july
     assert client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Late Vendor", "month": "2026-07"}).status_code == 404
     assert "ZZ Late Vendor" in {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin).json()["vendors"]}   # no month: all
+
+
+def test_a_store_with_bottles_in_the_month_is_on_that_months_cards_even_if_its_start_date_is_later(client, admin, db, make_store):
+    """No hassle: a wrong start date must never hide a store that was actually supplied that month."""
+    s = make_store(vendor="ZZ Supplied Vendor")
+    s.start_date = date(2026, 9, 1)
+    entry(db, s, date(2026, 7, 3), 6)
+    db.commit()
+
+    july = {v["vendor"]: v["stores"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-07"}).json()["vendors"]}
+    assert july["ZZ Supplied Vendor"] == 1
+    pdf = client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Supplied Vendor", "month": "2026-07"})
+    assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-"
+    zipped = client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["ZZ Supplied Vendor"], "month": "2026-07"})
+    assert zipped.status_code == 200
+    # June had no bottles and the store had not started: still not offered
+    june = {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-06"}).json()["vendors"]}
+    assert "ZZ Supplied Vendor" not in june

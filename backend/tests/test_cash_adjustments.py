@@ -1,7 +1,7 @@
 """Developer cash-purchase adjustments + Sync Cash Purchase: adds to (never replaces) the real entry, ceil maths,
 preview changes nothing, duplicate-sync protection, changed-record review, developer-only access."""
 import io
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -352,3 +352,13 @@ def test_vendor_analysis_ranks_flags_and_lists_store_names(client, admin, dev, d
     for who in (admin,):
         assert client.get(f"{BASE}/analysis", headers=who).status_code == 403
         assert client.get(f"{BASE}/analysis/export", headers=who).status_code == 403
+
+
+def test_a_cash_adjustment_on_an_earlier_day_pulls_the_stores_start_date_back(client, dev, db, make_store):
+    s = make_store(code="CA-SD")
+    s.start_date = TODAY                                          # starts "today", but a purchase is applied to an earlier day
+    db.commit()
+    earlier = TODAY - timedelta(days=3)
+    assert client.post(f"{BASE}/apply", headers=dev, json=_body([s], purchase_date=earlier.isoformat(), quantity=5)).status_code == 200
+    db.expire_all()
+    assert s.start_date == earlier

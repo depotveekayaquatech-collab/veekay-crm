@@ -209,6 +209,25 @@ def public_count(db: Session, store_id: uuid.UUID, sig: str) -> dict:
 # store selection + vendors
 # --------------------------------------------------------------------------
 
+def _in_month(db: Session, stores: list[Store], month: date | None) -> list[Store]:
+    """The stores to print for a month: those that had started by then, PLUS any store with bottles recorded in that month whatever
+    its start date says. Orders are the truth, so a wrong start date can never hide a store that was actually supplied."""
+    kept = store_activity.filter_active_in_month(stores, month)
+    if month is None:
+        return kept
+    have = {s.id for s in kept}
+    rest = [s.id for s in stores if s.id not in have]
+    if rest:
+        supplied = set(db.execute(
+            select(OrderEntry.store_id).where(
+                OrderEntry.store_id.in_(rest), OrderEntry.bottle_count > 0,
+                OrderEntry.order_date >= month, OrderEntry.order_date <= store_activity.month_end(month),
+            ).distinct()
+        ).scalars())
+        kept = kept + [s for s in stores if s.id in supplied]
+    return kept
+
+
 def _stores(db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None) -> list[Store]:
     if is_admin:
         stmt = (
@@ -279,7 +298,7 @@ def list_vendors(
     # Digit-only matching is for phone-style searches only (no letters), so "es117" can't match on "117" alone.
     digits = "" if re.search(r"[a-z]", needle) else re.sub(r"\D", "", needle)  # lets "98765 43210" or "+91-98765…" still find a phone number
     groups: dict[str, list[Store]] = {}
-    for s in store_activity.filter_active_in_month(_stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
+    for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
         groups.setdefault(_vendor_key(s), []).append(s)
     out = []
     for v, ss in groups.items():
@@ -624,7 +643,7 @@ def build_pdf(
     month: date | None, store_id: uuid.UUID | None = None, region: uuid.UUID | None = None,
 ) -> tuple[bytes, int, str]:
     """One PDF: a card per live store of the vendor (or a single store). month=None -> blank cards."""
-    stores = store_activity.filter_active_in_month(_stores(db, user, is_admin=is_admin, partner=partner, region=region), month)
+    stores = _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region), month)
     if store_id is not None:
         stores = [s for s in stores if s.id == store_id]
         vendor = vendor or (_vendor_key(stores[0]) if stores else "")
@@ -651,7 +670,7 @@ def build_zip(
     if not wanted:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one vendor.")
     groups: dict[str, list[Store]] = {}
-    for s in store_activity.filter_active_in_month(_stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
+    for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
         if _vendor_key(s).lower() in wanted:
             groups.setdefault(_vendor_key(s), []).append(s)
     if not groups:

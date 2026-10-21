@@ -35,7 +35,7 @@ from app.schemas.cash_adjustment import (
     PreviewRow,
     StoreChoice,
 )
-from app.services import activity_service
+from app.services import activity_service, vendor_history_service
 from app.services.order_service import _check_order_date
 
 _IST = timezone(timedelta(hours=5, minutes=30))
@@ -125,6 +125,7 @@ def apply_to_entry(db: Session, user: User, store: Store, order_date: date, fina
                     bottle_count=final, cash_adjustment=final, source=EntrySource.ADMIN.value, marked_by_user_id=user.id,
                 ))
                 db.flush()
+            vendor_history_service.pull_start_back(db, store, order_date, final)
             return 0, final, None
         except IntegrityError:
             # An employee saved this day a moment ago: add to their entry instead.
@@ -136,6 +137,7 @@ def apply_to_entry(db: Session, user: User, store: Store, order_date: date, fina
         raise _invalid(f"The new total ({previous + final}) is more than {settings.MAX_BOTTLE_COUNT}.")
     entry.bottle_count = previous + final
     entry.cash_adjustment = entry.cash_adjustment + final
+    vendor_history_service.pull_start_back(db, store, order_date, entry.bottle_count)
     # The employee's real entry (and who marked it) is kept; only the adjustment on top of it grows.
     return previous, entry.bottle_count, entry.bottle_count - entry.cash_adjustment
 
