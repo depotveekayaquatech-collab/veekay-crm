@@ -203,9 +203,11 @@ def check_out(db: Session, user: User, lat: float | None, lng: float | None, acc
 def correct_record(
     db: Session, actor: User, user_id: uuid.UUID, day: date, check_in_time: str | None, presence: str | None,
     office_id: uuid.UUID | None = None, late: bool | None = None, half_day: bool | None = None,
+    clear_check_out: bool = False,
 ) -> dict:
     """Developer correction of one person's day: check-in time (local HH:MM), office vs away, late or not, half day or not.
-    A new time recomputes lateness; an explicit `late` wins over that."""
+    A new time recomputes lateness; an explicit `late` wins over that. `clear_check_out` undoes a check-out made by mistake (the
+    person can check out again)."""
     rec = db.execute(
         select(AttendanceRecord).where(
             AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date == day
@@ -213,8 +215,13 @@ def correct_record(
     ).scalar_one_or_none()
     if rec is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That person has no check-in on this day to correct.")
-    if check_in_time is None and presence is None and late is None and half_day is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time, office / away, late or half day.")
+    if check_in_time is None and presence is None and late is None and half_day is None and not clear_check_out:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time, office / away, late, half day or check-out.")
+    if clear_check_out:
+        if rec.check_out_at is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "That person hasn't checked out on this day.")
+        rec.check_out_at = rec.check_out_status = rec.check_out_label = None
+        rec.check_out_lat = rec.check_out_lng = rec.check_out_accuracy_m = rec.check_out_distance_m = None
 
     if check_in_time is not None:
         try:

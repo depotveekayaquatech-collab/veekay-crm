@@ -389,3 +389,22 @@ def test_developer_can_force_late_and_half_day_and_payroll_counts_the_half(clien
     assert payroll_service.build_days(month, {month.isoformat(): entry}, month, {month: "FULL"})[0]["counted"] == 1
 
     assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "half_day": False}).json()["half_day"] is False
+
+
+def test_developer_can_undo_a_mistaken_check_out(client, dev, admin, make_user, clock):
+    clock(9, 30)
+    h, uid = _fresh_employee(client, make_user)
+    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    day = datetime.now(IST).date().isoformat()
+    body = {"user_id": str(uid), "work_date": day, "clear_check_out": True}
+    assert client.patch(f"{API}/attendance/record", headers=dev, json=body).status_code == 409        # not checked out yet
+    clock(10, 0)
+    assert client.post(f"{API}/attendance/check-out", headers=h, json={}).json()["checked_out"] is True
+    assert client.patch(f"{API}/attendance/record", headers=admin, json=body).status_code == 403      # developer only
+
+    e = client.patch(f"{API}/attendance/record", headers=dev, json=body).json()
+    assert e["check_out_at"] is None and e["status"] == "CHECKED_IN"
+    today = client.get(f"{API}/attendance/today", headers=h).json()
+    assert today["checked_in"] is True and today["checked_out"] is False and today["check_out_location"] is None
+    clock(18, 0)                                                                                       # they can check out again, properly
+    assert client.post(f"{API}/attendance/check-out", headers=h, json={}).json()["checked_out"] is True

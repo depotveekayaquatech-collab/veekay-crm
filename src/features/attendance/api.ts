@@ -64,6 +64,7 @@ export interface RecordCorrection {
   presence?: "office" | "away";
   late?: boolean;
   half_day?: boolean;
+  clear_check_out?: boolean; // undo a check-out made by mistake
 }
 
 export interface DayOverview {

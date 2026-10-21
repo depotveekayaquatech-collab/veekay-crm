@@ -58,12 +58,14 @@ function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onC
   const [presence, setPresence] = useState(row.location.status === "office" ? "office" : "away");
   const [late, setLate] = useState(row.late ? "yes" : "no");
   const [half, setHalf] = useState(row.halfDay ? "yes" : "no");
+  const [checkOut, setCheckOut] = useState("keep");
 
   const body: RecordCorrection = { user_id: row.userId, work_date: date };
   if (time && time !== hhmm(row.checkInAt)) body.check_in_time = time;
   if (presence !== (row.location.status === "office" ? "office" : "away")) body.presence = presence as "office" | "away";
   if ((late === "yes") !== row.late) body.late = late === "yes";
   if ((half === "yes") !== Boolean(row.halfDay)) body.half_day = half === "yes";
+  if (checkOut === "undo") body.clear_check_out = true;
   // Late follows the time unless you set it yourself; if the time moves and you didn't touch Late, the server works it out again.
   const changed = Object.keys(body).length > 2;
 
@@ -103,6 +105,14 @@ function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onC
           onChange={(e) => setHalf(e.target.value)}
           options={[{ value: "no", label: "Full day" }, { value: "yes", label: "Half day (payroll counts 0.5)" }]}
         />
+        {row.checkOutAt && (
+          <Select
+            label="Check-out"
+            value={checkOut}
+            onChange={(e) => setCheckOut(e.target.value)}
+            options={[{ value: "keep", label: `Keep (${fmtTime(row.checkOutAt)})` }, { value: "undo", label: "Undo check-out (they can check out again)" }]}
+          />
+        )}
       </div>
     </Modal>
   );

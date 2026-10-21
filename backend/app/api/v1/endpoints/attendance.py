@@ -46,6 +46,7 @@ class RecordCorrection(BaseModel):
     office_id: uuid.UUID | None = None
     late: bool | None = None
     half_day: bool | None = None
+    clear_check_out: bool = False
 
 
 class LeaveApply(BaseModel):
@@ -107,7 +108,7 @@ def month(month: str | None = None, user: User = Depends(get_current_user), db: 
 def correct_record(payload: RecordCorrection, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Developer only: fix a day's check-in time and / or whether the person was at the office or away. Lateness is recomputed."""
     return attendance_service.correct_record(db, user, payload.user_id, payload.work_date, payload.check_in_time, payload.presence, payload.office_id,
-                                           payload.late, payload.half_day)
+                                           payload.late, payload.half_day, payload.clear_check_out)
 
 
 # ---------------------------------------------------------------- leave
