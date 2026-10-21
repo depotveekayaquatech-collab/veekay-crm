@@ -108,13 +108,13 @@ def test_a_day_with_no_employee_entry_gets_one_and_the_employee_can_still_mark(c
 
 def test_bad_input_changes_nothing(client, dev, db, make_store):
     s = make_store(code="CA-V1")
-    _entry(db, s, 190)
+    _entry(db, s, 290)
     for kw in ({"amount": "0"}, {"amount": "-5"}, {"price_per_item": "0"}, {"amount": "abc"}, {"quantity": -1},
                {"purchase_date": date(TODAY.year + 1, 1, 1).isoformat()}, {"store_ids": []}):
         assert client.post(f"{BASE}/apply", headers=dev, json={**_body([s]), **kw}).status_code == 422, kw
     assert client.post(f"{BASE}/apply", headers=dev, json=_body([s], quantity=0)).status_code == 422
-    over = client.post(f"{BASE}/apply", headers=dev, json=_body([s], quantity=20))      # 190 + 20 > 200
-    assert over.status_code == 422 and _total(db, s) == (190, 0)
+    over = client.post(f"{BASE}/apply", headers=dev, json=_body([s], quantity=20))      # 290 + 20 > 300
+    assert over.status_code == 422 and _total(db, s) == (290, 0)
     assert client.get(f"{BASE}/history", headers=dev).json()["total"] == 0
 
 

@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { MAX_BOTTLES } from "@/features/orders/limits";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { CalendarDay, OrderCalendar as Cal } from "@/types/order";
@@ -120,7 +121,7 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
   }
 
   const n = Number(count);
-  const valid = count !== "" && Number.isInteger(n) && n >= 0 && n <= 200;
+  const valid = count !== "" && Number.isInteger(n) && n >= 0 && n <= MAX_BOTTLES;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -132,14 +133,14 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
 
   const sortedSelected = useMemo(() => Array.from(selectedDates).sort(), [selectedDates]);
   const defaultMultiNum = Number(multiCount);
-  const isValidCommonMulti = multiCount !== "" && Number.isInteger(defaultMultiNum) && defaultMultiNum >= 0 && defaultMultiNum <= 200;
+  const isValidCommonMulti = multiCount !== "" && Number.isInteger(defaultMultiNum) && defaultMultiNum >= 0 && defaultMultiNum <= MAX_BOTTLES;
 
   const canSubmitMulti = useMemo(() => {
     if (selectedDates.size === 0 || !onMarkMany) return false;
     if (!customizeEach) return isValidCommonMulti;
     return sortedSelected.every((d) => {
       const c = Number(customCounts[d] ?? multiCount);
-      return Number.isInteger(c) && c >= 0 && c <= 200;
+      return Number.isInteger(c) && c >= 0 && c <= MAX_BOTTLES;
     });
   }, [selectedDates.size, onMarkMany, customizeEach, isValidCommonMulti, sortedSelected, customCounts, multiCount]);
 
@@ -335,11 +336,11 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
                 type="number"
                 inputMode="numeric"
                 min={0}
-                max={200}
+                max={MAX_BOTTLES}
                 value={count}
                 onChange={(e) => setCount(e.target.value)}
                 autoFocus
-                hint="0–200. Zero is a valid count."
+                hint={`0–${MAX_BOTTLES}. Zero is a valid count.`}
               />
             </div>
             <Button type="submit" isLoading={marking} disabled={!valid}>
@@ -396,12 +397,12 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
                       type="number"
                       inputMode="numeric"
                       min={0}
-                      max={200}
+                      max={MAX_BOTTLES}
                       value={multiCount}
                       onChange={(e) => setMultiCount(e.target.value)}
                       autoFocus
                       placeholder="e.g. 15"
-                      hint="0–200"
+                      hint={`0–${MAX_BOTTLES}`}
                     />
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5 pt-2">
@@ -431,7 +432,7 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
                       type="number"
                       inputMode="numeric"
                       min={0}
-                      max={200}
+                      max={MAX_BOTTLES}
                       value={customCounts[d] ?? multiCount}
                       onChange={(e) => setCustomCounts((prev) => ({ ...prev, [d]: e.target.value }))}
                       placeholder={multiCount || "0"}

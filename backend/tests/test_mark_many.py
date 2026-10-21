@@ -63,7 +63,7 @@ def test_rejected_requests(client, emp, zepto_emp, make_store):
     dup = {"store_id": str(store.id), "entries": [{"order_date": d, "bottle_count": 1}, {"order_date": d, "bottle_count": 2}]}
     assert client.post(f"{API}/orders/mark-many", json=dup, headers=emp).status_code == 422
     assert client.post(f"{API}/orders/mark-many", json={"store_id": str(store.id), "entries": []}, headers=emp).status_code == 422
-    too_big = {"store_id": str(store.id), "entries": [{"order_date": d, "bottle_count": 201}]}
+    too_big = {"store_id": str(store.id), "entries": [{"order_date": d, "bottle_count": 301}]}
     assert client.post(f"{API}/orders/mark-many", json=too_big, headers=emp).status_code == 422
     # a store that is not yours fails the whole request
     mine = {"store_id": str(store.id), "entries": [{"order_date": d, "bottle_count": 3}]}

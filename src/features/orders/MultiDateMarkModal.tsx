@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { MAX_BOTTLES } from "@/features/orders/limits";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -69,14 +70,14 @@ export function MultiDateMarkModal({
   );
 
   const defaultNum = Number(count);
-  const isValidCommon = count !== "" && Number.isInteger(defaultNum) && defaultNum >= 0 && defaultNum <= 200;
+  const isValidCommon = count !== "" && Number.isInteger(defaultNum) && defaultNum >= 0 && defaultNum <= MAX_BOTTLES;
 
   const canSubmit = useMemo(() => {
     if (selectedDates.size === 0) return false;
     if (!customizeEach) return isValidCommon;
     return sortedSelected.every((d) => {
       const c = Number(customCounts[d] ?? count);
-      return Number.isInteger(c) && c >= 0 && c <= 200;
+      return Number.isInteger(c) && c >= 0 && c <= MAX_BOTTLES;
     });
   }, [selectedDates.size, customizeEach, isValidCommon, sortedSelected, customCounts, count]);
 
@@ -254,7 +255,7 @@ export function MultiDateMarkModal({
             <div className="rounded-xl border border-brand-100 bg-brand-50/50 p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label htmlFor="multi-bottle-input" className="text-xs font-bold text-brand-900 uppercase tracking-wider">
-                  3. Bottle Count (0–200)
+                  3. Bottle Count (0–{MAX_BOTTLES})
                 </label>
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-brand-700 cursor-pointer">
                   <input
@@ -277,7 +278,7 @@ export function MultiDateMarkModal({
                         type="number"
                         inputMode="numeric"
                         min={0}
-                        max={200}
+                        max={MAX_BOTTLES}
                         value={count}
                         onChange={(e) => setCount(e.target.value)}
                         placeholder="e.g. 15"
@@ -312,7 +313,7 @@ export function MultiDateMarkModal({
                         type="number"
                         inputMode="numeric"
                         min={0}
-                        max={200}
+                        max={MAX_BOTTLES}
                         value={customCounts[d] ?? count}
                         onChange={(e) =>
                           setCustomCounts((prev) => ({ ...prev, [d]: e.target.value }))

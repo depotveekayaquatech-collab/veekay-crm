@@ -187,7 +187,7 @@ class Settings(BaseSettings):
     # LAST month's dates (the 1st to the Nth). 0 switches it off. Admins can always mark any past date.
     BACKMONTH_GRACE_DAYS: int = Field(default=7, ge=0, le=28)
     MIN_BOTTLE_COUNT: int = 0
-    MAX_BOTTLE_COUNT: int = 200
+    MAX_BOTTLE_COUNT: int = 300
 
     # Partner platform configuration
     EMPLOYEE_MODEL_PLATFORM_SLUGS: list[str] = Field(

@@ -104,6 +104,27 @@ def _date_open_vendor_periods(db: Session, cond: list) -> None:
     )
 
 
+def pull_start_back(db: Session, store: Store, order_date: date, bottle_count: int) -> bool:
+    """A store's start date is its first supplied day. Marking bottles on a day EARLIER than the start date (a back-dated entry)
+    moves it back to that day, as an order import does, so month-filtered lists (store cards ...) include the store for that month.
+    Never moves a date later, never fills an empty one, ignores a zero count. Does not commit. Returns whether it moved."""
+    old = store.start_date
+    if bottle_count <= 0 or old is None or order_date >= old:
+        return False
+    earlier = aliased(StoreVendorPeriod)
+    db.execute(   # the store's first vendor began on the old start date; it begins on the new one too
+        update(StoreVendorPeriod)
+        .where(
+            StoreVendorPeriod.store_id == store.id, StoreVendorPeriod.start_date == old,
+            or_(StoreVendorPeriod.end_date.is_(None), order_date <= StoreVendorPeriod.end_date),
+            ~exists().where(earlier.store_id == StoreVendorPeriod.store_id, earlier.start_date < StoreVendorPeriod.start_date),
+        )
+        .values(start_date=order_date)
+    )
+    store.start_date = order_date
+    return True
+
+
 def set_start_dates_from_orders(db: Session, partner_id: uuid.UUID) -> int:
     """After an order import: fill every EMPTY start date with the store's first supplied day, and move a start date
     EARLIER when the orders now hold an earlier supplied day. Never moves a date later. Returns the stores changed."""

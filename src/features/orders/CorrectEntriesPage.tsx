@@ -1,4 +1,5 @@
 import { distinctOptions } from "@/lib/options";
+import { MAX_BOTTLES } from "@/features/orders/limits";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -46,7 +47,7 @@ export function CorrectEntriesPage() {
   }
 
   const n = Number(value);
-  const valid = value !== "" && Number.isInteger(n) && n >= 0 && n <= 200;
+  const valid = value !== "" && Number.isInteger(n) && n >= 0 && n <= MAX_BOTTLES;
 
   async function save(clear = false) {
     if (!editing) return;
@@ -157,11 +158,11 @@ export function CorrectEntriesPage() {
             type="number"
             inputMode="numeric"
             min={0}
-            max={200}
+            max={MAX_BOTTLES}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void save(false)}
-            hint="0–200. Zero is a valid count."
+            hint={`0–${MAX_BOTTLES}. Zero is a valid count.`}
             autoFocus
           />
         </Modal>

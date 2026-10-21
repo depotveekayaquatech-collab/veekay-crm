@@ -46,7 +46,7 @@ from app.schemas.order import (
     SubmissionRow,
     TrendPoint,
 )
-from app.services import activity_service, assignment_service
+from app.services import activity_service, assignment_service, vendor_history_service
 
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
            "August", "September", "October", "November", "December"]
@@ -269,6 +269,7 @@ def _write_employee_entry(db: Session, employee: User, store: Store, order_date:
             source=EntrySource.EMPLOYEE.value,
             marked_by_user_id=employee.id,
         ))
+    vendor_history_service.pull_start_back(db, store, order_date, count)
     activity_service.record(
         db, actor=employee, action="order.marked", entity_type="order_entry", entity_id=store.id,
         metadata={**_store_meta(store), "order_date": order_date.isoformat(), "bottle_count": count},
@@ -344,6 +345,7 @@ def admin_set_entry(db: Session, admin: User, payload: AdminEntryRequest) -> Ord
                 source=EntrySource.ADMIN.value,
                 marked_by_user_id=admin.id,
             ))
+        vendor_history_service.pull_start_back(db, store, payload.order_date, payload.bottle_count)
         activity_service.record(
             db, actor=admin, action="order.corrected", entity_type="order_entry", entity_id=store.id,
             metadata={**_store_meta(store), "order_date": payload.order_date.isoformat(), "bottle_count": payload.bottle_count},

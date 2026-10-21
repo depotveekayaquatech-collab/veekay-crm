@@ -486,3 +486,28 @@ def test_start_date_sync_can_be_limited_to_one_vendor(client, dev, db, make_stor
     assert client.post(SYNC, headers=dev, json={**body, "dry_run": False}).status_code == 200
     db.expire_all()
     assert mine.start_date == first and other.start_date == date(2026, 9, 1)
+
+
+def test_marking_bottles_on_an_earlier_day_pulls_the_start_date_back_so_that_months_card_works(client, admin, dev, db, make_store):
+    """The RAJ GGN case: a store whose start date is later than the day you mark must still get that month's card."""
+    from app.services import store_activity
+
+    s = make_store(code="PB-1", vendor="ZZ Pull Vendor")
+    s.start_date = date(2026, 9, 1)
+    db.commit()
+    mark = lambda day, n: client.patch(f"{API}/orders/entry", headers=admin, json={"store_id": str(s.id), "order_date": day, "bottle_count": n})
+    july = store_activity.active_in_month
+
+    assert mark("2026-07-03", 0).status_code == 200                       # zero bottles is not a supply
+    db.expire_all()
+    assert s.start_date == date(2026, 9, 1) and not july(s, date(2026, 7, 1))
+
+    assert mark("2026-07-03", 4).status_code == 200
+    db.expire_all()
+    assert s.start_date == date(2026, 7, 3) and july(s, date(2026, 7, 1))
+    pdf = client.get(f"{API}/cards/pdf", headers=dev, params={"vendor": "ZZ Pull Vendor", "month": "2026-07"})
+    assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-"
+
+    assert mark("2026-08-10", 4).status_code == 200                       # a later day never moves it
+    db.expire_all()
+    assert s.start_date == date(2026, 7, 3)

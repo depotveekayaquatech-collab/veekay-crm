@@ -10,7 +10,7 @@ import { MonthGrid, type CellState } from "@/components/MonthGrid";
 import { daysAgo, fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
-const MAX = 200;
+const MAX = 300;
 
 const dayLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 const valid = (v: string | undefined) => v !== undefined && /^\d{1,3}$/.test(v) && Number(v) <= MAX;
