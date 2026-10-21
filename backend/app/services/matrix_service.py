@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.order_entry import OrderEntry
 from app.models.organization import Organization
+from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.user import User
 
@@ -31,7 +32,10 @@ def _validate(start: date, end: date) -> list[date]:
     return [start + timedelta(days=i) for i in range(n)]
 
 
-def _stores(db: Session, admin: User, start: date, end: date, partner: str | None, state: str | None, city: str | None) -> list[Store]:
+def _stores(
+    db: Session, admin: User, start: date, end: date, partner: str | None, state: str | None, city: str | None,
+    region: uuid.UUID | None = None,
+) -> list[Store]:
     has_entry = exists().where(OrderEntry.store_id == Store.id, OrderEntry.order_date >= start, OrderEntry.order_date <= end)
     stmt = (
         select(Store)
@@ -46,10 +50,15 @@ def _stores(db: Session, admin: User, start: date, end: date, partner: str | Non
         stmt = stmt.where(func.lower(Store.state) == state.strip().lower())
     if city and city.strip():
         stmt = stmt.where(Store.city.ilike(f"%{city.strip()}%"))
+    if region is not None:
+        stmt = stmt.where(Store.region_id == region)
     return list(db.execute(stmt).unique().scalars().all())
 
 
-def _store_rows(db: Session, admin: User, start: date, end: date, partner: str | None, state: str | None, city: str | None) -> list[tuple]:
+def _store_rows(
+    db: Session, admin: User, start: date, end: date, partner: str | None, state: str | None, city: str | None,
+    region: uuid.UUID | None = None,
+) -> list[tuple]:
     """(id, name, code, platform, state, city) for the same stores as `_stores`, as plain columns — the on-screen
     matrix needs nothing else, and not building ~1,500 ORM objects per request is several times faster."""
     has_entry = exists().where(OrderEntry.store_id == Store.id, OrderEntry.order_date >= start, OrderEntry.order_date <= end)
@@ -67,6 +76,8 @@ def _store_rows(db: Session, admin: User, start: date, end: date, partner: str |
         stmt = stmt.where(func.lower(Store.state) == state.strip().lower())
     if city and city.strip():
         stmt = stmt.where(Store.city.ilike(f"%{city.strip()}%"))
+    if region is not None:
+        stmt = stmt.where(Store.region_id == region)
     return list(db.execute(stmt).all())
 
 
@@ -95,6 +106,32 @@ def _totals(db: Session, store_ids: list[uuid.UUID], start: date, end: date) -> 
     return int(row[0]), int(row[1])
 
 
+def _day_totals(db: Session, store_ids: list[uuid.UUID], start: date, end: date) -> dict[str, int]:
+    """{date: bottles} over ALL the matching stores (not just the rows loaded so far), for the footer."""
+    if not store_ids:
+        return {}
+    return {
+        d.isoformat(): int(n) for d, n in db.execute(
+            select(OrderEntry.order_date, func.sum(OrderEntry.bottle_count))
+            .where(OrderEntry.store_id.in_(store_ids), OrderEntry.order_date >= start, OrderEntry.order_date <= end)
+            .group_by(OrderEntry.order_date)
+        )
+    }
+
+
+def regions_for(db: Session, admin: User, partner: str | None) -> list[dict]:
+    """Regions that have stores of this channel (all regions when no channel is chosen), for the report's Region filter."""
+    stmt = (
+        select(Region.id, Region.name).select_from(Store)
+        .join(Region, Region.id == Store.region_id)
+        .where(Store.organization_id == admin.organization_id, Region.is_active.is_(True))
+        .distinct().order_by(Region.name)
+    )
+    if partner:
+        stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == partner)
+    return [{"id": rid, "name": name} for rid, name in db.execute(stmt)]
+
+
 def _row(s: tuple, vals: dict[date, int], dates: list[date]) -> dict:
     sid, name, code, platform, state, city = s
     return {
@@ -109,10 +146,10 @@ def _row(s: tuple, vals: dict[date, int], dates: list[date]) -> dict:
 
 def matrix(
     db: Session, admin: User, start: date, end: date, *, partner: str | None, state: str | None, city: str | None,
-    page: int, page_size: int,
+    page: int, page_size: int, region: uuid.UUID | None = None,
 ) -> dict:
     dates = _validate(start, end)
-    stores = _store_rows(db, admin, start, end, partner, state, city)
+    stores = _store_rows(db, admin, start, end, partner, state, city, region)
     begin = (page - 1) * page_size
     page_stores = stores[begin:begin + page_size]
     # Only the visible rows' cells come back to Python; the grand totals are summed by the database.
@@ -123,6 +160,7 @@ def matrix(
         "total": len(stores), "page": page, "page_size": page_size,
         "stores_with_entries": with_entries,
         "grand_total_bottles": grand,
+        "day_totals": _day_totals(db, [s[0] for s in stores], start, end),
         "rows": [_row(s, cells.get(s[0], {}), dates) for s in page_stores],
     }
 
@@ -135,13 +173,13 @@ def _rate_cells(book, store: Store, bottles: int) -> list:
 
 def matrix_xlsx(
     db: Session, admin: User, start: date, end: date, *, partner: str | None, state: str | None, city: str | None,
-    totals: bool = True, with_rates: bool = False,
+    totals: bool = True, with_rates: bool = False, region: uuid.UUID | None = None,
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, Side
 
     dates = _validate(start, end)
-    stores = _stores(db, admin, start, end, partner, state, city)
+    stores = _stores(db, admin, start, end, partner, state, city, region)
     entries = _entries(db, [s.id for s in stores], start, end)
     book = None
     if with_rates:   # admin report: vendor rate (per bottle, city-wise) in force at the end of the period, and the amount

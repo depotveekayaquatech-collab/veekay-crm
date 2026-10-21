@@ -296,6 +296,7 @@ def matrix(
     partner: str | None = None,
     state: str | None = None,
     city: str | None = None,
+    region: uuid.UUID | None = None,
     page: int = 1,
     page_size: int = 25,
     user: User = Depends(get_current_user),
@@ -303,9 +304,15 @@ def matrix(
 ) -> dict:
     """Daily distribution: one row per store, one column per day (max 62 days)."""
     return matrix_service.matrix(
-        db, user, start, end, partner=partner, state=state, city=city,
+        db, user, start, end, partner=partner, state=state, city=city, region=region,
         page=max(1, page), page_size=min(max(1, page_size), 200),
     )
+
+
+@router.get("/matrix/regions", dependencies=[Depends(require_permission("orders.overview"))])
+def matrix_regions(partner: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict]:
+    """The regions to offer in the matrix's Region filter: those that have stores of the chosen channel."""
+    return matrix_service.regions_for(db, user, partner)
 
 
 @router.get(
@@ -318,6 +325,7 @@ def matrix_export(
     partner: str | None = None,
     state: str | None = None,
     city: str | None = None,
+    region: uuid.UUID | None = None,
     include_rate: bool = False,
     user: User = Depends(get_current_user),
     perms: set[str] = Depends(get_current_permissions),
@@ -325,7 +333,7 @@ def matrix_export(
 ) -> Response:
     if include_rate and "rates.manage" not in perms:   # the vendor-rate columns are for admins only
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to the vendor rate report.")
-    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city, with_rates=include_rate)
+    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city, region=region, with_rates=include_rate)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

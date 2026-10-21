@@ -1,8 +1,7 @@
 import { SelectField } from "@/components/ui/Dropdown";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
-import { Pagination } from "@/components/ui/Pagination";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { IconDownload } from "@/components/ui/icons";
@@ -33,6 +32,7 @@ interface Matrix {
   pageSize: number;
   storesWithEntries: number;
   grandTotalBottles: number;
+  dayTotals: Record<string, number>; // every matching store, not just the rows loaded so far
   rows: MatrixRow[];
 }
 interface Filters {
@@ -41,9 +41,11 @@ interface Filters {
   partner: string;
   state: string;
   city: string;
+  region: string; // region id
 }
 
-const DEFAULTS: Filters = { from: daysAgo(6), to: daysAgo(0), partner: "", state: "", city: "" };
+const DEFAULTS: Filters = { from: daysAgo(6), to: daysAgo(0), partner: "", state: "", city: "", region: "" };
+const PAGE_SIZE = 50; // rows fetched per scroll step
 const input =
   "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
@@ -52,6 +54,7 @@ function qs(f: Filters, extra: Record<string, string | number> = {}): string {
   if (f.partner) p.set("partner", f.partner);
   if (f.state.trim()) p.set("state", f.state.trim());
   if (f.city.trim()) p.set("city", f.city.trim());
+  if (f.region) p.set("region", f.region);
   return p.toString();
 }
 
@@ -76,21 +79,41 @@ function DailyMatrix() {
   const { data: partners = [] } = usePartners();
   const [draft, setDraft] = useState<Filters>(DEFAULTS);
   const [applied, setApplied] = useState<Filters>(DEFAULTS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState(false);
   const bad = draft.from > draft.to;
 
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ["order-matrix", applied, page, pageSize],
-    queryFn: async () => camelize<Matrix>(await apiRequest(`/orders/matrix?${qs(applied, { page, page_size: pageSize })}`)),
-    placeholderData: (prev) => prev,
+  // The regions that have stores of the chosen channel (all regions while no channel is chosen).
+  const { data: regions = [] } = useQuery({
+    queryKey: ["matrix-regions", draft.partner],
+    queryFn: async () => camelize<{ id: string; name: string }[]>(await apiRequest(`/orders/matrix/regions${draft.partner ? `?partner=${draft.partner}` : ""}`)),
+    staleTime: 300_000,
   });
+
+  // One endless list: the next batch of stores loads as you scroll to the bottom.
+  const query = useInfiniteQuery({
+    queryKey: ["order-matrix", applied],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => camelize<Matrix>(await apiRequest(`/orders/matrix?${qs(applied, { page: pageParam, page_size: PAGE_SIZE })}`)),
+    getNextPageParam: (last) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false, // every loaded batch would be fetched again
+  });
+  const { isLoading, isError, refetch, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage } = query;
+  const head = query.data?.pages[0];
+  const rows = query.data?.pages.flatMap((p) => p.rows) ?? [];
+  const data = head ? { ...head, rows } : undefined;
+
+  const onScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      if (hasNextPage && !isFetchingNextPage && el.scrollHeight - el.scrollTop - el.clientHeight < 600) void fetchNextPage();
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
 
   function generate() {
     if (bad) return;
     setApplied(draft);
-    setPage(1);
   }
 
   async function exportExcel() {
@@ -119,12 +142,12 @@ function DailyMatrix() {
   };
   const longRange = (data?.dates.length ?? 0) > 31;
 
-  const pageTotals = data?.dates.map((d) => data.rows.reduce((s, r) => s + (r.values[d] ?? 0), 0)) ?? [];
+  const dayTotals = data?.dates.map((d) => data.dayTotals[d] ?? 0) ?? [];
 
   return (
     <div className="flex flex-col gap-6">
       <Section title="Report filters" subtitle="Changing the date range regenerates the daily columns (up to 62 days).">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             Date from
             <input type="date" className={input} value={draft.from} max={draft.to} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
@@ -135,10 +158,19 @@ function DailyMatrix() {
           </label>
           <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
             Channel
-            <SelectField className={input} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value })}>
+            <SelectField className={input} value={draft.partner} onChange={(e) => setDraft({ ...draft, partner: e.target.value, region: "" })}>
               <option value="">All channels</option>
               {partners.map((p) => (
                 <option key={p.slug} value={p.slug}>{p.name}</option>
+              ))}
+            </SelectField>
+          </label>
+          <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
+            Region
+            <SelectField className={input} value={draft.region} onChange={(e) => setDraft({ ...draft, region: e.target.value })}>
+              <option value="">All regions</option>
+              {regions.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </SelectField>
           </label>
@@ -159,7 +191,6 @@ function DailyMatrix() {
             onClick={() => {
               setDraft(DEFAULTS);
               setApplied(DEFAULTS);
-              setPage(1);
             }}
           >
             Reset
@@ -172,21 +203,6 @@ function DailyMatrix() {
         subtitle={data ? `${data.total} stores · ${data.grandTotalBottles.toLocaleString()} bottles · ${data.storesWithEntries} with deliveries` : undefined}
         action={
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-gray-500">
-              Rows per page
-              <SelectField
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-                className="h-9 rounded-lg border border-surface-border bg-surface px-2 text-sm"
-              >
-                {[25, 50, 100].map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </SelectField>
-            </label>
             <Button variant="secondary" size="sm" onClick={() => void exportExcel()} isLoading={exporting} disabled={!data?.total}>
               <IconDownload className="h-3.5 w-3.5" />
               Export Excel
@@ -199,12 +215,12 @@ function DailyMatrix() {
         {data && data.rows.length === 0 && (
           <div className="py-12 text-center">
             <p className="text-sm font-bold text-gray-800">No stores match</p>
-            <p className="mt-1 text-sm text-gray-500">Change the channel, state or city and generate again.</p>
+            <p className="mt-1 text-sm text-gray-500">Change the channel, region, state or city and generate again.</p>
           </div>
         )}
         {data && data.rows.length > 0 && (
           <>
-            <div className="max-h-[70vh] overflow-auto rounded-lg border border-surface-border">
+            <div onScroll={onScroll} className="max-h-[70vh] overflow-auto rounded-lg border border-surface-border">
               <table className="min-w-full border-separate border-spacing-0 text-sm">
                 <thead>
                   <tr>
@@ -227,7 +243,7 @@ function DailyMatrix() {
                 <tbody>
                   {data.rows.map((r, i) => (
                     <tr key={r.storeId} className="group">
-                      <td className="sticky left-0 z-10 border-b border-surface-border/70 bg-surface px-2 py-2 text-center text-xs text-gray-400 group-hover:bg-surface-subtle">{(data.page - 1) * data.pageSize + i + 1}</td>
+                      <td className="sticky left-0 z-10 border-b border-surface-border/70 bg-surface px-2 py-2 text-center text-xs text-gray-400 group-hover:bg-surface-subtle">{i + 1}</td>
                       <td className="sticky left-10 z-10 border-b border-r border-surface-border/70 bg-surface px-3 py-2 group-hover:bg-surface-subtle">
                         <div className="max-w-[15rem] truncate font-medium text-gray-900" title={r.name}>{r.name}</div>
                         <div className="text-[11px] text-gray-500">{r.externalCode}</div>
@@ -252,22 +268,22 @@ function DailyMatrix() {
                   ))}
                   <tr>
                     <td colSpan={4} className="sticky bottom-0 left-0 z-20 border-t border-surface-border bg-surface-muted px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-600">
-                      Page total
+                      Total · all {data.total} stores
                     </td>
-                    {pageTotals.map((t, i) => (
+                    {dayTotals.map((t, i) => (
                       <td key={data.dates[i]} className="sticky bottom-0 z-10 border-t border-surface-border bg-surface-muted px-1.5 py-2.5 text-center text-xs font-bold tabular-nums text-gray-700">{t || ""}</td>
                     ))}
                     <td className="sticky bottom-0 z-10 border-t border-surface-border bg-surface-muted px-3 py-2.5 text-right text-xs font-bold tabular-nums text-heading">
-                      {pageTotals.reduce((a, b) => a + b, 0).toLocaleString()}
+                      {data.grandTotalBottles.toLocaleString()}
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-xs text-gray-400">· = nothing marked · 0 = marked with zero bottles</p>
-            <div className="mt-3">
-              <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
-            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              · = nothing marked · 0 = marked with zero bottles ·{" "}
+              {isFetchingNextPage ? "Loading more stores…" : hasNextPage ? `Showing ${data.rows.length} of ${data.total} stores — scroll for more` : `All ${data.total} stores shown`}
+            </p>
           </>
         )}
       </Section>
