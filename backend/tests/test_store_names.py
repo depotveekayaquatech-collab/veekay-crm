@@ -365,3 +365,27 @@ def test_a_store_that_exists_twice_is_flagged_to_the_employee_and_the_split_is_s
     groups = client.get(f"{API}/stores/duplicates", headers=admin).json()["groups"]
     g = next(x for x in groups if x["kind"] == "name" and x["label"] == "Twin Entries Mart")
     assert g["entries_split"] is True and all(s["order_days_this_month"] == 1 for s in g["stores"])
+
+
+def test_deleted_entries_can_be_restored_for_employees_only(client, dev, db, make_store):
+    s = make_store(code="RE-1", name="Restore Emp Mart")
+    d1, d2 = date.today() - timedelta(days=3), date.today() - timedelta(days=2)
+    emp_row = OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=d1, bottle_count=12, source="employee")
+    imp_row = OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=d2, bottle_count=20, source="admin")
+    db.add_all([emp_row, imp_row])
+    db.commit()
+    for e in db.query(OrderEntry).filter_by(store_id=s.id).all():
+        db.delete(e)                                                              # the database copies each into deleted_rows
+    db.commit()
+    assert db.query(OrderEntry).filter_by(store_id=s.id).count() == 0
+    rng = {"start": (d1 - timedelta(days=1)).isoformat(), "end": date.today().isoformat()}
+    listed = client.get(f"{API}/developer/order-audit/deleted", params={**rng, "employee_only": "true"}, headers=dev).json()
+    mine = [i for i in listed["items"] if i["store_code"] == "RE-1"]
+    assert len(mine) == 1 and mine[0]["source"] == "employee"                      # the import's entry is not even offered
+    pre = client.post(f"{API}/developer/order-audit/deleted/restore", headers=dev, json={**rng, "employee_only": True}).json()
+    assert pre["dry_run"] is True and pre["restorable"] >= 1
+    done = client.post(f"{API}/developer/order-audit/deleted/restore", headers=dev, json={**rng, "employee_only": True, "dry_run": False}).json()
+    assert done["restored"] >= 1
+    db.expire_all()
+    back = db.query(OrderEntry).filter_by(store_id=s.id).all()
+    assert [(e.order_date, e.bottle_count, e.source) for e in back] == [(d1, 12, "employee")]      # only the employee's entry came back

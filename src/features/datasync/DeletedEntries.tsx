@@ -49,14 +49,16 @@ const day = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-
 export function DeletedEntries({ start, end }: { start: string; end: string }) {
   const [list, setList] = useState<DeletedList | null>(null);
   const [showRestored, setShowRestored] = useState(false);
+  // Employee-marked entries only: leaves out what an order-sheet import or an admin wrote. On by default.
+  const [employeeOnly, setEmployeeOnly] = useState(true);
 
   const load = useMutation({
-    mutationFn: async () => camelize<DeletedList>(await apiRequest(`${BASE}?start=${start}&end=${end}${showRestored ? "&include_restored=true" : ""}`)),
+    mutationFn: async () => camelize<DeletedList>(await apiRequest(`${BASE}?start=${start}&end=${end}${showRestored ? "&include_restored=true" : ""}${employeeOnly ? "&employee_only=true" : ""}`)),
     onSuccess: setList,
   });
   const restore = useMutation({
     mutationFn: async (ids: string[] | null) =>
-      camelize<RestoreResult>(await apiRequest(`${BASE}/restore`, { method: "POST", body: ids ? { ids, dry_run: false } : { start, end, dry_run: false } })),
+      camelize<RestoreResult>(await apiRequest(`${BASE}/restore`, { method: "POST", body: ids ? { ids, dry_run: false, employee_only: employeeOnly } : { start, end, dry_run: false, employee_only: employeeOnly } })),
     onSuccess: (r) => {
       pushToast(`${r.restored} entr${r.restored === 1 ? "y" : "ies"} restored.`, "success");
       load.mutate();
@@ -70,11 +72,24 @@ export function DeletedEntries({ start, end }: { start: string; end: string }) {
         <h4 className="text-sm font-bold text-gray-900">Deleted entries</h4>
         <p className="text-xs text-gray-500">Every deleted entry is kept by the database, whatever deleted it, and can be put back. Uses the dates above.</p>
         <label className="ml-auto flex items-center gap-2 text-xs text-gray-700">
+          <input type="checkbox" className="h-4 w-4" checked={employeeOnly} onChange={(e) => { setEmployeeOnly(e.target.checked); setList(null); }} />
+          Only entries employees marked (skip order-sheet imports and admin entries)
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-700">
           <input type="checkbox" className="h-4 w-4" checked={showRestored} onChange={(e) => setShowRestored(e.target.checked)} />
           Include ones already restored
         </label>
         <Button variant="secondary" onClick={() => load.mutate()} isLoading={load.isPending}>Show deleted entries</Button>
-        {restorable > 0 && <Button onClick={() => restore.mutate(null)} isLoading={restore.isPending}>Restore all {restorable}</Button>}
+        {restorable > 0 && (
+          <Button
+            onClick={() => {
+              if (window.confirm(`Restore ${restorable} deleted entr${restorable === 1 ? "y" : "ies"}${employeeOnly ? " marked by employees" : " (including order-sheet imports and admin entries)"}? Days that already have an entry are left alone.`)) restore.mutate(null);
+            }}
+            isLoading={restore.isPending}
+          >
+            Restore all {restorable}
+          </Button>
+        )}
       </div>
 
       {list && (list.items.length === 0 ? (

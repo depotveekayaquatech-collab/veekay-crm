@@ -25,21 +25,23 @@ class RestoreDeletedIn(BaseModel):
     start: date | None = None
     end: date | None = None
     dry_run: bool = True
+    employee_only: bool = False      # restore only entries an employee marked; leave the ones an order-sheet import or an admin wrote
 
 
 @router.get("/deleted")
 def deleted_entries(
     start: date | None = Query(None), end: date | None = Query(None), include_restored: bool = Query(False),
+    employee_only: bool = Query(False, description="only entries an employee marked (not order-sheet imports or admin entries)"),
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
     """Order entries that were deleted (by an admin clearing a day, a store removal, a developer tool or SQL), as the database kept them, and whether each can be put back."""
-    return deleted_data_service.list_deleted(db, user, start, end, include_restored=include_restored)
+    return deleted_data_service.list_deleted(db, user, start, end, include_restored=include_restored, employee_only=employee_only)
 
 
 @router.post("/deleted/restore")
 def restore_deleted(body: RestoreDeletedIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Put deleted entries back: the chosen ones (ids) or every one in a date range. Never over an entry that exists. dry_run (the default) only counts."""
-    return deleted_data_service.restore(db, user, ids=body.ids, start=body.start, end=body.end, dry_run=body.dry_run)
+    return deleted_data_service.restore(db, user, ids=body.ids, start=body.start, end=body.end, dry_run=body.dry_run, employee_only=body.employee_only)
 
 
 @router.get("")

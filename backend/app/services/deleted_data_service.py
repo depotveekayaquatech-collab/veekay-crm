@@ -34,8 +34,13 @@ def _uuid(value) -> uuid.UUID | None:
         return None
 
 
-def _candidates(db: Session, org_id: uuid.UUID, *, start: date | None, end: date | None, ids: list[uuid.UUID] | None, include_restored: bool) -> list[DeletedRow]:
+def _candidates(
+    db: Session, org_id: uuid.UUID, *, start: date | None, end: date | None, ids: list[uuid.UUID] | None, include_restored: bool,
+    employee_only: bool = False,
+) -> list[DeletedRow]:
     q = select(DeletedRow).where(DeletedRow.table_name == "order_entries", DeletedRow.data["organization_id"].astext == str(org_id))
+    if employee_only:
+        q = q.where(DeletedRow.data["source"].astext == "employee")      # skip what an order-sheet import or an admin wrote
     if ids:
         q = q.where(DeletedRow.id.in_(ids))
     if start:
@@ -74,11 +79,11 @@ class _Stores:
         return (self.by_code.get((partner, code)) if code and partner else None), code, name
 
 
-def list_deleted(db: Session, user: User, start: date | None, end: date | None, *, include_restored: bool = False) -> dict:
+def list_deleted(db: Session, user: User, start: date | None, end: date | None, *, include_restored: bool = False, employee_only: bool = False) -> dict:
     org = user.organization_id
     stores = _Stores(db, org)
     names = {u.id: u.full_name for u in db.execute(select(User).where(User.organization_id == org)).scalars()}
-    rows = _candidates(db, org, start=start, end=end, ids=None, include_restored=include_restored)
+    rows = _candidates(db, org, start=start, end=end, ids=None, include_restored=include_restored, employee_only=employee_only)
     items, counts = [], {"restorable": 0, "already_there": 0, "store_gone": 0, "restored": 0}
     taken = {(e.store_id, e.order_date) for e in db.execute(select(OrderEntry).where(OrderEntry.organization_id == org)).scalars()} if rows else set()
     for r in rows:
@@ -102,12 +107,14 @@ def list_deleted(db: Session, user: User, start: date | None, end: date | None, 
     return {"summary": counts, "items": items, "truncated": len(rows) >= MAX_ROWS}
 
 
-def restore(db: Session, user: User, *, ids: list[uuid.UUID] | None, start: date | None, end: date | None, dry_run: bool) -> dict:
+def restore(
+    db: Session, user: User, *, ids: list[uuid.UUID] | None, start: date | None, end: date | None, dry_run: bool, employee_only: bool = False,
+) -> dict:
     if not ids and not (start and end):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose entries to restore, or a start and end date.")
     org = user.organization_id
     stores = _Stores(db, org)
-    rows = _candidates(db, org, start=start, end=end, ids=ids, include_restored=False)
+    rows = _candidates(db, org, start=start, end=end, ids=ids, include_restored=False, employee_only=employee_only)
     users = {u.id for u in db.execute(select(User).where(User.organization_id == org)).scalars()}
     taken = {(e.store_id, e.order_date) for e in db.execute(select(OrderEntry).where(OrderEntry.organization_id == org)).scalars()}
     plan, out = [], {"restorable": 0, "restored": 0, "already_there": 0, "store_gone": 0, "dry_run": dry_run, "examples": []}
@@ -140,7 +147,8 @@ def restore(db: Session, user: User, *, ids: list[uuid.UUID] | None, start: date
         out["restored"] += 1
     activity_service.record(
         db, actor=user, action="order.restored_from_deleted", entity_type="order_entry", entity_id=org,
-        metadata={"restored": out["restored"], "from": start.isoformat() if start else None, "to": end.isoformat() if end else None},
+        metadata={"restored": out["restored"], "from": start.isoformat() if start else None, "to": end.isoformat() if end else None,
+                  "employee_entries_only": employee_only},
     )
     db.commit()
     return out
