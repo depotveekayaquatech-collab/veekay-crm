@@ -276,6 +276,45 @@ def _write_employee_entry(db: Session, employee: User, store: Store, order_date:
     )
 
 
+def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -> OrderCalendar:
+    """An employee changes (or clears, with no count) an entry THEY marked themselves, in the dates they can still mark. Anyone else's entry,
+    and a day that holds only a developer adjustment, stays an admin's job. Every change is logged with what was there before."""
+    store = {s.id: s for s in assignment_service.visible_stores(db, employee)}.get(payload.store_id)
+    if store is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
+    if store.status != StoreStatus.LIVE.value:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
+    _check_order_date(payload.order_date)
+    repo = OrderEntryRepository(db)
+    existing = repo.get(store.id, payload.order_date)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no entry on this date to correct. Mark it instead.")
+    if existing.cash_adjustment == existing.bottle_count or existing.marked_by_user_id != employee.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only correct entries you marked yourself. Ask an admin to correct this one.")
+    mine = existing.bottle_count - existing.cash_adjustment            # the employee's own part (a developer adjustment may sit on top)
+    new = payload.bottle_count
+    if new is not None and new == mine:
+        return get_calendar(db, employee, store.id, payload.order_date.year, payload.order_date.month, is_admin=False)
+    if new is not None and not (settings.MIN_BOTTLE_COUNT <= new <= settings.MAX_BOTTLE_COUNT):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Bottle count must be a whole number from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.",
+        )
+    meta = {**_store_meta(store), "order_date": payload.order_date.isoformat(), "previous_count": mine}
+    if new is None:
+        if existing.cash_adjustment:
+            existing.bottle_count = existing.cash_adjustment            # only the adjustment is left
+            existing.marked_by_user_id = None
+        else:
+            db.delete(existing)                                          # the deleted-rows archive keeps a copy
+        activity_service.record(db, actor=employee, action="order.cleared_by_employee", entity_type="order_entry", entity_id=store.id, metadata=meta)
+    else:
+        existing.bottle_count = new + existing.cash_adjustment
+        activity_service.record(db, actor=employee, action="order.corrected_by_employee", entity_type="order_entry", entity_id=store.id, metadata={**meta, "bottle_count": new})
+    db.commit()
+    return get_calendar(db, employee, store.id, payload.order_date.year, payload.order_date.month, is_admin=False)
+
+
 def mark_many(db: Session, employee: User, payload: MarkManyRequest, *, is_admin: bool = False) -> MarkManyResult:
     """Marks several dates of one store. The store is checked once (a wrong store fails the whole request); every date
     is then checked and saved on its own, so one bad date (already marked, future, other month) never blocks the rest."""

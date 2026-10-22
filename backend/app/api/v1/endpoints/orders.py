@@ -117,6 +117,21 @@ def mark_many(
 
 
 @router.patch(
+    "/my-entry", response_model=OrderCalendar,
+    dependencies=[Depends(require_permission("orders.mark"))],
+)
+def correct_my_entry(
+    payload: AdminEntryRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrderCalendar:
+    """An employee corrects (or clears, with no count) an entry they marked themselves, in the dates they can still mark."""
+    result = order_service.correct_own_entry(db, user, payload)
+    read_cache.invalidate()
+    return result
+
+
+@router.patch(
     "/entry", response_model=OrderCalendar,
     dependencies=[Depends(require_permission("orders.correct"))],
 )

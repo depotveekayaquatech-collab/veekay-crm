@@ -81,6 +81,20 @@ export async function correctEntry(
   );
 }
 
+/** An employee corrects (or clears, with no count) an entry they marked themselves. */
+export async function correctOwnEntry(
+  storeId: string,
+  orderDate: string,
+  bottleCount: number | null,
+): Promise<OrderCalendar> {
+  return toCalendar(
+    await apiRequest("/orders/my-entry", {
+      method: "PATCH",
+      body: { store_id: storeId, order_date: orderDate, bottle_count: bottleCount },
+    }),
+  );
+}
+
 export async function getInsights(): Promise<DashboardInsights> {
   return toInsights(await apiRequest("/orders/insights"));
 }

@@ -154,6 +154,30 @@ def delete_closed_stores(
     return result
 
 
+class MoveOneRequest(BaseModel):
+    to_platform: str
+
+
+@router.get("/platform-check", dependencies=[Depends(require_permission("stores.view"))])
+def platform_check(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Stores that look filed under the wrong platform (same name on both, Blinkit-style on Zepto or the other way round, a Zepto
+    capping number on a non-Zepto store), with the evidence. Nothing is moved by this call."""
+    return store_service.platform_check(db, user)
+
+
+@router.post("/{store_id}/move-platform", dependencies=[Depends(require_permission("stores.manage"))])
+def move_one_store(
+    store_id: uuid.UUID,
+    payload: MoveOneRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Move ONE store to the other platform. Its orders, documents and history go with it; a Zepto capping number is dropped when it leaves Zepto."""
+    result = store_service.move_store_platform(db, user, store_id, payload.to_platform)
+    read_cache.invalidate()
+    return result
+
+
 @router.get("/import-issues", dependencies=[Depends(require_permission("stores.view"))])
 def import_issues(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """The rows each platform's latest store upload could not use (repeated names, a name with no ID, a status that is not understood...),

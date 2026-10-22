@@ -30,6 +30,8 @@ interface Props {
   calendar: Cal;
   /** null when the viewer can't mark (e.g. admin uses CorrectEntryModal instead). */
   onMark?: (date: string, count: number) => Promise<unknown>;
+  /** Lets an employee correct (or, with null, remove) a day they marked themselves. */
+  onCorrect?: (date: string, count: number | null) => Promise<unknown>;
   /** Batch mark multiple dates in one request */
   onMarkMany?: (entries: { orderDate: string; bottleCount: number }[]) => Promise<unknown>;
   onPickDay?: (day: CalendarDay) => void;
@@ -39,7 +41,7 @@ interface Props {
   isAdmin?: boolean;
 }
 
-export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking, onNavigate, isAdmin }: Props) {
+export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickDay, marking, onNavigate, isAdmin }: Props) {
   const [selected, setSelected] = useState<CalendarDay | null>(null);
   const [count, setCount] = useState("");
 
@@ -115,7 +117,14 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
       if (isSelectable) toggleDate(d.date);
       return;
     }
-    if (d.marked || d.isFuture || !onMark) return;
+    if (d.isFuture) return;
+    if (d.marked) {
+      if (!onCorrect || isAdmin || d.source !== "employee") return;     // only the person who marked a day can change it (admins use their own path)
+      setSelected(d);
+      setCount(String(d.count ?? ""));
+      return;
+    }
+    if (!onMark) return;
     setSelected(d);
     setCount("");
   }
@@ -125,8 +134,22 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!selected || !onMark || !valid) return;
-    await onMark(selected.date, n);
+    if (!selected || !valid) return;
+    if (selected.marked) {
+      if (!onCorrect) return;
+      await onCorrect(selected.date, n);
+    } else {
+      if (!onMark) return;
+      await onMark(selected.date, n);
+    }
+    setSelected(null);
+    setCount("");
+  }
+
+  async function removeEntry() {
+    if (!selected || !selected.marked || !onCorrect) return;
+    if (!window.confirm(`Remove the entry for ${selected.date}? The day becomes unmarked and you can mark it again.`)) return;
+    await onCorrect(selected.date, null);
     setSelected(null);
     setCount("");
   }
@@ -287,7 +310,10 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
             <div key={`b${i}`} />
           ))}
           {calendar.days.map((d) => {
-            const isClickable = Boolean(onPickDay) || (canMark && (isAdmin ? !d.isFuture : !d.marked && !d.isFuture));
+            const isClickable =
+              Boolean(onPickDay) ||
+              (canMark && (isAdmin ? !d.isFuture : !d.marked && !d.isFuture)) ||
+              (Boolean(onCorrect) && !isAdmin && d.marked && d.source === "employee" && !d.isFuture);
             const isSel = selected?.date === d.date;
             const isPicked = selectedDates.has(d.date);
 
@@ -328,11 +354,11 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
         </div>
 
         {/* Single date mark form */}
-        {!multiMode && selected && onMark && (
+        {!multiMode && selected && (onMark || (selected.marked && onCorrect)) && (
           <form onSubmit={submit} className="mt-5 flex flex-wrap items-end gap-3 rounded-lg border border-brand-100 bg-brand-50/60 p-3.5">
             <div className="min-w-[10rem] flex-1">
               <Input
-                label={`Bottles for ${selected.date}`}
+                label={selected.marked ? `Correct the bottles for ${selected.date} (entered as ${selected.count ?? 0})` : `Bottles for ${selected.date}`}
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -344,8 +370,13 @@ export function OrderCalendar({ calendar, onMark, onMarkMany, onPickDay, marking
               />
             </div>
             <Button type="submit" isLoading={marking} disabled={!valid}>
-              Save entry
+              {selected.marked ? "Save correction" : "Save entry"}
             </Button>
+            {selected.marked && (
+              <Button type="button" variant="secondary" onClick={() => void removeEntry()} disabled={marking}>
+                Remove entry
+              </Button>
+            )}
             <Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={marking}>
               Cancel
             </Button>

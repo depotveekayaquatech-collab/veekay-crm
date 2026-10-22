@@ -5,14 +5,24 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { MergeStoresModal } from "@/features/stores/MergeStoresModal";
-import { listDuplicateStores, listImportIssues, type DuplicateGroup, type ImportIssueRun, type MergePairInput } from "@/services/stores";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { pushToast } from "@/lib/toast";
+import {
+  listDuplicateStores, listImportIssues, listPlatformCheck, moveStoreToPlatform,
+  type DuplicateGroup, type ImportIssueRun, type MergePairInput, type PlatformCheckRow,
+} from "@/services/stores";
 import type { Store } from "@/types/store";
 
 export const DUPLICATES_KEY = ["duplicate-stores"];
 export const IMPORT_ISSUES_KEY = ["store-import-issues"];
+export const PLATFORM_CHECK_KEY = ["store-platform-check"];
 
 export function useDuplicateStores() {
   return useQuery({ queryKey: DUPLICATES_KEY, queryFn: listDuplicateStores, staleTime: 60_000 });
+}
+
+export function usePlatformCheck() {
+  return useQuery({ queryKey: PLATFORM_CHECK_KEY, queryFn: listPlatformCheck, staleTime: 60_000 });
 }
 
 export function useImportIssues() {
@@ -135,8 +145,80 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
         )}
       </section>
 
+      <PlatformCheck canMove={canMerge} />
+
       {merging && <MergeStoresModal onClose={() => setMerging(null)} initial={merging} />}
     </div>
+  );
+}
+
+const slugOf = (name: string | null) => ((name ?? "").toLowerCase().includes("zepto") ? "zepto" : "blinkit");
+
+/** Stores that look filed under the wrong platform (that is how one platform's capping or entries can show up on the other's stores). */
+function PlatformCheck({ canMove }: { canMove: boolean }) {
+  const q = usePlatformCheck();
+  const qc = useQueryClient();
+  const move = useMutation({
+    mutationFn: ({ id, to }: { id: string; to: string }) => moveStoreToPlatform(id, to),
+    onSuccess: (r) => {
+      for (const k of [PLATFORM_CHECK_KEY, DUPLICATES_KEY, ["stores"], ["capping"], ["pending"], ["order-insights"], ["inventory"]]) qc.invalidateQueries({ queryKey: k });
+      pushToast(`${r.name} moved to ${r.platform}${r.cappingRemoved ? " (its Zepto capping number was removed)" : ""}.`, "success");
+    },
+    onError: (e) => pushToast(e instanceof Error ? e.message : "Could not move the store.", "error"),
+  });
+
+  const ask = (row: PlatformCheckRow, to: string) => {
+    const label = to === "zepto" ? "Zepto" : "Blinkit";
+    const extra = row.hasCapping && to !== "zepto" ? " Its Zepto capping number will be removed." : "";
+    if (window.confirm(`Move ${row.store.name} (${row.store.externalCode}) from ${row.platform} to ${label}? Its ${row.orderDays} order day${row.orderDays === 1 ? "" : "s"} and documents go with it.${extra}`)) {
+      move.mutate({ id: row.store.id, to });
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-4">
+      <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Possibly on the wrong platform</h2>
+      {q.isLoading ? (
+        <Skeleton className="h-24" />
+      ) : q.isError || !q.data ? (
+        <ErrorState message="Couldn't run the platform check." onRetry={() => q.refetch()} />
+      ) : q.data.stores.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-surface-border bg-surface p-8 text-center text-sm text-gray-500">
+          Every store looks filed under the right platform.
+        </div>
+      ) : (
+        <>
+          <p className="rounded-xl bg-status-warning-soft/60 px-4 py-3 text-sm text-gray-700">
+            <b>{q.data.total}</b> store{q.data.total === 1 ? "" : "s"} look like they belong to the other platform. Check each one before moving it: the
+            reason is shown. A move keeps all its orders and documents, and a Zepto capping number is dropped when a store leaves Zepto.
+          </p>
+          <section className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-card">
+            <ul className="divide-y divide-surface-border text-sm">
+              {q.data.stores.map((r) => {
+                const to = r.suggestedPlatform ?? (slugOf(r.platform) === "zepto" ? "blinkit" : "zepto");
+                return (
+                  <li key={r.store.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-gray-900">{r.store.name}</span>
+                      <span className="block truncate text-xs text-gray-500">
+                        {r.store.externalCode} · on <b>{r.platform}</b> · {r.store.status} · {r.orderDays} order day{r.orderDays === 1 ? "" : "s"}
+                        {r.hasCapping ? " · has a capping number" : ""}
+                      </span>
+                      <span className="block text-xs text-status-danger">{r.reasons.join(" · ")}</span>
+                    </span>
+                    {canMove && (
+                      <Button size="sm" variant="secondary" isLoading={move.isPending && move.variables?.id === r.store.id} onClick={() => ask(r, to)}>
+                        Move to {to === "zepto" ? "Zepto" : "Blinkit"}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </>
+      )}
+    </section>
   );
 }
 

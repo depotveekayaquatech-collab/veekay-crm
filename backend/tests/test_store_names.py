@@ -179,3 +179,64 @@ def test_a_store_manager_can_merge_but_an_employee_cannot(client, emp, admin, ma
     body = {"platform": "blinkit", "pairs": [{"old_id": str(a.id), "new_id": str(b.id)}]}
     assert client.post(f"{API}/stores/merge", json=body, headers=emp).status_code == 403
     assert client.post(f"{API}/stores/merge", json=body, headers=admin).status_code == 200      # a preview
+
+
+# ---------------------------------------------------------------- wrong-platform check / move, and employees correcting their own entries
+def test_a_store_on_the_wrong_platform_is_flagged_and_moves_with_its_history_and_loses_its_zepto_cap(client, admin, db, make_store):
+    from app.models.store_cap import StoreCap
+    z = make_store(code="55123", name="SS Wrongly On Zepto Mart", platform="zepto", region=None)
+    day = date.today() - timedelta(days=1)
+    db.add(OrderEntry(organization_id=z.organization_id, store_id=z.id, order_date=day, bottle_count=4, source="manual"))
+    db.add(StoreCap(store_id=z.id, daily_cap=10, source="manual"))
+    db.commit()
+    zid, zpid = z.id, z.partner_organization_id
+    found = client.get(f"{API}/stores/platform-check", headers=admin).json()
+    row = next(r for r in found["stores"] if r["store"]["id"] == str(zid))
+    assert row["suggested_platform"] == "blinkit" and row["has_capping"] is True and row["order_days"] == 1
+
+    moved = client.post(f"{API}/stores/{zid}/move-platform", json={"to_platform": "blinkit"}, headers=admin)
+    assert moved.status_code == 200 and moved.json()["capping_removed"] == 1
+    db.expire_all()
+    assert db.get(Store, zid).partner_organization_id != zpid                                           # it is on the other platform now
+    assert db.query(StoreCap).filter_by(store_id=zid).count() == 0                                   # the Zepto cap did not follow it
+    assert db.query(OrderEntry).filter_by(store_id=zid).count() == 1                                  # its orders did
+    again = client.post(f"{API}/stores/{zid}/move-platform", json={"to_platform": "blinkit"}, headers=admin)
+    assert again.status_code == 422                                                                     # already there
+
+
+def test_moving_to_a_platform_that_already_has_that_name_is_refused(client, admin, make_store):
+    a = make_store(code="MP-1", name="Same Name Both Platforms", platform="zepto", region=None)
+    make_store(code="MP-2", name="Same Name Both Platforms", platform="blinkit")
+    r = client.post(f"{API}/stores/{a.id}/move-platform", json={"to_platform": "blinkit"}, headers=admin)
+    assert r.status_code == 409 and "already has a store named" in r.json()["detail"]
+    flagged = client.get(f"{API}/stores/platform-check", headers=admin).json()["stores"]
+    assert any(x["store"]["id"] == str(a.id) and any("also exists" in why for why in x["reasons"]) for x in flagged)
+
+
+def test_an_employee_can_correct_or_clear_their_own_entry_but_not_someone_elses(client, emp, admin, db, make_store):
+    s = make_store(code="OC-1", region="NORTH")
+    today = date.today().isoformat()
+    mark = client.post(f"{API}/orders/mark", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 5})
+    assert mark.status_code == 200, mark.text
+    again = client.post(f"{API}/orders/mark", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 9})
+    assert again.status_code == 409                                                                      # marking twice is still refused
+
+    fixed = client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 8})
+    assert fixed.status_code == 200, fixed.text
+    assert db.query(OrderEntry).filter_by(store_id=s.id).one().bottle_count == 8
+    from app.models.audit_log import AuditLog
+    log = db.query(AuditLog).filter_by(action="order.corrected_by_employee").order_by(AuditLog.created_at.desc()).first()
+    assert log.metadata_json["previous_count"] == 5 and log.metadata_json["bottle_count"] == 8        # what was there is on record
+
+    cleared = client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": today})
+    assert cleared.status_code == 200
+    db.expire_all()
+    assert db.query(OrderEntry).filter_by(store_id=s.id).count() == 0
+    assert client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 3}).status_code == 404   # nothing to correct
+
+    db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=date.today(), bottle_count=6, source="admin"))
+    db.commit()
+    theirs = client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 1})
+    assert theirs.status_code == 403 and "marked yourself" in theirs.json()["detail"]
+    old = (date.today().replace(day=1) - timedelta(days=70)).isoformat()
+    assert client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": old, "bottle_count": 1}).status_code == 422

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   correctEntry,
+  correctOwnEntry,
   getCalendar,
   getDailyOverview,
   getInsights,
@@ -84,6 +85,19 @@ export function useCorrectEntry() {
       qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
       for (const key of ["daily-overview", "my-stores", "pending", "capping"]) qc.invalidateQueries({ queryKey: [key] });
       pushToast(vars.count === null ? "Entry cleared." : "Entry corrected.", "success");
+    },
+  });
+}
+
+export function useCorrectOwnEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ storeId, date, count }: { storeId: string; date: string; count: number | null }) =>
+      correctOwnEntry(storeId, date, count),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["calendar", vars.storeId] });
+      for (const key of ["daily-overview", "my-stores", "pending", "capping"]) qc.invalidateQueries({ queryKey: [key] });
+      pushToast(vars.count === null ? "Entry removed." : "Entry corrected.", "success");
     },
   });
 }

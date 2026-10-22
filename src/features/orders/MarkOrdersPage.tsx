@@ -14,7 +14,7 @@ import { MultiDateMarkModal } from "@/features/orders/MultiDateMarkModal";
 import { OrderCalendar } from "@/features/orders/OrderCalendar";
 import { QuickEntry } from "@/features/orders/QuickEntry";
 import { RegionFilter, SegmentedControl, SelectStorePrompt, StorePicker } from "@/features/orders/ui";
-import { useCalendar, useMarkManyOrders, useMarkOrder, useMyStores } from "@/features/orders/useOrders";
+import { useCalendar, useCorrectOwnEntry, useMarkManyOrders, useMarkOrder, useMyStores } from "@/features/orders/useOrders";
 import type { MyStore } from "@/types/order";
 
 function ContactCard({ label, name, phone }: { label: string; name: string | null; phone: string | null }) {
@@ -93,6 +93,7 @@ export function MarkOrdersPage() {
   const [savedView, setView] = usePersistentState<"quick" | "store">("orders.view", "quick");
   const view = params.get("store") || !canMark ? "store" : savedView;
   const mark = useMarkOrder();
+  const correctOwn = useCorrectOwnEntry();
   const markMany = useMarkManyOrders();
   const [multiModalOpen, setMultiModalOpen] = useState(false);
   const { data: calendar, isLoading: calLoading, isError: calError, refetch: refetchCal } = useCalendar(
@@ -214,9 +215,10 @@ export function MarkOrdersPage() {
                 ) : (
                   <OrderCalendar
                     calendar={calendar}
-                    marking={mark.isPending || markMany.isPending}
+                    marking={mark.isPending || markMany.isPending || correctOwn.isPending}
                     onNavigate={(year, month) => setPeriod({ year, month })}
                     onMark={canMark ? (date, count) => mark.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
+                    onCorrect={canMark && !isAdmin ? (date, count) => correctOwn.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
                     onMarkMany={canMark ? (entries) => markMany.mutateAsync({ storeId: selectedStore.id, entries }) : undefined}
                     isAdmin={isAdmin}
                   />

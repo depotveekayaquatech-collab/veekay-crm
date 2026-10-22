@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCalendar, useMarkMany, useMyStores } from "@/api/staffHooks";
+import { useCalendar, useCorrectEntry, useMarkMany, useMyStores } from "@/api/staffHooks";
 import { Button, Card, Chips, ErrorNote, ListSkeleton } from "@/components/ui";
 import { MonthGrid, type CellState } from "@/components/MonthGrid";
 import { daysAgo, fmtDate, fmtNumber } from "@/lib/format";
@@ -42,6 +42,9 @@ export default function MarkMany() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const mark = useMarkMany();
+  const correct = useCorrectEntry();
+  const [fixing, setFixing] = useState<string | null>(null);      // a day already marked that the employee is correcting
+  const [fixValue, setFixValue] = useState("");
   const mine = useMyStores();
   const totals = mine.data?.find((s) => s.id === storeId);
   // Last month stays open for entries for the first few days of a month: the store list says so (and until when)
@@ -79,7 +82,40 @@ export default function MarkMany() {
   const selected = picked ?? initial;
   const setSelected = (next: string[] | ((s: string[]) => string[])) => setPicked((p) => (typeof next === "function" ? next(p ?? initial) : next));
 
+  /** Tapping a green (already marked) day opens a correction box for it; only the person who marked a day can change it. */
+  function openFix(iso: string) {
+    const d = byDate.get(iso);
+    if (!d || !d.marked) return;
+    Haptics.selectionAsync().catch(() => undefined);
+    if (d.source !== "employee") {
+      Alert.alert("Only an admin can change this day", "It was not marked by an employee, so an admin has to correct it.");
+      return;
+    }
+    setPicked([]);
+    setFixing(iso);
+    setFixValue(String(d.count ?? ""));
+  }
+
+  function saveFix(clear: boolean) {
+    if (!fixing || (!clear && !valid(fixValue))) return;
+    const run = () =>
+      correct.mutate(
+        { store_id: storeId, order_date: fixing, bottle_count: clear ? null : Number(fixValue) },
+        {
+          onSuccess: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+            setFixing(null);
+          },
+          onError: (e) => Alert.alert("Couldn't change that", e.message),
+        },
+      );
+    if (clear) Alert.alert(`Remove the entry for ${dayLabel(fixing)}?`, "The day becomes unmarked and you can mark it again.", [{ text: "Keep it", style: "cancel" }, { text: "Remove", style: "destructive", onPress: run }]);
+    else run();
+  }
+
   function toggle(iso: string) {
+    if (byDate.get(iso)?.marked) return openFix(iso);
+    setFixing(null);
     Haptics.selectionAsync().catch(() => undefined);
     setErrors((e) => ({ ...e, [iso]: "" }));
     setSelected((s) => (s.includes(iso) ? s.filter((x) => x !== iso) : [...s, iso].sort()));
@@ -97,7 +133,7 @@ export default function MarkMany() {
   function submit() {
     Alert.alert(
       `Mark ${selected.length} date${selected.length === 1 ? "" : "s"}?`,
-      `${total} bottles in total. You can't change a marked date yourself afterwards; an admin has to correct it.`,
+      `${total} bottles in total. If you get one wrong, tap that date afterwards to correct it.`,
       [
         { text: "Review", style: "cancel" },
         {
@@ -131,8 +167,8 @@ export default function MarkMany() {
     const d = byDate.get(iso);
     if (!d) return { disabled: true };
     return {
-      disabled: d.marked || d.is_future || cal.data?.can_mark === false,
-      selected: selected.includes(iso),
+      disabled: d.is_future || cal.data?.can_mark === false,
+      selected: selected.includes(iso) || fixing === iso,
       today: d.is_today,
       badge: d.marked ? d.count : null,
     };
@@ -145,7 +181,7 @@ export default function MarkMany() {
         {cal.isLoading ? <ListSkeleton rows={4} /> : cal.isError ? <ErrorNote message={cal.error.message} onRetry={() => cal.refetch()} /> : (
           <>
             <Text style={font.small}>{cal.data!.store_code} · {cal.data!.month_label}</Text>
-            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. Green numbers are already marked.</Text>
+            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. Tap a green number to correct what you marked.</Text>
             {lastOpenUntil ? (
               <View style={{ marginTop: 12, gap: 8 }}>
                 <Chips<"this" | "last"> options={[{ label: "This month", value: "this" }, { label: "Last month", value: "last" }]} value={period} onChange={switchPeriod} />
@@ -182,6 +218,23 @@ export default function MarkMany() {
             <Card style={{ marginTop: 14, padding: 8 }}>
               <MonthGrid year={cal.data!.year} month={cal.data!.month} state={state} onPress={toggle} />
             </Card>
+
+            {fixing ? (
+              <Card style={{ marginTop: 12, padding: 14, borderColor: colors.brand200, backgroundColor: colors.brand50 }}>
+                <Text style={{ fontSize: 15, fontWeight: "800", color: colors.brand800 }}>Correct {dayLabel(fixing)}</Text>
+                <Text style={[font.small, { marginTop: 2 }]}>Entered as {byDate.get(fixing)?.count ?? 0} bottles. What it should be:</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                  <Stepper value={fixValue} onChange={setFixValue} error={fixValue !== "" && !valid(fixValue)} label={dayLabel(fixing)} />
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Button title="Remove" variant="secondary" onPress={() => saveFix(true)} disabled={correct.isPending} style={{ minHeight: 44, paddingHorizontal: 14 }} />
+                    <Button title="Save" onPress={() => saveFix(false)} disabled={!valid(fixValue) || correct.isPending} loading={correct.isPending} style={{ minHeight: 44, paddingHorizontal: 18 }} />
+                  </View>
+                </View>
+                <Pressable onPress={() => setFixing(null)} accessibilityRole="button" style={{ marginTop: 10, minHeight: 36, justifyContent: "center" }}>
+                  <Text style={{ color: colors.brand700, fontWeight: "700" }}>Cancel</Text>
+                </Pressable>
+              </Card>
+            ) : null}
 
             {open.length === 0 ? (
               <View style={{ marginTop: 16, padding: 14, borderRadius: radius.md, backgroundColor: colors.successSoft }}>

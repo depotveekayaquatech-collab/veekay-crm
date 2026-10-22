@@ -271,6 +271,38 @@ export async function mergeStores(platform: string, pairs: MergePairInput[], dry
   };
 }
 
+export interface PlatformCheckRow {
+  store: Store;
+  platform: string | null;
+  orderDays: number;
+  hasCapping: boolean;
+  reasons: string[];
+  suggestedPlatform: string | null;
+}
+
+/** Stores that look filed under the wrong platform, with the evidence. Nothing is moved by this call. */
+export async function listPlatformCheck(): Promise<{ total: number; stores: PlatformCheckRow[] }> {
+  const w = await apiRequest<{
+    total: number;
+    stores: { store: StoreWire; platform: string | null; order_days: number; has_capping: boolean; reasons: string[]; suggested_platform: string | null }[];
+  }>("/stores/platform-check");
+  return {
+    total: w.total,
+    stores: w.stores.map((r) => ({
+      store: toStore(r.store), platform: r.platform, orderDays: r.order_days, hasCapping: r.has_capping, reasons: r.reasons, suggestedPlatform: r.suggested_platform,
+    })),
+  };
+}
+
+/** Move ONE store to another platform (its orders and history go with it; a Zepto capping number stays only on Zepto). */
+export async function moveStoreToPlatform(storeId: string, toPlatform: string): Promise<{ name: string; platform: string; cappingRemoved: number }> {
+  const w = await apiRequest<{ name: string; platform: string; capping_removed: number }>(`/stores/${storeId}/move-platform`, {
+    method: "POST",
+    body: { to_platform: toPlatform },
+  });
+  return { name: w.name, platform: w.platform, cappingRemoved: w.capping_removed };
+}
+
 export interface ImportIssue {
   row: number;
   name: string | null;

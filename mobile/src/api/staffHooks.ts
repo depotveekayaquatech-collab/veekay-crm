@@ -61,6 +61,16 @@ export function useMarkMany() {
   });
 }
 
+/** An employee changes (or clears, with no count) an entry they marked themselves. */
+export function useCorrectEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { store_id: string; order_date: string; bottle_count: number | null }) =>
+      request<unknown>("/orders/my-entry", { method: "PATCH", body: b }),
+    onSuccess: () => Promise.all(["s-calendar", "s-stores", "s-my-entries"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}
+
 export function useStaffWrite<V, R>(fn: (v: V) => Promise<R>, invalidate: string[]) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: fn, onSuccess: () => Promise.all(invalidate.map((k) => qc.invalidateQueries({ queryKey: [k] }))) });

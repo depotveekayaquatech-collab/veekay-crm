@@ -2,6 +2,8 @@
 import uuid
 from datetime import datetime, timezone
 
+import re
+
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -298,13 +300,118 @@ def move_stores(db: Session, actor: User, from_slug: str, to_slug: str, contains
            "skipped_duplicates": int(total - n), "dry_run": dry_run}
     if dry_run or n == 0:
         return out
+    moving = list(db.execute(select(Store.id).where(*movable)).scalars().all())
     db.execute(update(Store).where(*movable).values(partner_organization_id=dst.id))
+    _drop_caps_outside_zepto(db, moving, dst)
     activity_service.record(
         db, actor=actor, action="store.platform_moved", entity_type="organization", entity_id=actor.organization_id,
         metadata={"from": src.slug, "to": dst.slug, "contains": needle, "moved": int(n)},
     )
     db.commit()
     return out
+
+
+CAPPING_PLATFORM = "zepto"      # per-store capping exists for this platform only (see capping_service.PLATFORM)
+
+
+def _drop_caps_outside_zepto(db: Session, store_ids: list[uuid.UUID], dst: Organization) -> int:
+    """A capping number belongs to a Zepto store. A store that leaves Zepto must not carry it along."""
+    if not store_ids or (dst.slug or "").lower() == CAPPING_PLATFORM:
+        return 0
+    from app.models.store_cap import StoreCap
+
+    n = 0
+    for i in range(0, len(store_ids), 1000):
+        n += db.execute(delete(StoreCap).where(StoreCap.store_id.in_(store_ids[i:i + 1000]))).rowcount or 0
+    return int(n)
+
+
+def move_store_platform(db: Session, actor: User, store_id: uuid.UUID, to_slug: str) -> dict:
+    """Move ONE store to the other platform. It keeps its id, so its orders, documents, tickets and history go with it; a capping number
+    stays only when the store is (still) a Zepto store. Refused when the target platform already has a store with this name."""
+    store = require_store(db, actor, store_id)
+    dst = _partner_by_slug(db, to_slug)
+    if store.partner_organization_id == dst.id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"This store is already on {dst.name}.")
+    same = stores_named(db, actor.organization_id, dst.id, store.name)
+    if same:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{dst.name} already has a store named '{same[0].name}' (Outlet ID {same[0].external_code}). Names are unique on a platform: "
+            "check which one is the real store before moving.",
+        )
+    src = db.get(Organization, store.partner_organization_id)
+    store.partner_organization_id = dst.id
+    caps_removed = _drop_caps_outside_zepto(db, [store.id], dst)
+    from app.services import assignment_service
+
+    if assignment_service.is_employee_model(dst.slug):
+        store.region_id = None                 # Zepto stores are scoped by state, not region
+    activity_service.record(
+        db, actor=actor, action="store.platform_moved", entity_type="store", entity_id=store.id,
+        metadata={"name": store.name, "external_code": store.external_code, "from": src.slug if src else None, "to": dst.slug, "capping_removed": caps_removed},
+    )
+    db.commit()
+    return {"id": str(store.id), "name": store.name, "platform": dst.name, "capping_removed": caps_removed}
+
+
+_ZEPTO_CODE = re.compile(r"^[A-Za-z]{2,5}[_ ][A-Za-z0-9_ ]{3,}$|^[A-Z]{3}\d{3}S$")
+_ZEPTO_NAME = re.compile(r"^[A-Za-z]{2,4}-")
+_BLINKIT_NAME = re.compile(r"^SS ", re.IGNORECASE)
+
+
+def platform_check(db: Session, actor: User) -> dict:
+    """Stores that look like they are filed under the wrong platform, so someone can check them one by one.
+
+    Evidence used (shown with each store, nothing is moved automatically):
+      * the same store name exists on both platforms;
+      * a store on Zepto with a Blinkit-style name ("SS ...") or an all-digit Outlet ID, or on Blinkit with a Zepto-style Outlet ID
+        ("DEL_CNGTPL_P01R0CC") or a Zepto-style name;
+      * a capping number on a store that is not on Zepto (capping is Zepto-only).
+    """
+    from app.models.store_cap import StoreCap
+
+    partners = {p.id: p for p in db.execute(select(Organization).where(Organization.kind == OrganizationKind.PARTNER.value)).scalars()}
+    stores = db.execute(select(Store).where(Store.organization_id == actor.organization_id)).scalars().all()
+    capped = set(db.execute(select(StoreCap.store_id)).scalars().all())
+    days = dict(db.execute(select(OrderEntry.store_id, func.count()).group_by(OrderEntry.store_id)).all())
+    names: dict[str, list[Store]] = {}
+    for s in stores:
+        names.setdefault(name_key(s.name), []).append(s)
+
+    rows: dict[uuid.UUID, dict] = {}
+
+    def flag(s: Store, reason: str, suggest: str | None) -> None:
+        plat = partners.get(s.partner_organization_id)
+        row = rows.setdefault(s.id, {
+            "store": to_out(s).model_dump(mode="json"), "order_days": int(days.get(s.id, 0)), "has_capping": s.id in capped,
+            "reasons": [], "suggested_platform": suggest, "platform": plat.name if plat else None,
+        })
+        row["reasons"].append(reason)
+        row["suggested_platform"] = row["suggested_platform"] or suggest
+
+    for key, group in names.items():
+        plats = {s.partner_organization_id for s in group}
+        if key and len(plats) > 1:
+            for s in group:
+                others = sorted({partners[o.partner_organization_id].name for o in group if o.partner_organization_id != s.partner_organization_id if o.partner_organization_id in partners})
+                flag(s, f"The same name also exists on {', '.join(others)}", None)
+    for s in stores:
+        plat = partners.get(s.partner_organization_id)
+        slug = (plat.slug if plat else "").lower()
+        code, name = (s.external_code or "").strip(), (s.name or "").strip()
+        if slug == "zepto":
+            if _BLINKIT_NAME.match(name):
+                flag(s, f"On Zepto but named like a Blinkit store ('{name}')", "blinkit")
+            elif code.isdigit():
+                flag(s, f"On Zepto but its Outlet ID ({code}) is a plain number, like Blinkit's", "blinkit")
+        elif slug == "blinkit":
+            if _ZEPTO_CODE.match(code) and ("_" in code):
+                flag(s, f"On Blinkit but its Outlet ID ({code}) looks like a Zepto code", "zepto")
+        if slug != CAPPING_PLATFORM and s.id in capped:
+            flag(s, "Has a Zepto capping number although it is not a Zepto store", None)
+    out = sorted(rows.values(), key=lambda r: (r["platform"] or "", r["store"]["name"].lower()))
+    return {"total": len(out), "stores": out[:500]}
 
 
 def restore_archived_history(db: Session, org_id: uuid.UUID, partner_id: uuid.UUID | None = None) -> int:

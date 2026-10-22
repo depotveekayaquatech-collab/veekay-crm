@@ -132,7 +132,7 @@ export function refreshSession(): Promise<boolean> {
 }
 
 interface Options {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   retried?: boolean;
   noRefresh?: boolean;

@@ -29,6 +29,7 @@ export function useStoreMutations() {
     qc.invalidateQueries({ queryKey: ["stores"] });
     qc.invalidateQueries({ queryKey: ["duplicate-stores"] });
     qc.invalidateQueries({ queryKey: ["store-import-issues"] });
+    qc.invalidateQueries({ queryKey: ["store-platform-check"] });
     qc.invalidateQueries({ queryKey: ["regions"] });
     qc.invalidateQueries({ queryKey: ["store-vendors"] });
   };
