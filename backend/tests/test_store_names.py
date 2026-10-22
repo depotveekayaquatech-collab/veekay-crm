@@ -149,3 +149,33 @@ def test_stores_sharing_an_outlet_id_are_merged_by_store_id(client, dev, db, mak
                                                                    "pairs": [{"old_id": str(a.id), "new_id": str(b.id)}]}).json()
     assert exact["merged"] == 1
     assert db.query(OrderEntry).filter_by(store_id=b.id, order_date=day).one().bottle_count == 6
+
+
+def test_the_upload_keeps_a_list_of_rows_it_could_not_use(client, dev, admin, db, make_store):
+    from .test_store_import_limits import _xlsx
+    make_store(code="IS-1", name="Blinkit - Issue Twin")
+    make_store(code="IS-2", name="Blinkit - Issue Twin")
+    rows = [
+        ["IS-3", "Blinkit - Issue Twin", "Live", "Delhi", "Delhi", ""],          # two stores already carry this name, neither has IS-3
+        ["IS-4", "Blinkit - Issue Fresh", "Live", "Delhi", "Delhi", ""],
+        ["IS-5", "Blinkit - Issue Fresh", "Live", "Delhi", "Delhi", ""],         # the same name again in the sheet
+        ["IS-6", "Blinkit - Issue Odd Status", "somewhat ok", "Delhi", "Delhi", ""],
+        ["IS-7", "", "Live", "Delhi", "Delhi", ""],                              # an ID with no name
+    ]
+    r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.xlsx", _xlsx(rows), "application/octet-stream")}, headers=dev)
+    assert r.status_code == 200, r.text
+    got = client.get(f"{API}/stores/import-issues", headers=admin).json()
+    run = next(x for x in got["runs"] if x["platform_slug"] == "blinkit")
+    reasons = {i["reason"] for i in run["issues"]}
+    assert {"name_matches_several_stores", "name_repeated_in_sheet", "status_not_understood", "missing_name_or_id"} <= reasons
+    twin = next(i for i in run["issues"] if i["reason"] == "name_matches_several_stores")
+    assert twin["row"] == 2 and sorted(c["external_code"] for c in twin["crm_stores"]) == ["IS-1", "IS-2"]
+    db.query(Store).filter(Store.external_code.in_(["IS-4", "IS-6"])).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_a_store_manager_can_merge_but_an_employee_cannot(client, emp, admin, make_store):
+    a, b = make_store(name="Merge Perm Mart"), make_store(name="Merge Perm Mart")
+    body = {"platform": "blinkit", "pairs": [{"old_id": str(a.id), "new_id": str(b.id)}]}
+    assert client.post(f"{API}/stores/merge", json=body, headers=emp).status_code == 403
+    assert client.post(f"{API}/stores/merge", json=body, headers=admin).status_code == 200      # a preview

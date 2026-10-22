@@ -38,7 +38,7 @@ export function StoresPage() {
   const search = useDebounced(q.trim());
 
   const canManage = usePermission("stores.manage");
-  const canMerge = usePermission("sheets.sync");           // developer only
+  const canMerge = usePermission("stores.manage");          // store managers may merge duplicates (it moves all records first)
   const [view, setView] = useState<"stores" | "duplicates">("stores");
   const [deletingClosed, setDeletingClosed] = useState(false);
   const duplicates = useDuplicateStores();

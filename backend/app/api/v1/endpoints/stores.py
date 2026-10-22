@@ -154,29 +154,36 @@ def delete_closed_stores(
     return result
 
 
+@router.get("/import-issues", dependencies=[Depends(require_permission("stores.view"))])
+def import_issues(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """The rows each platform's latest store upload could not use (repeated names, a name with no ID, a status that is not understood...),
+    so someone can sort them out on the Duplicates page."""
+    return store_merge_service.import_issues(db, user)
+
+
 @router.get("/duplicates", dependencies=[Depends(require_permission("stores.view"))])
 def duplicate_stores(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Stores that exist more than once (same name on a platform, or the same Outlet ID ignoring capitals / spaces / dashes)."""
     return store_merge_service.duplicates(db, user)
 
 
-@router.get("/merge-suggestions", dependencies=[Depends(require_permission("sheets.sync"))])
+@router.get("/merge-suggestions", dependencies=[Depends(require_permission("stores.manage"))])
 def merge_suggestions(
     platform: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    """Developer only. Stores of a platform that exist twice under two Outlet IDs with the same name."""
+    """Store managers. Stores of a platform that exist twice under two Outlet IDs with the same name."""
     return store_merge_service.suggestions(db, user, platform)
 
 
-@router.post("/merge", dependencies=[Depends(require_permission("sheets.sync"))])
+@router.post("/merge", dependencies=[Depends(require_permission("stores.manage"))])
 def merge_stores(
     payload: MergeStoresRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Developer only. Move everything a temporary-ID store holds (orders, documents, tickets, cash purchases, vendor history...)
+    """Store managers. Move everything a temporary-ID store holds (orders, documents, tickets, cash purchases, vendor history...)
     onto the store created with the real Outlet ID, then remove the temporary one. `dry_run` (default) only reports."""
     return store_merge_service.merge(
         db, user, payload.platform, [p.model_dump() for p in payload.pairs], dry_run=payload.dry_run

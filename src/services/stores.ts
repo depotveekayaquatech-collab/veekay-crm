@@ -270,3 +270,47 @@ export async function mergeStores(platform: string, pairs: MergePairInput[], dry
     results: w.results.map((r) => ({ oldCode: r.old_code, newCode: r.new_code, name: r.name, ok: r.ok, reason: r.reason, moved: r.moved })),
   };
 }
+
+export interface ImportIssue {
+  row: number;
+  name: string | null;
+  code: string | null;
+  reason: string;
+  detail: string;
+  crmStores: { id: string; externalCode: string; status: string }[];
+}
+
+export interface ImportIssueRun {
+  platform: string;
+  platformSlug: string;
+  at: string;
+  source: string | null;
+  rowsRead: number | null;
+  created: number | null;
+  updated: number | null;
+  issueCount: number;
+  issues: ImportIssue[];
+}
+
+/** The rows each platform's latest store upload could not use, for someone to sort out. */
+export async function listImportIssues(): Promise<{ totalIssues: number; runs: ImportIssueRun[] }> {
+  const w = await apiRequest<{
+    total_issues: number;
+    runs: {
+      platform: string; platform_slug: string; at: string; source: string | null; rows_read: number | null; created: number | null;
+      updated: number | null; issue_count: number;
+      issues: { row: number; name: string | null; code: string | null; reason: string; detail: string; crm_stores: { id: string; external_code: string; status: string }[] }[];
+    }[];
+  }>("/stores/import-issues");
+  return {
+    totalIssues: w.total_issues,
+    runs: w.runs.map((r) => ({
+      platform: r.platform, platformSlug: r.platform_slug, at: r.at, source: r.source, rowsRead: r.rows_read, created: r.created,
+      updated: r.updated, issueCount: r.issue_count,
+      issues: r.issues.map((i) => ({
+        row: i.row, name: i.name, code: i.code, reason: i.reason, detail: i.detail,
+        crmStores: (i.crm_stores ?? []).map((c) => ({ id: c.id, externalCode: c.external_code, status: c.status })),
+      })),
+    })),
+  };
+}

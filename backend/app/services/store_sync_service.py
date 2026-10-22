@@ -498,6 +498,10 @@ def _import_rows(
     for st in db.execute(select(Store).where(Store.partner_organization_id == partner.id)).scalars():
         stores_by_name.setdefault(_name_key(st.name), []).append(st)
     seen_names: set[str] = set()          # names already handled in this sheet: a name appears once
+    issues: list[dict] = []               # rows someone has to sort out; kept with the import so Stores > Duplicates can list them
+
+    def issue(row_no: int, name: str | None, code: str | None, reason: str, detail: str = "") -> None:
+        issues.append({"row": row_no, "name": name, "code": code, "reason": reason, "detail": detail})
     renamed: list[tuple[str, str]] = []   # (old Outlet ID, new Outlet ID)
     renamed_ids: set[uuid.UUID] = set()
     status_changes: list[tuple[Store, str]] = []
@@ -509,15 +513,19 @@ def _import_rows(
         code = _clean(row.get(cols["external_code"]))
         name = _clean(row.get(cols["name"]))
         if not code or not name:
+            if code or name:
+                issue(i, name, code, "missing_name_or_id", "The row has an Outlet ID but no Outlet Name, or the other way round, so it was not imported.")
             continue
         if len(code) > _CODE_LIMIT:
             result.warnings.append(f"Row {i}: Outlet ID is longer than {_CODE_LIMIT} characters — skipped.")
+            issue(i, name, code, "id_too_long", f"The Outlet ID is longer than {_CODE_LIMIT} characters, so the row was not imported.")
             continue
 
         raw_status = row.get(cols["status"]) if "status" in cols else None
         status = parse_status(raw_status)          # None: blank or unrecognised -> an existing store keeps its status
         if status is None and _clean(raw_status):
             unknown_status.append(i)
+            issue(i, name, code, "status_not_understood", f"Status '{_clean(raw_status)}' is not Live, Pending or Close. A new store is added as Pending; an existing store keeps its status.")
         region_id: uuid.UUID | None = None
         if "region" in cols:
             raw_region = _clean(row.get(cols["region"]))
@@ -557,6 +565,7 @@ def _import_rows(
         key = _name_key(name)
         if key in seen_names:
             result.warnings.append(f"Row {i}: the store name '{name}' appears more than once in this sheet — only the first row was used.")
+            issue(i, name, code, "name_repeated_in_sheet", "This name is on an earlier row of the sheet, so this row was not imported. If it is a different outlet it needs its own name; if it is the same outlet, remove the extra row.")
             continue
         seen_names.add(key)
         twins = stores_by_name.get(key, [])
@@ -571,6 +580,7 @@ def _import_rows(
                 result.warnings.append(
                     f"Row {i}: {len(twins)} stores are already named '{name}' — not changed. Merge or correct them under Stores > Duplicates."
                 )
+                issue(i, name, code, "name_matches_several_stores", f"{len(twins)} stores in the CRM already have this name and none has Outlet ID {code}, so nothing was changed. Merge the extra copies, or correct their Outlet IDs.")
                 continue
         if existing is not None and existing.external_code != code:
             renamed.append((existing.external_code, code))          # the real Outlet ID replaces the temporary one
@@ -667,6 +677,8 @@ def _import_rows(
             "updated": result.updated,
             "rows_read": result.rows_read,
             "ids_renamed_by_name": [{"from": a, "to": b} for a, b in renamed[:200]],
+            "issue_count": len(issues),
+            "issues": issues[:300],
         },
     )
     db.commit()

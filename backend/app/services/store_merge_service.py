@@ -280,3 +280,37 @@ def duplicates(db: Session, actor: User) -> dict:
         })
     groups.sort(key=lambda x: ((x["platform"] or "").lower(), x["kind"], x["label"].lower()))
     return {"total_groups": len(groups), "total_stores": len(ids), "groups": groups}
+
+
+def import_issues(db: Session, actor: User) -> dict:
+    """What each platform's latest store upload could not use, with the stores the CRM holds under the same name, so one person can
+    work through them. The upload keeps up to 300 rows per run."""
+    from app.models.audit_log import AuditLog
+    from app.services import store_service
+
+    out = []
+    partners = db.execute(
+        select(Organization).where(Organization.kind == OrganizationKind.PARTNER.value).order_by(Organization.name)
+    ).scalars().all()
+    for partner in partners:
+        run = db.execute(
+            select(AuditLog).where(AuditLog.action == "store.synced", AuditLog.entity_id == str(partner.id))
+            .order_by(AuditLog.created_at.desc()).limit(1)
+        ).scalar_one_or_none()
+        if run is None:
+            continue
+        meta = run.metadata_json or {}
+        issues = list(meta.get("issues") or [])
+        by_name: dict[str, list[Store]] = {}
+        if issues:
+            for s in db.execute(select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)).scalars():
+                by_name.setdefault(store_service.name_key(s.name), []).append(s)
+        for it in issues:
+            same = by_name.get(store_service.name_key(it.get("name")), [])
+            it["crm_stores"] = [{"id": str(s.id), "external_code": s.external_code, "status": s.status} for s in same[:6]]
+        out.append({
+            "platform": partner.name, "platform_slug": partner.slug, "at": run.created_at.isoformat(), "source": meta.get("source"),
+            "rows_read": meta.get("rows_read"), "created": meta.get("created"), "updated": meta.get("updated"),
+            "issue_count": int(meta.get("issue_count") or len(issues)), "issues": issues,
+        })
+    return {"runs": out, "total_issues": sum(r["issue_count"] for r in out)}

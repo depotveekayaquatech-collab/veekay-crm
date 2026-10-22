@@ -80,7 +80,7 @@ def test_suggestions_pair_stores_that_share_a_name(client, dev, db, make_store):
     assert len(got) == 1 and got[0]["old_code"] == "TMP-4" and got[0]["new_code"] == "REAL-4"
 
 
-def test_only_the_developer_can_merge(client, admin, make_store):
+def test_only_store_managers_can_merge(client, emp, make_store):
     a, b = make_store(name="X1"), make_store(name="X1")
-    assert client.post(f"{API}/stores/merge", json=_body(a, b), headers=admin).status_code == 403
-    assert client.get(f"{API}/stores/merge-suggestions", params={"platform": "blinkit"}, headers=admin).status_code == 403
+    assert client.post(f"{API}/stores/merge", json=_body(a, b), headers=emp).status_code == 403
+    assert client.get(f"{API}/stores/merge-suggestions", params={"platform": "blinkit"}, headers=emp).status_code == 403
