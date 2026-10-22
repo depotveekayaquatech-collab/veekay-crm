@@ -306,3 +306,44 @@ def test_the_calendar_says_who_entered_each_day(client, emp, admin, db, make_sto
     cal = client.get(f"{API}/orders/calendar", params={"store_id": str(s.id)}, headers=emp).json()
     day = next(d for d in cal["days"] if d["date"] == today)
     assert day["source"] == "employee" and day["entered_by"] and day["entered_at"]
+
+
+def test_an_order_import_can_be_undone_for_one_month_and_nothing_else(client, dev, admin, db, make_store):
+    from datetime import datetime
+    from app.models.audit_log import AuditLog
+    from app.models.deleted_row import DeletedRow
+    s = make_store(code="RV-1", name="Revert Mart One")
+    t = make_store(code="RV-2", name="Revert Mart Two")
+    today = date.today()
+    first = today.replace(day=1)
+    last_month = first - timedelta(days=5)
+    csv = f"Outlet ID,Outlet Name,{last_month.isoformat()},{first.isoformat()},{(first + timedelta(days=1)).isoformat() if first + timedelta(days=1) <= today else first.isoformat()}\n".encode()
+    # an employee marks day 1 on store t first; the import will overwrite it
+    emp_day = first
+    db.add(OrderEntry(organization_id=t.organization_id, store_id=t.id, order_date=emp_day, bottle_count=3, source="employee"))
+    db.commit()
+    body = f"Outlet ID,Outlet Name,{last_month},{emp_day}\nRV-1,{s.name},9,9\nRV-2,{t.name},,20\n".encode()
+    r = client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit", "overwrite": "true"}, files={"file": ("o.csv", body, "text/csv")})
+    assert r.status_code == 200, r.text
+    assert db.query(OrderEntry).filter_by(store_id=t.id, order_date=emp_day).one().bottle_count == 20     # the import overwrote the employee's 3
+
+    month = emp_day.strftime("%Y-%m")
+    runs = client.get(f"{API}/orders/import-runs", params={"platform": "blinkit", "month": month}, headers=dev).json()["runs"]
+    mine = [x for x in runs if x["created_in_month"] >= 1]
+    assert mine and mine[0]["overwrote_in_month"] >= 1
+    rid = mine[0]["run_id"]
+    pre = client.post(f"{API}/orders/import-revert", headers=dev, json={"platform": "blinkit", "month": month, "run_ids": [rid]}).json()
+    assert pre["dry_run"] is True and pre["will_delete"] >= 1 and pre["will_restore"] >= 1
+    assert db.query(OrderEntry).filter_by(store_id=s.id, order_date=emp_day).count() == 1               # a preview deletes nothing
+
+    assert client.post(f"{API}/orders/import-revert", headers=dev, json={"platform": "blinkit", "month": month, "run_ids": [rid], "dry_run": False}).status_code == 422   # needs the confirm text
+    done = client.post(f"{API}/orders/import-revert", headers=dev, json={"platform": "blinkit", "month": month, "run_ids": [rid], "dry_run": False, "confirm": f"REVERT BLINKIT {month}"})
+    assert done.status_code == 200, done.text
+    db.expire_all()
+    assert db.query(OrderEntry).filter_by(store_id=s.id, order_date=emp_day).count() == 0                  # what the import created this month is gone
+    back = db.query(OrderEntry).filter_by(store_id=t.id, order_date=emp_day).one()
+    assert back.bottle_count == 3 and back.source == "employee"                                           # the employee's own number is back
+    if last_month.strftime("%Y-%m") != month:
+        assert db.query(OrderEntry).filter_by(store_id=s.id, order_date=last_month).count() == 1           # other months are untouched
+    assert db.query(DeletedRow).filter(DeletedRow.table_name == "order_entries", DeletedRow.row_id.isnot(None)).count() >= 1   # and the deleted rows are kept
+    assert client.get(f"{API}/orders/import-runs", params={"platform": "blinkit", "month": month}, headers=admin).status_code == 403   # developer only

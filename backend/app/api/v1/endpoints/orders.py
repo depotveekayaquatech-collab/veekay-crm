@@ -2,7 +2,7 @@
 import uuid
 from datetime import date, timedelta
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, Query, File, Form, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.exc import DBAPIError
@@ -27,7 +27,7 @@ from app.schemas.order import (
 )
 from app.schemas.inventory import Inventory
 from app.schemas.report import PendingEntries, SalesReport
-from app.services import inventory_service, matrix_service, order_import_service, order_service, report_service
+from app.services import inventory_service, matrix_service, order_import_service, order_revert_service, order_service, report_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -114,6 +114,37 @@ def mark_many(
 ) -> MarkManyResult:
     """Several dates of one store with a count each, in one request. Each date is checked on its own (see the per-date results)."""
     return order_service.mark_many(db, user, payload, is_admin=_is_admin(perms))
+
+
+class RevertImportRequest(BaseModel):
+    platform: str
+    month: str = Field(pattern=r"^\d{4}-\d{2}$")
+    run_ids: list[uuid.UUID]
+    dry_run: bool = True
+    confirm: str = ""
+
+
+@router.get("/import-runs", dependencies=[Depends(require_permission("sheets.sync"))])
+def import_runs(
+    platform: str, month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Developer only. The order imports of a platform that left entries in a month, with how much each one can undo."""
+    return order_revert_service.import_runs(db, user, platform, month)
+
+
+@router.post("/import-revert", dependencies=[Depends(require_permission("sheets.sync"))])
+def import_revert(payload: RevertImportRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Developer only. Put ONE month back the way it was before the chosen imports: entries they created are deleted (kept in deleted_rows),
+    numbers they overwrote are restored. `dry_run` (default) only counts; applying needs confirm = `REVERT <PLATFORM> <YYYY-MM>`."""
+    if not payload.dry_run:
+        expected = f"REVERT {payload.platform.strip().upper()} {payload.month}"
+        if payload.confirm.strip().upper() != expected:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f'Type "{expected}" to confirm.')
+    result = order_revert_service.revert(db, user, payload.platform, payload.month, payload.run_ids, dry_run=payload.dry_run)
+    if not payload.dry_run:
+        read_cache.invalidate()
+    return result
 
 
 @router.patch(

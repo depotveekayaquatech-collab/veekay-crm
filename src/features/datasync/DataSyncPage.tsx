@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { IconRefresh, IconUpload } from "@/components/ui/icons";
 import { ImportOrdersModal } from "@/features/orders/ImportOrdersModal";
+import { UndoOrderImportModal } from "@/features/orders/UndoOrderImportModal";
 import { useSyncOrders } from "@/features/orders/useOrders";
 import { DeleteAllStoresModal } from "@/features/stores/DeleteAllStoresModal";
 import { MergeStoresModal } from "@/features/stores/MergeStoresModal";
@@ -75,6 +76,7 @@ export function DataSyncPage() {
   const [removingStores, setRemovingStores] = useState(false);
   const [movingStores, setMovingStores] = useState(false);
   const [mergingStores, setMergingStores] = useState(false);
+  const [undoingOrders, setUndoingOrders] = useState(false);
   const [syncingDates, setSyncingDates] = useState(false);
   const [importOrders, setImportOrders] = useState(false);
   const { sync: syncStores } = useStoreMutations();
@@ -119,6 +121,9 @@ export function DataSyncPage() {
               <IconUpload className="h-4 w-4" aria-hidden="true" />
               Import file
             </Button>
+            <Button variant="danger" onClick={() => setUndoingOrders(true)}>
+              Undo an import (one month)
+            </Button>
           </div>
           {syncOrders.data && <Results title="Last order sync" results={syncOrders.data} onDismiss={() => syncOrders.reset()} />}
         </Card>
@@ -132,6 +137,7 @@ export function DataSyncPage() {
       {removingStores && <DeleteAllStoresModal onClose={() => setRemovingStores(false)} />}
       {importStores && <ImportStoresModal onClose={() => setImportStores(false)} />}
       {importOrders && <ImportOrdersModal onClose={() => setImportOrders(false)} />}
+      {undoingOrders && <UndoOrderImportModal onClose={() => setUndoingOrders(false)} />}
     </div>
   );
 }
