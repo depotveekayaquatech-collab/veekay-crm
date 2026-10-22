@@ -95,9 +95,9 @@ def test_admin_never_appears_in_the_day_or_month_views(client, admin, emp):
 def test_check_in_then_out_once_a_day(client, make_user, clock):
     clock(10, 0)
     h, _ = _fresh_employee(client, make_user)
-    r = client.post(f"{API}/attendance/check-in", headers=h, json={})
+    r = client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     assert r.status_code == 200 and r.json()["checked_in"] and not r.json()["checked_out"]
-    assert client.post(f"{API}/attendance/check-in", headers=h, json={}).status_code == 409     # only once
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).status_code == 409     # only once
     clock(18, 30)
     out = client.post(f"{API}/attendance/check-out", headers=h, json={})
     assert out.status_code == 200 and out.json()["checked_out"] and out.json()["minutes"] == 510
@@ -113,10 +113,10 @@ def test_check_out_needs_a_check_in_first(client, make_user):
 def test_late_after_the_grace_period(client, make_user, clock):
     h1, _ = _fresh_employee(client, make_user)
     clock(10, 15)                                                  # exactly at start + grace: still on time
-    assert client.post(f"{API}/attendance/check-in", headers=h1, json={}).json()["late"] is False
+    assert client.post(f"{API}/attendance/check-in", headers=h1, json=_at(OFFICE)).json()["late"] is False
     h2, _ = _fresh_employee(client, make_user)
     clock(10, 16)
-    assert client.post(f"{API}/attendance/check-in", headers=h2, json={}).json()["late"] is True
+    assert client.post(f"{API}/attendance/check-in", headers=h2, json=_at(OFFICE)).json()["late"] is True
 
 
 # ---------------------------------------------------------------- location is read at check in / out, nowhere else
@@ -149,11 +149,22 @@ def test_no_office_configured_means_outside_not_an_error(client, make_user, cloc
     assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).json()["check_in_location"]["status"] == "outside"
 
 
-def test_declining_location_still_checks_you_in(client, make_user, clock):
+def test_check_in_needs_a_location(client, make_user, clock):
     clock(9, 30)
     h, _ = _fresh_employee(client, make_user)
-    t = client.post(f"{API}/attendance/check-in", headers=h, json={}).json()
-    assert t["checked_in"] and t["check_in_location"]["status"] == "unknown"
+    r = client.post(f"{API}/attendance/check-in", headers=h, json={})
+    assert r.status_code == 422 and "Location is required" in r.json()["detail"]
+    assert client.get(f"{API}/attendance/today", headers=h).json()["checked_in"] is False      # nothing was recorded
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).json()["checked_in"] is True
+
+
+def test_check_out_without_a_location_is_recorded_as_not_shared(client, make_user, clock):
+    clock(9, 30)
+    h, _ = _fresh_employee(client, make_user)
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
+    clock(18, 0)
+    t = client.post(f"{API}/attendance/check-out", headers=h, json={}).json()
+    assert t["checked_out"] and t["check_out_location"]["status"] == "unknown"
 
 
 def test_check_out_records_its_own_location(client, office, make_user, clock):
@@ -192,7 +203,7 @@ def test_day_view_shows_present_late_and_still_in(client, admin, make_user, cloc
     clock(11, 0)
     code, pw, _ = make_user()
     h = auth(login(client, code, pw).json()["access_token"])
-    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     day = client.get(f"{API}/attendance/day?date={datetime.now(IST).date()}", headers=admin).json()
     row = next(r for r in day["rows"] if r["employee_code"] == code)
     assert row["status"] == "CHECKED_IN" and row["late"] is True
@@ -203,7 +214,7 @@ def test_month_and_me_views(client, admin, make_user, clock):
     clock(9, 30)
     code, pw, _ = make_user()
     h = auth(login(client, code, pw).json()["access_token"])
-    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     month = client.get(f"{API}/attendance/month", headers=admin).json()
     me = next(r for r in month["rows"] if r["employee_code"] == code)
     assert me["days_present"] == 1 and me["late_days"] == 0
@@ -306,7 +317,8 @@ def test_presence_text_at_office_away_and_not_shared(client, office, make_user, 
     silent, _ = _fresh_employee(client, make_user)
     at = client.post(f"{API}/attendance/check-in", headers=inside, json=_at(_north(60))).json()["check_in_location"]
     far = client.post(f"{API}/attendance/check-in", headers=away, json=_at(_north(5000))).json()["check_in_location"]
-    none = client.post(f"{API}/attendance/check-in", headers=silent, json={}).json()["check_in_location"]
+    client.post(f"{API}/attendance/check-in", headers=silent, json=_at(_north(60)))
+    none = client.post(f"{API}/attendance/check-out", headers=silent, json={}).json()["check_out_location"]
     assert at["presence"] == "At office" and at["label"] == "Head Office"
     assert far["presence"] == "Away (not from office)" and "," in far["label"]          # coordinates are shown
     assert none["presence"] == "Away (not from office)" and none["label"] == "Location not shared"
@@ -316,7 +328,7 @@ def test_presence_text_at_office_away_and_not_shared(client, office, make_user, 
 def test_only_a_developer_can_correct_a_day(client, admin, emp, make_user, clock):
     clock(9, 30)
     h, uid = _fresh_employee(client, make_user)
-    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     body = {"user_id": str(uid), "date": datetime.now(IST).date().isoformat(), "check_in_time": "10:30"}
     body["work_date"] = body.pop("date")
     for who in (admin, emp, h):
@@ -351,7 +363,7 @@ def test_correction_rules(client, dev, office, make_user, clock):
     day = datetime.now(IST).date().isoformat()
     base = {"user_id": str(uid), "work_date": day}
     assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "presence": "office"}).status_code == 404   # no check-in yet
-    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     assert client.patch(f"{API}/attendance/record", headers=dev, json=base).status_code == 422                            # nothing to change
     assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "25:00"}).status_code == 422
     assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "13:00"}).status_code == 422  # future
@@ -365,7 +377,7 @@ def test_developer_can_force_late_and_half_day_and_payroll_counts_the_half(clien
 
     clock(9, 30)
     h, uid = _fresh_employee(client, make_user)
-    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     day = datetime.now(IST).date().isoformat()
     base = {"user_id": str(uid), "work_date": day}
 
@@ -394,7 +406,7 @@ def test_developer_can_force_late_and_half_day_and_payroll_counts_the_half(clien
 def test_developer_can_undo_a_mistaken_check_out(client, dev, admin, make_user, clock):
     clock(9, 30)
     h, uid = _fresh_employee(client, make_user)
-    client.post(f"{API}/attendance/check-in", headers=h, json={})
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
     day = datetime.now(IST).date().isoformat()
     body = {"user_id": str(uid), "work_date": day, "clear_check_out": True}
     assert client.patch(f"{API}/attendance/record", headers=dev, json=body).status_code == 409        # not checked out yet

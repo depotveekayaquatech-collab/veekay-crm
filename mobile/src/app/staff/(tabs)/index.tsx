@@ -101,32 +101,31 @@ export default function Today() {
   const a = q.data;
   const running = a?.checked_in && !a.checked_out && a.check_in_at ? Math.max(0, Math.round((Date.now() - new Date(a.check_in_at).getTime()) / 60000)) : null;
 
+  /** Check in needs the phone's location; check out never asks for it. */
   async function press(kind: "in" | "out") {
     setBusy(true);
     try {
       let reading: Reading = {};
-      for (;;) {
+      while (kind === "in") {
         const got = await readLocation();
         if ("reading" in got) { reading = got.reading; break; }
         const why = describeFailure(got.skipped);
-        const choice = await new Promise<"retry" | "anyway" | "settings" | "cancel">((resolve) =>
+        const choice = await new Promise<"retry" | "settings" | "cancel">((resolve) =>
           Alert.alert(
             why.title,
             `${why.text}
 
-You can still check ${kind}; it will be recorded as "location not shared".`,
+Location is required to check in.`,
             [
               { text: "Try again", onPress: () => resolve("retry") },
               ...(why.settings ? [{ text: "Open settings", onPress: () => resolve("settings") }] : []),
-              { text: `Check ${kind} anyway`, onPress: () => resolve("anyway") },
             ],
             { cancelable: true, onDismiss: () => resolve("cancel") },
           ),
         );
         if (choice === "retry") continue;
         if (choice === "settings") { void Linking.openSettings(); return; }
-        if (choice === "cancel") return;
-        break;   // "anyway"
+        return;
       }
       await (kind === "in" ? staffApi.checkIn(reading) : staffApi.checkOut(reading));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);

@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useMyStores } from "@/api/staffHooks";
 import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
 import { PendingPill } from "@/components/PendingPill";
+import { VendorPicker, vendorKey, vendorsOf } from "@/components/VendorPicker";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
@@ -25,6 +26,7 @@ export default function Orders() {
   const [needle, setNeedle] = useState("");
   const [filter, setFilter] = useState<Filter>("pending");
   const [day, setDay] = useState<Day>("today");
+  const [vendor, setVendor] = useState("");   // vendorKey of the chosen vendor, "" = all vendors
 
   // Coming back from a store's page (or another tab) always shows the latest marks.
   const { refetch } = q;
@@ -40,19 +42,26 @@ export default function Orders() {
   const done = stores.filter((s) => countOf(s) !== null).length;
   const percent = stores.length ? Math.round((done / stores.length) * 100) : 0;
 
+  // Vendor filter: pick a vendor to see all of its stores; the chips below then count that vendor's stores only
+  const vendors = useMemo(() => vendorsOf(stores), [stores]);
+  const scope = useMemo(() => (vendor ? stores.filter((s) => vendorKey(s.vendor_name) === vendor) : stores), [stores, vendor]);
+  const scopeDone = scope.filter((s) => countOf(s) !== null).length;
+  const pickVendor = (key: string) => { setVendor(key); if (key) setFilter("all"); };   // "all" so none of its stores are hidden
+
   const shown = useMemo(() => {
     const n = needle.trim().toLowerCase();
     if (filter === "lastmonth") {
       return lastMissing
-        .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""}`.toLowerCase().includes(n))
+        .filter((s) => !vendor || vendorKey(s.vendor_name) === vendor)
+        .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""} ${s.vendor_name ?? ""}`.toLowerCase().includes(n))
         .sort((a, b) => (b.last_month_missing ?? 0) - (a.last_month_missing ?? 0) || a.name.localeCompare(b.name));
     }
-    const list = stores
+    const list = scope
       .filter((s) => (filter === "all" ? true : filter === "done" ? countOf(s) !== null : countOf(s) === null))
-      .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""}`.toLowerCase().includes(n));
+      .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""} ${s.vendor_name ?? ""}`.toLowerCase().includes(n));
     // the pending list starts with the stores that have waited longest
     return filter === "pending" ? [...list].sort((a, b) => (b.pending_days ?? 0) - (a.pending_days ?? 0) || a.name.localeCompare(b.name)) : list;
-  }, [stores, filter, needle, countOf, lastMissing]);
+  }, [scope, filter, needle, countOf, lastMissing, vendor]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSubtle }}>
@@ -94,16 +103,17 @@ export default function Orders() {
               </Pressable>
             ) : null}
             <Chips<Day> options={[{ label: "Today", value: "today" }, { label: "Yesterday", value: "yesterday" }]} value={day} onChange={setDay} />
+            <VendorPicker vendors={vendors} value={vendor} onChange={pickVendor} />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 48, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: 12 }}>
               <Ionicons name="search" size={18} color={colors.textFaint} />
-              <TextInput value={needle} onChangeText={setNeedle} placeholder="Search store, code or city" placeholderTextColor={colors.textFaint} accessibilityLabel="Search stores" style={{ flex: 1, fontSize: 16, color: colors.text }} />
+              <TextInput value={needle} onChangeText={setNeedle} placeholder="Search store, code, city or vendor" placeholderTextColor={colors.textFaint} accessibilityLabel="Search stores" style={{ flex: 1, fontSize: 16, color: colors.text }} />
             </View>
-            <Chips<Filter> options={[{ label: `Pending ${stores.length - done}`, value: "pending" }, { label: `Done ${done}`, value: "done" }, { label: "All", value: "all" }, ...(lastOpenUntil ? [{ label: `Last month ${lastMissing.length}`, value: "lastmonth" as Filter }] : [])]} value={filter} onChange={setFilter} />
+            <Chips<Filter> options={[{ label: `Pending ${scope.length - scopeDone}`, value: "pending" }, { label: `Done ${scopeDone}`, value: "done" }, { label: `All ${scope.length}`, value: "all" }, ...(lastOpenUntil ? [{ label: `Last month ${lastMissing.length}`, value: "lastmonth" as Filter }] : [])]} value={filter} onChange={setFilter} />
           </View>
         }
         ListEmptyComponent={
           q.isLoading ? <ListSkeleton /> : q.isError ? <ErrorNote message={q.error.message} onRetry={() => q.refetch()} /> : (
-            <Empty title={filter === "lastmonth" && !needle ? "Last month is complete" : filter === "pending" && !needle ? `All stores are marked for ${day}` : "No store matches"} text={filter === "lastmonth" && !needle ? "Every store has all its days of last month." : filter === "pending" && !needle ? "Nice work. You can still mark earlier days of this month from a store's page." : "Try a different filter or search."} />
+            <Empty title={filter === "lastmonth" && !needle ? "Last month is complete" : filter === "pending" && !needle ? `All ${vendor ? "of this vendor's " : ""}stores are marked for ${day}` : "No store matches"} text={filter === "lastmonth" && !needle ? "Every store has all its days of last month." : filter === "pending" && !needle ? "Nice work. You can still mark earlier days of this month from a store's page." : "Try a different filter or search."} />
           )
         }
         renderItem={({ item: s }) => (
@@ -119,7 +129,7 @@ export default function Orders() {
             </View>
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
-              <Text numberOfLines={1} style={font.small}>{s.external_code}{s.city ? ` · ${s.city}` : ""}</Text>
+              <Text numberOfLines={1} style={font.small}>{s.external_code}{s.city ? ` · ${s.city}` : ""}{!vendor && s.vendor_name ? ` · ${s.vendor_name}` : ""}</Text>
               <Text numberOfLines={1} style={font.tiny}>This month {fmtNumber(s.month_bottles ?? 0)} · Last month {fmtNumber(s.last_month_bottles ?? 0)} bottles</Text>
               {filter === "lastmonth" ? (
                 <View style={{ marginTop: 6, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>

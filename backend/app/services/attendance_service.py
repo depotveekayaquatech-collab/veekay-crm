@@ -111,7 +111,7 @@ def _is_late(checked_in: datetime) -> bool:
 # --------------------------------------------------------------------------
 
 def _read_location(db: Session, user: User, lat: float | None, lng: float | None, accuracy: float | None) -> dict:
-    """Classify a reading. No (or invalid) coordinates is allowed — it is recorded as 'location not shared'."""
+    """Classify a reading. Check in requires coordinates; check out without them is recorded as 'location not shared'."""
     if not valid_coords(lat, lng):
         return {"status": "unknown", "lat": None, "lng": None, "accuracy": None, "distance": None, "label": None}
     st, office, dist = classify(db, user.organization_id, lat, lng)
@@ -174,6 +174,8 @@ def check_in(db: Session, user: User, lat: float | None, lng: float | None, accu
     existing = _today_record(db, user)
     if existing is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"You already checked in today at {_fmt_time(existing.check_in_at)}.")
+    if not valid_coords(lat, lng):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Location is required to check in. Turn on Location, allow it for Veekay, and try again.")
     now = _now()
     loc = _read_location(db, user, lat, lng, accuracy)
     db.add(AttendanceRecord(

@@ -31,18 +31,19 @@ function CheckCard({ today }: { today: TodayStatus }) {
   const now = useClock();
   const { checkIn, checkOut } = useCheckMutations();
   const [locating, setLocating] = useState(false);
-  const [noLocation, setNoLocation] = useState<"in" | "out" | null>(null);
+  const [noLocation, setNoLocation] = useState(false);
   const busy = locating || checkIn.isPending || checkOut.isPending;
 
-  async function go(kind: "in" | "out", withoutLocation = false) {
-    setNoLocation(null);
+  /** Check in needs the device location; check out never asks for it. */
+  async function go(kind: "in" | "out") {
+    setNoLocation(false);
     let reading: { latitude?: number; longitude?: number; accuracy?: number } = {};
-    if (!withoutLocation) {
+    if (kind === "in") {
       setLocating(true);
       const loc = await getDeviceLocation();
       setLocating(false);
       if (!loc) {
-        setNoLocation(kind);
+        setNoLocation(true);
         return;
       }
       reading = { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy };
@@ -128,13 +129,10 @@ function CheckCard({ today }: { today: TodayStatus }) {
       {noLocation && (
         <div className="relative flex flex-wrap items-center gap-3 border-t border-status-warning/25 bg-status-warning-soft/60 px-5 py-3 text-sm sm:px-7">
           <span className="text-gray-700">
-            We couldn't read your location — allow location access for this site in your browser, or continue without it.
+            We couldn't read your location. Location is required to check in — allow location access for this site in your browser and try again.
           </span>
           <span className="ml-auto flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => void go(noLocation)}>Try again</Button>
-            <Button size="sm" variant="secondary" onClick={() => void go(noLocation, true)}>
-              {noLocation === "in" ? "Check in" : "Check out"} without location
-            </Button>
+            <Button size="sm" variant="secondary" onClick={() => void go("in")}>Try again</Button>
           </span>
         </div>
       )}
