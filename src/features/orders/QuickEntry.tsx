@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { usePermission } from "@/hooks/usePermission";
 import { IconCheckCircle, IconMapPin } from "@/components/ui/icons";
 import { FilterChip, ProgressBar, ProgressRing, SearchBox, SegmentedControl } from "@/features/orders/ui";
-import { useMarkOrder } from "@/features/orders/useOrders";
+import { useCorrectOwnEntry, useMarkOrder } from "@/features/orders/useOrders";
 import type { MyStore } from "@/types/order";
 
 type Day = "today" | "yesterday";
@@ -33,7 +33,7 @@ function Row({
   saving: boolean;
   /** Yesterday's count, offered as a one-tap fill for today. */
   suggestion: number | null;
-  /** Admins can change a saved count; everyone else's entries are one-shot. */
+  /** A saved count can be changed (an employee only ever changes one they marked themselves; the server checks). */
   canEdit: boolean;
   onSave: (count: number) => void;
   inputRef: (el: HTMLInputElement | null) => void;
@@ -154,6 +154,7 @@ function Row({
  */
 export function QuickEntry({ stores }: { stores: MyStore[] }) {
   const mark = useMarkOrder();
+  const correctOwn = useCorrectOwnEntry();
   const canCorrect = usePermission("orders.correct");
   const [day, setDay] = useState<Day>("today");
   const [query, setQuery] = useState("");
@@ -194,7 +195,9 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
   async function save(store: MyStore, count: number) {
     setSavingId(store.id);
     try {
-      await mark.mutateAsync({ storeId: store.id, date, count });
+      // an entry that already exists is corrected: an admin sets it, an employee changes the one they marked
+      if (countOf(store) !== null && !canCorrect) await correctOwn.mutateAsync({ storeId: store.id, date, count });
+      else await mark.mutateAsync({ storeId: store.id, date, count });
       // Jump to the next store that still needs a number.
       const next = rows.find((r) => r.id !== store.id && r.status === "LIVE" && countOf(r) === null);
       if (next) setTimeout(() => inputs.current.get(next.id)?.focus(), 50);
@@ -275,7 +278,7 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
                 existing={countOf(s)}
                 saving={savingId === s.id}
                 suggestion={activeDay === "today" ? s.yesterdayCount : null}
-                canEdit={canCorrect}
+                canEdit
                 onSave={(c) => void save(s, c)}
                 inputRef={(el) => {
                   inputs.current.set(s.id, el);
