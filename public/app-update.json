@@ -4,7 +4,7 @@
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
     "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code19.apk",
-    "notes": "Fixes uploading photos for cash purchases and tickets (it wrongly said it could not reach the server). Check in needs your location; check out does not. Filter stores by vendor on the Orders tab..",
+    "notes": "Fixes uploading photos for cash purchases and tickets (it wrongly said it could not reach the server). Check in needs your location; check out does not. Filter stores by vendor on the Orders tab.",
     "apkSizeBytes": 56573301,
     "apkSha256": "0ea2c3822458a3d25de7e892189965a151ebcf7bf0b89f4dfb6f0544f6c38498"
   }
