@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -134,20 +135,38 @@ def check_unique(plans: list[Plan]) -> None:
 
 
 def apply(db: Session, org_id: uuid.UUID, plans: list[Plan]) -> dict[str, int]:
-    """Creates the missing accounts and refreshes every account's store list. Existing accounts keep their password."""
+    """Creates the missing accounts and refreshes every account's store list. Existing accounts keep their password.
+
+    Built to be quick for hundreds of accounts: a password is hashed once per distinct first password (every vendor starts with
+    the same one) and the distinct ones are hashed on both CPU cores, the store links are read in one query, and nothing is
+    flushed per account."""
     check_unique(plans)
     existing = {a.email: a for a in db.execute(select(ExternalAccount).where(ExternalAccount.organization_id == org_id)).scalars()}
+    wanted = sorted({p.password for plan in plans for p in plan.people if p.email not in existing})
+    if wanted:
+        with ThreadPoolExecutor(max_workers=2) as pool:           # bcrypt releases the GIL, so two workers use both cores
+            hashes = dict(zip(wanted, pool.map(hash_password, wanted)))
+    else:
+        hashes = {}
+
+    links: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    ids = [a.id for a in existing.values()]
+    for i in range(0, len(ids), 5000):
+        for account_id, store_id in db.execute(
+            select(ExternalAccountStore.account_id, ExternalAccountStore.store_id).where(ExternalAccountStore.account_id.in_(ids[i:i + 5000]))
+        ):
+            links[account_id].add(store_id)
+
     created = updated = 0
     for plan in plans:
         for p in plan.people:
             acct = existing.get(p.email)
             if acct is None:
                 acct = ExternalAccount(
-                    organization_id=org_id, kind=p.kind, email=p.email, full_name=p.name, password_hash=hash_password(p.password),
-                    must_change_password=True,
+                    id=uuid.uuid4(), organization_id=org_id, kind=p.kind, email=p.email, full_name=p.name,
+                    password_hash=hashes[p.password], must_change_password=True,
                 )
                 db.add(acct)
-                db.flush()
                 created += 1
             else:
                 updated += 1
@@ -155,10 +174,11 @@ def apply(db: Session, org_id: uuid.UUID, plans: list[Plan]) -> dict[str, int]:
             acct.phone = " / ".join(p.phones) or None
             acct.platforms = sorted(p.platforms)
             acct.store_count = len(p.store_ids)
-            have = set(db.execute(select(ExternalAccountStore.store_id).where(ExternalAccountStore.account_id == acct.id)).scalars())
+            have = links.get(acct.id, set())
             for sid in p.store_ids - have:
                 db.add(ExternalAccountStore(account_id=acct.id, store_id=sid))
-            for sid in have - p.store_ids:
-                db.query(ExternalAccountStore).filter_by(account_id=acct.id, store_id=sid).delete()
+            gone = have - p.store_ids
+            if gone:
+                db.query(ExternalAccountStore).filter(ExternalAccountStore.account_id == acct.id, ExternalAccountStore.store_id.in_(gone)).delete(synchronize_session=False)
     db.commit()
     return {"created": created, "updated": updated}
