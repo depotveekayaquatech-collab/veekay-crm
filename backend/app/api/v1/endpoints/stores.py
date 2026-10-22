@@ -131,6 +131,12 @@ class MergeStoresRequest(BaseModel):
     dry_run: bool = True
 
 
+@router.get("/duplicates", dependencies=[Depends(require_permission("stores.view"))])
+def duplicate_stores(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Stores that exist more than once (same name on a platform, or the same Outlet ID ignoring capitals / spaces / dashes)."""
+    return store_merge_service.duplicates(db, user)
+
+
 @router.get("/merge-suggestions", dependencies=[Depends(require_permission("sheets.sync"))])
 def merge_suggestions(
     platform: str,

@@ -56,7 +56,7 @@ export function StoreFormModal({ onClose, store }: Props) {
     e.preventDefault();
     setError(null);
     const payload = {
-      name: f.name,
+      name: store ? store.name : f.name,      // a store's name is never changed
       external_code: f.external_code,
       region_id: f.region_id || null,
       state: f.state || null,
@@ -102,14 +102,21 @@ export function StoreFormModal({ onClose, store }: Props) {
       <form id="store-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Section title="A. Store identity">
           <Input
-            label={editing ? "Store ID (read-only)" : "Store ID"}
+            label="Store ID"
             value={f.external_code}
             onChange={(e) => set("external_code")(e.target.value)}
-            hint={editing ? undefined : "The partner's own outlet ID, e.g. 4589"}
-            readOnly={editing}
+            hint={editing ? "You can correct the ID. Orders, documents and history stay with the store." : "The partner's own outlet ID, e.g. 4589"}
             required
           />
-          <Input label="Store name" value={f.name} onChange={(e) => set("name")(e.target.value)} required autoFocus={!editing} />
+          <Input
+            label={editing ? "Store name (cannot be changed)" : "Store name"}
+            value={f.name}
+            onChange={(e) => set("name")(e.target.value)}
+            hint={editing ? "The name is how the store is recognised everywhere, so it is fixed." : "Must be unique on this platform."}
+            readOnly={editing}
+            required
+            autoFocus={!editing}
+          />
         </Section>
 
         <Section title="B. Business classification">

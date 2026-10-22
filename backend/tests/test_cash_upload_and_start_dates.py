@@ -206,7 +206,7 @@ def test_importing_older_orders_moves_a_september_start_back_to_march_and_the_fi
     for st in (s, hand):
         _entry(db, st, sept, 5)
     # the March sheet arrives later
-    csv = "\n".join([f"Outlet ID,Outlet Name,{march},{sept}", "SDS-MV,x,6,5", "SDS-HAND,x,6,5"]).encode()
+    csv = "\n".join([f"Outlet ID,Outlet Name,{march},{sept}", f"SDS-MV,{s.name},6,5", f"SDS-HAND,{hand.name},6,5"]).encode()
     r = client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"}, files={"file": ("o.csv", csv, "text/csv")})
     assert r.status_code == 200, r.text
     db.expire_all()
@@ -215,7 +215,7 @@ def test_importing_older_orders_moves_a_september_start_back_to_march_and_the_fi
     assert db.query(StoreVendorPeriod).filter_by(store_id=s.id).one().start_date == march    # the first vendor began with the store
     assert db.query(StoreVendorPeriod).filter_by(store_id=hand.id).one().start_date == date(2026, 2, 1)
     # a later import never pushes it forward again
-    csv = "\n".join([f"Outlet ID,Outlet Name,{sept}", "SDS-MV,x,5"]).encode()
+    csv = "\n".join([f"Outlet ID,Outlet Name,{sept}", f"SDS-MV,{s.name},5"]).encode()
     client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"}, files={"file": ("o.csv", csv, "text/csv")})
     db.expire_all()
     assert s.start_date == march
@@ -263,7 +263,7 @@ def test_file_import_adds_new_stores_without_a_start_date_but_flags_them(client,
     existing = make_store(code="SD-IMP-1", name="Old Name")
     csv = "\n".join([
         "Outlet ID,Outlet Name,STATUS,Start date",
-        "SD-IMP-1,New Name,Live,",                      # existing store, blank date: fine
+        "SD-IMP-1,Old Name,Live,",                      # existing store, blank date: fine
         "SD-IMP-2,Brand New With Date,Live,2026-03-01",
         "SD-IMP-3,Brand New No Date,Live,",
         "SD-IMP-4,Brand New Bad Date,Live,not a date",
@@ -272,10 +272,10 @@ def test_file_import_adds_new_stores_without_a_start_date_but_flags_them(client,
     assert r.status_code == 200, r.text
     body = r.json()
     # nothing is dropped: employees must still see every live store
-    assert (body["created"], body["updated"], body["without_start_date"]) == (3, 1, 2)
+    assert (body["created"], body["updated"], body["without_start_date"]) == (3, 0, 2)
     assert "no start date" in body["warnings"][0] and "still added" in body["warnings"][0]
     db.expire_all()
-    assert existing.name == "New Name"
+    assert existing.name == "Old Name"
     rows = {s.external_code: s for s in db.query(Store).filter(Store.external_code.like("SD-IMP-%"))}
     assert rows["SD-IMP-2"].start_date == date(2026, 3, 1) and rows["SD-IMP-3"].start_date is None and rows["SD-IMP-3"].status == "LIVE"
     db.query(Store).filter(Store.external_code.in_(["SD-IMP-2", "SD-IMP-3", "SD-IMP-4"])).delete(synchronize_session=False)

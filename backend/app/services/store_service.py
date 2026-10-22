@@ -81,6 +81,22 @@ def get_store(db: Session, actor: User, store_id: uuid.UUID) -> StoreOut:
     return to_out(require_store(db, actor, store_id))
 
 
+def name_key(name: str | None) -> str:
+    """A store name as a match key: capitals and extra spaces do not matter. The name is the store's identity."""
+    return " ".join((name or "").lower().split())
+
+
+def stores_named(db: Session, org_id: uuid.UUID, partner_id: uuid.UUID, name: str | None) -> list[Store]:
+    """Stores of this platform that already carry this name."""
+    key = name_key(name)
+    if not key:
+        return []
+    squashed = func.lower(func.regexp_replace(func.btrim(Store.name), r"\s+", " ", "g"))
+    return list(db.execute(
+        select(Store).where(Store.organization_id == org_id, Store.partner_organization_id == partner_id, squashed == key)
+    ).scalars().all())
+
+
 def create_store(db: Session, actor: User, payload: StoreCreate) -> StoreOut:
     _validate_partner(db, payload.partner_organization_id)
     if payload.region_id is not None:
@@ -88,6 +104,13 @@ def create_store(db: Session, actor: User, payload: StoreCreate) -> StoreOut:
     repo = StoreRepository(db)
     if repo.get_by_code(payload.partner_organization_id, payload.external_code):
         raise HTTPException(status.HTTP_409_CONFLICT, "A store with this code already exists for this partner.")
+    same_name = stores_named(db, actor.organization_id, payload.partner_organization_id, payload.name)
+    if same_name:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"A store named '{same_name[0].name}' already exists on this platform (Outlet ID {same_name[0].external_code}). "
+            "Store names are unique; to change its Outlet ID, edit that store.",
+        )
     store = repo.add(
         Store(
             organization_id=actor.organization_id,
@@ -109,6 +132,26 @@ def create_store(db: Session, actor: User, payload: StoreCreate) -> StoreOut:
 def update_store(db: Session, actor: User, store_id: uuid.UUID, payload: StoreUpdate) -> StoreOut:
     store = require_store(db, actor, store_id)
     data = payload.model_dump(exclude_unset=True)
+    # The store name is its identity: it is never changed, by anyone. Sending the same name again is harmless.
+    if "name" in data:
+        if name_key(data["name"]) != name_key(store.name):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A store's name can't be changed. It is how the store is recognised.")
+        data.pop("name")
+    if "external_code" in data:
+        code = (data["external_code"] or "").strip()
+        if not code:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The Outlet ID can't be empty.")
+        if code == store.external_code:
+            data.pop("external_code")
+        else:
+            clash = StoreRepository(db).get_by_code(store.partner_organization_id, code)
+            if clash is not None and clash.id != store.id:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"Outlet ID {code} already belongs to another store on this platform ('{clash.name}'). "
+                    "If that is the same outlet, use Merge duplicate stores instead.",
+                )
+            data["external_code"] = code
     if "region_id" in data and data["region_id"] is not None:
         _validate_region(db, actor, data["region_id"])
     if "status" in data and data["status"] is not None:

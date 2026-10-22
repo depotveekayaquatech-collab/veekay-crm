@@ -70,8 +70,10 @@ def test_unknown_ids_and_repeats_are_reported_not_fatal(client, dev, make_store)
     assert "not found" in r["results"][1]["reason"] and "same" in r["results"][2]["reason"]
 
 
-def test_suggestions_pair_stores_that_share_a_name(client, dev, make_store):
-    make_store(code="TMP-4", name="Twin Outlet")
+def test_suggestions_pair_stores_that_share_a_name(client, dev, db, make_store):
+    first = make_store(code="TMP-4", name="Twin Outlet")
+    first.created_at = first.created_at - timedelta(days=1)      # clearly the older one
+    db.commit()
     make_store(code="REAL-4", name="Twin Outlet")
     make_store(code="SOLO-4", name="Only One Outlet")
     got = [s for s in client.get(f"{API}/stores/merge-suggestions", params={"platform": "blinkit"}, headers=dev).json() if s["name"] == "Twin Outlet"]

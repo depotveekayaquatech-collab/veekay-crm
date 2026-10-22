@@ -11,7 +11,7 @@ import { pushToast } from "@/lib/toast";
 function parsePairs(text: string): { oldCode: string; newCode: string }[] {
   return text
     .split(/\r?\n/)
-    .map((l) => l.trim().split(/[\s,;]+/).filter(Boolean))
+    .map((l) => (l.includes("\t") ? l.split("\t").map((x) => x.trim()) : l.trim().split(/[\s,;]+/)).filter(Boolean))
     .filter((p) => p.length >= 2)
     .map((p) => ({ oldCode: p[0], newCode: p[1] }));
 }
@@ -26,13 +26,13 @@ const movedText = (m: Record<string, number>) =>
  * This moves the temporary store's orders, documents, tickets, cash purchases and vendor history onto the real one and removes
  * the temporary one. A preview comes first; a pair that would overwrite anything is refused and left untouched.
  */
-export function MergeStoresModal({ onClose }: { onClose: () => void }) {
+export function MergeStoresModal({ onClose, initial }: { onClose: () => void; initial?: { platform: string; pairs: string } }) {
   const qc = useQueryClient();
   const { data: partners = [] } = usePartners();
-  const [platform, setPlatform] = useState("");
+  const [platform, setPlatform] = useState(initial?.platform ?? "");
   const slug = platform || partners[0]?.slug || "";
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
-  const [manual, setManual] = useState("");
+  const [manual, setManual] = useState(initial?.pairs ?? "");
 
   const found = useQuery({ queryKey: ["merge-suggestions", slug], queryFn: () => mergeSuggestions(slug), enabled: !!slug });
   const suggestions = found.data ?? [];
@@ -47,7 +47,7 @@ export function MergeStoresModal({ onClose }: { onClose: () => void }) {
     mutationFn: (dryRun: boolean) => mergeStores(slug, pairs, dryRun),
     onSuccess: (r) => {
       if (r.dryRun) return;
-      for (const k of ["stores", "merge-suggestions", "inventory", "pending", "order-insights", "matrix"]) qc.invalidateQueries({ queryKey: [k] });
+      for (const k of ["stores", "duplicate-stores", "merge-suggestions", "inventory", "pending", "order-insights", "matrix"]) qc.invalidateQueries({ queryKey: [k] });
       pushToast(`${r.merged} store${r.merged === 1 ? "" : "s"} merged.`, "success");
     },
   });

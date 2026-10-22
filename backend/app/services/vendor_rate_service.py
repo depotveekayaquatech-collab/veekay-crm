@@ -136,7 +136,7 @@ def upload(
     by_code = {s.external_code: s for s in stores}
     by_name: dict[str, list[Store]] = defaultdict(list)
     for s in stores:
-        by_name[s.name.strip().lower()].append(s)
+        by_name[" ".join(s.name.lower().split())].append(s)
     book = RateBook(db, [partner.id], eff)
     stores_in_city: dict[str, list[Store]] = defaultdict(list)
     for s in stores:
@@ -158,14 +158,17 @@ def upload(
             continue
         store = None
         if code or name:
-            store = by_code.get(code) if code else None
-            if store is None and name:
-                hits = by_name.get(name.lower(), [])
+            if name:
+                hits = by_name.get(" ".join(name.lower().split()), [])
+                if len(hits) > 1 and code:
+                    hits = [h for h in hits if h.external_code == code] or hits      # the Outlet ID breaks a tie
                 if len(hits) == 1:
                     store = hits[0]
                 elif len(hits) > 1:
                     warnings.append(f"Row {i}: '{name}' matches {len(hits)} stores; use the Outlet ID. Skipped.")
                     continue
+            if store is None and code:
+                store = by_code.get(code)
             if store is None:
                 unknown += 1
                 continue

@@ -44,8 +44,8 @@ def test_sync_imports_every_tab_and_keeps_existing_entries(client, dev, db, make
     store = make_store(code="SYNC-1")
     d1, d2, d3 = _iso(3), _iso(2), _iso(1)
     # Two tabs of the same workbook: the second one adds another date column.
-    sheet["0"] = f"S.No,Outlet ID,Outlet Name,{d1},{d2}\n1,SYNC-1,Shop,12,\n2,NOPE-9,Ghost,5,5\n"
-    sheet["7"] = f"Outlet ID,Outlet Name,{d3}\nSYNC-1,Shop,0\n"
+    sheet["0"] = f"S.No,Outlet ID,Outlet Name,{d1},{d2}\n1,SYNC-1,{store.name},12,\n2,NOPE-9,Ghost,5,5\n"
+    sheet["7"] = f"Outlet ID,Outlet Name,{d3}\nSYNC-1,{store.name},0\n"
     # d1 was already marked by hand with a different number — it must survive (overwrite is off).
     db.add(OrderEntry(organization_id=store.organization_id, store_id=store.id, order_date=date.fromisoformat(d1),
                       bottle_count=99, source=EntrySource.EMPLOYEE.value))

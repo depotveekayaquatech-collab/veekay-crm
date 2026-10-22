@@ -20,7 +20,7 @@ def _orders(rows: dict[str, dict[date, object]]) -> bytes:
     w = csv.writer(out)
     w.writerow(["Outlet ID", "Outlet Name", *[d.isoformat() for d in days]])
     for code, r in rows.items():
-        w.writerow([code, "x", *[r.get(d, "") for d in days]])
+        w.writerow([code, f"Store {code}", *[r.get(d, "") for d in days]])
     return out.getvalue().encode()
 
 

@@ -354,13 +354,16 @@ def parse_sheet(db: Session, user: User, filename: str, content: bytes, month: d
     day_cols = {i for i, _ in layout.wide_days} | {c for c in (layout.date_col, layout.count_col) if c is not None}
 
     def find_stores(row: list[str], code: str, name_raw: str) -> list[Store]:
-        """Whatever identifies the store: Outlet ID, then name, then the same with punctuation / spacing ignored,
-        and finally any other cell of the row that is a known store code or name."""
+        """Whatever identifies the store: the name first (it is the store's identity), then Outlet ID, then the same with
+        punctuation / spacing ignored, and finally any other cell of the row that is a known store code or name."""
+        named = by_name.get(" ".join(name_raw.lower().split()), []) if name_raw else []
+        if len(named) > 1 and code:
+            named = [s for s in named if s.external_code.strip().lower() == code.lower()] or named   # the ID breaks a tie
         for found in (
+            named,
             by_code.get(code.lower(), []) if code else [],
-            by_name.get(" ".join(name_raw.lower().split()), []) if name_raw else [],
-            by_key.get(_alnum(code), []) if code else [],
             by_key.get(_alnum(name_raw), []) if name_raw else [],
+            by_key.get(_alnum(code), []) if code else [],
         ):
             if found:
                 return found

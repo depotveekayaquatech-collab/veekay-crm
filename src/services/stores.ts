@@ -148,6 +148,44 @@ export async function getStoreVendors(id: string): Promise<VendorPeriod[]> {
   return rows.map(toVendorPeriod);
 }
 
+export interface DuplicateStore {
+  store: Store;
+  orderDays: number;
+  createdAt: string;
+}
+
+export interface DuplicateGroup {
+  kind: "name" | "id";
+  label: string;
+  platform: string | null;
+  stores: DuplicateStore[];
+}
+
+export interface DuplicateReport {
+  totalGroups: number;
+  totalStores: number;
+  groups: DuplicateGroup[];
+}
+
+/** Stores that exist more than once: the same name on a platform, or the same Outlet ID ignoring capitals, spaces and dashes. */
+export async function listDuplicateStores(): Promise<DuplicateReport> {
+  const w = await apiRequest<{
+    total_groups: number;
+    total_stores: number;
+    groups: { kind: "name" | "id"; label: string; platform: string | null; stores: (StoreWire & { order_days: number; created_at: string })[] }[];
+  }>("/stores/duplicates");
+  return {
+    totalGroups: w.total_groups,
+    totalStores: w.total_stores,
+    groups: w.groups.map((g) => ({
+      kind: g.kind,
+      label: g.label,
+      platform: g.platform,
+      stores: g.stores.map((s) => ({ store: toStore(s), orderDays: s.order_days, createdAt: s.created_at })),
+    })),
+  };
+}
+
 export interface MergeSuggestion {
   name: string;
   oldCode: string;

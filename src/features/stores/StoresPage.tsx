@@ -13,6 +13,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { StoreCard } from "@/features/stores/StoreCard";
 import { StoreDetailsModal } from "@/features/stores/StoreDetailsModal";
+import { DuplicateStores, useDuplicateStores } from "@/features/stores/DuplicateStores";
 import { StoreFormModal } from "@/features/stores/StoreFormModal";
 import { useAllStores } from "@/features/stores/useAllStores";
 import { usePartners, useStoreMutations, useStores } from "@/features/stores/useStores";
@@ -36,6 +37,10 @@ export function StoresPage() {
   const search = useDebounced(q.trim());
 
   const canManage = usePermission("stores.manage");
+  const canMerge = usePermission("sheets.sync");           // developer only
+  const [view, setView] = useState<"stores" | "duplicates">("stores");
+  const duplicates = useDuplicateStores();
+  const duplicateGroups = duplicates.data?.totalGroups ?? 0;
   const { data: allRegions = [] } = useAllRegions();
   const { data: everyStore = [] } = useAllStores();
   // With a platform picked, only offer the regions that actually have stores of that platform.
@@ -53,6 +58,20 @@ export function StoresPage() {
     search: search || undefined,
   });
 
+  if (view === "duplicates") {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="Duplicate stores"
+          subtitle="A store's name is its identity, so a name or Outlet ID that appears twice needs fixing."
+          action={<Button variant="secondary" onClick={() => setView("stores")}>Back to stores</Button>}
+        />
+        <DuplicateStores canMerge={canMerge} onEdit={(s) => setEditing(s)} />
+        {editing !== undefined && <StoreFormModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} store={editing ?? null} />}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -60,6 +79,12 @@ export function StoresPage() {
         subtitle="Partner outlets your teams deliver water to. Live stores are the ones in work."
         action={
           <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setView("duplicates")}>
+              Duplicates
+              {duplicateGroups > 0 && (
+                <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-[11px] font-bold text-white">{duplicateGroups}</span>
+              )}
+            </Button>
             <Button
               variant="secondary"
               disabled={!data?.items.length}

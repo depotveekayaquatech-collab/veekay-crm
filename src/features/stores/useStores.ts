@@ -27,6 +27,7 @@ export function useStoreMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["stores"] });
+    qc.invalidateQueries({ queryKey: ["duplicate-stores"] });
     qc.invalidateQueries({ queryKey: ["regions"] });
     qc.invalidateQueries({ queryKey: ["store-vendors"] });
   };

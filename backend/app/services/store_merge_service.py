@@ -223,3 +223,44 @@ def merge(db: Session, actor: User, platform_slug: str, pairs: list[tuple[str, s
     elif not dry_run:
         db.rollback()
     return {"platform": partner.name, "dry_run": dry_run, "merged": merged, "skipped": len(results) - merged, "results": results}
+
+
+def _code_key(code: str | None) -> str:
+    return "".join(ch for ch in (code or "").lower() if ch.isalnum())
+
+
+def duplicates(db: Session, actor: User) -> dict:
+    """Stores that exist more than once: the same name on one platform, or the same Outlet ID once capitals, spaces and dashes are
+    ignored. Names are the store's identity, so every group here is something to fix (edit the ID, or merge)."""
+    from app.services import store_service
+
+    stores = db.execute(
+        select(Store).where(Store.organization_id == actor.organization_id)
+    ).scalars().all()
+    by_name: dict[tuple, list[Store]] = {}
+    by_code: dict[tuple, list[Store]] = {}
+    for s in stores:
+        nk = store_service.name_key(s.name)
+        if nk:
+            by_name.setdefault((s.partner_organization_id, nk), []).append(s)
+        ck = _code_key(s.external_code)
+        if ck:
+            by_code.setdefault((s.partner_organization_id, ck), []).append(s)
+    wanted = [(k, "name", g) for k, g in by_name.items() if len(g) > 1] + [(k, "id", g) for k, g in by_code.items() if len(g) > 1]
+    ids = {s.id for _, _, g in wanted for s in g}
+    days = dict(
+        db.execute(select(OrderEntry.store_id, func.count()).where(OrderEntry.store_id.in_(ids)).group_by(OrderEntry.store_id)).all()
+    ) if ids else {}
+    groups = []
+    for _, kind, g in wanted:
+        g = sorted(g, key=lambda s: s.created_at)
+        first = g[0]
+        groups.append({
+            "kind": kind,
+            "label": first.name if kind == "name" else first.external_code,
+            "platform": first.partner_organization.name if first.partner_organization else None,
+            "stores": [{**store_service.to_out(s).model_dump(mode="json"), "order_days": int(days.get(s.id, 0)),
+                        "created_at": s.created_at.isoformat()} for s in g],
+        })
+    groups.sort(key=lambda x: ((x["platform"] or "").lower(), x["kind"], x["label"].lower()))
+    return {"total_groups": len(groups), "total_stores": len(ids), "groups": groups}

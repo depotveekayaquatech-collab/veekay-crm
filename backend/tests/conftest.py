@@ -238,7 +238,7 @@ def make_store(db):
         s = Store(
             organization_id=org.id, partner_organization_id=db.query(Organization).filter_by(slug=platform).one().id,
             region_id=db.query(Region).filter_by(code=region).one().id if region else None,
-            name=name or f"Test Store {uuid.uuid4().hex[:5]}", external_code=code or f"TST-{uuid.uuid4().hex[:6].upper()}",
+            name=name or (f"Store {code}" if code else f"Test Store {uuid.uuid4().hex[:5]}"), external_code=code or f"TST-{uuid.uuid4().hex[:6].upper()}",
             state=state, city=city, vendor_name=vendor, status=status, entity=entity,
         )
         db.add(s)

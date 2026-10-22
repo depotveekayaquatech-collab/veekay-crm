@@ -6,6 +6,10 @@ Expected layout ("wide"): one row per store, one column per date.
     Outlet ID | Outlet Name | ... | 2026-09-01 | 2026-09-02 | ...
     5285      | SS Gurgaon  | ... | 31         | 24         | ...
 
+  - A store is found by its OUTLET NAME (the name is the store's identity; capitals and extra spaces do not matter). The Outlet ID
+    is only used when the sheet has no name column, or to pick the right store when several share a name. So a row still lands on
+    the right store while the store carries a temporary Outlet ID.
+
   - A blank cell means "not marked" (no entry is written).
   - 0 is a real value ("marked, zero bottles") and is imported.
   - Extra columns (S.No, Entity, POC, vendor, "total", ...) are ignored.
@@ -34,11 +38,12 @@ from app.models.order_entry import EntrySource, OrderEntry
 from app.models.organization import Organization, OrganizationKind
 from app.models.store import Store
 from app.models.user import User
-from app.services import activity_service, vendor_history_service
+from app.services import activity_service, store_service, vendor_history_service
 from app.services.store_sync_service import SyncError, _check_unpacked_size, bounded_rows
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _ID_HEADERS = ("outlet id", "outlet_id", "store id", "store code", "outlet code", "id")
+_NAME_HEADERS = ("outlet name", "store name", "outlet", "name")
 
 
 class OrderImportError(Exception):
@@ -145,18 +150,16 @@ def _grids(filename: str, content: bytes) -> list[tuple[str, list[tuple]]]:
     raise OrderImportError("Upload a .csv or .xlsx file.")
 
 
-def _locate(rows: list[tuple]) -> tuple[int, int, dict[int, date]] | None:
-    """Find (header_row_index, id_column, {column_index: date}) or None."""
+def _locate(rows: list[tuple]) -> tuple[int, int | None, int | None, dict[int, date]] | None:
+    """Find (header_row_index, id_column, name_column, {column_index: date}) or None. A sheet needs a name or an ID column."""
     for r_idx, row in enumerate(rows[:5]):
-        id_col = next(
-            (i for i, c in enumerate(row) if isinstance(c, str) and c.strip().lower() in _ID_HEADERS),
-            None,
-        )
-        if id_col is None:
+        id_col = next((i for i, c in enumerate(row) if isinstance(c, str) and c.strip().lower() in _ID_HEADERS), None)
+        name_col = next((i for i, c in enumerate(row) if isinstance(c, str) and c.strip().lower() in _NAME_HEADERS), None)
+        if id_col is None and name_col is None:
             continue
         date_cols = {i: d for i, c in enumerate(row) if (d := _header_date(c)) is not None}
         if date_cols:
-            return r_idx, id_col, date_cols
+            return r_idx, id_col, name_col, date_cols
     return None
 
 
@@ -224,18 +227,22 @@ def _import_grids(
 
     result = OrderImportResult(platform=partner_slug)
 
-    # {(outlet_code, date): count}; later sheets override earlier ones for the same cell.
-    wanted: dict[tuple[str, date], int] = {}
+    # {((outlet name key, outlet id), date): count}; later sheets override earlier ones for the same cell.
+    wanted: dict[tuple[tuple[str, str], date], int] = {}
+    shown: dict[tuple[str, str], str] = {}      # how a row calls its store, for the warnings
     for sheet_name, rows in grids:
         found = _locate(rows)
         if found is None:
             continue
-        header_idx, id_col, date_cols = found
+        header_idx, id_col, name_col, date_cols = found
         rows_before = result.rows_read
         for row in rows[header_idx + 1:]:
-            code = _id_text(row[id_col]) if id_col < len(row) else ""
-            if not code:
+            code = _id_text(row[id_col]) if id_col is not None and id_col < len(row) else ""
+            name = _id_text(row[name_col]) if name_col is not None and name_col < len(row) else ""
+            if not code and not name:
                 continue
+            ident = (store_service.name_key(name), code)
+            shown.setdefault(ident, name or code)
             result.rows_read += 1
             for col, d in date_cols.items():
                 raw = row[col] if col < len(row) else None
@@ -243,27 +250,55 @@ def _import_grids(
                 if bad:
                     result.invalid_values += 1
                 elif n is not None:
-                    wanted[(code, d)] = n
+                    wanted[(ident, d)] = n
         if result.rows_read > rows_before:
             result.sheets.append(sheet_name)
 
     if not wanted and not result.invalid_values:
         raise OrderImportError(
-            "No order data found. Each sheet needs an 'Outlet ID' column and date columns such as 2026-09-01."
+            "No order data found. Each sheet needs an 'Outlet Name' column (or 'Outlet ID') and date columns such as 2026-09-01."
         )
 
-    stores = {
-        s.external_code: s
-        for s in db.execute(
-            select(Store).where(
-                Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id
-            )
+    all_stores = list(
+        db.execute(
+            select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)
         ).scalars()
-    }
+    )
+    by_name: dict[str, list[Store]] = {}
+    by_code: dict[str, Store] = {}
+    for st in all_stores:
+        by_name.setdefault(store_service.name_key(st.name), []).append(st)
+        by_code[st.external_code] = st
 
-    unknown = {code for code, _ in wanted if code not in stores}
+    def resolve(ident: tuple[str, str]) -> tuple[Store | None, str]:
+        """(store, problem): the name finds the store; the ID only breaks a tie or stands in when the sheet has no name."""
+        key, code = ident
+        if not key:
+            return by_code.get(code), "not found"
+        named = by_name.get(key, [])
+        if len(named) == 1:
+            return named[0], ""
+        if len(named) > 1:
+            pick = [st for st in named if st.external_code == code]
+            return (pick[0], "") if len(pick) == 1 else (None, f"{len(named)} stores have that name")
+        return None, "not found"
+
+    resolved: dict[tuple[str, str], Store | None] = {}
+    problems: dict[tuple[str, str], str] = {}
+    for ident, _ in wanted:
+        if ident not in resolved:
+            resolved[ident], problems[ident] = resolve(ident)
+
+    unknown = {i for i, st in resolved.items() if st is None}
     result.unknown_stores = len(unknown)
-    wanted = {k: v for k, v in wanted.items() if k[0] in stores}
+    # two sheet rows can point at one store (an old and a new line): the later one wins
+    cells: dict[tuple, int] = {}
+    for (ident, d), n in wanted.items():
+        st = resolved[ident]
+        if st is not None:
+            cells[(st.id, d)] = n
+    stores_by_id = {st.id: st for st in all_stores}
+    wanted = cells
 
     if wanted:
         dates = [d for _, d in wanted]
@@ -271,18 +306,18 @@ def _import_grids(
             (e.store_id, e.order_date): e
             for e in db.execute(
                 select(OrderEntry).where(
-                    OrderEntry.store_id.in_({stores[c].id for c, _ in wanted}),
+                    OrderEntry.store_id.in_({sid for sid, _ in wanted}),
                     OrderEntry.order_date >= min(dates),
                     OrderEntry.order_date <= max(dates),
                 )
             ).scalars()
         }
         today = _today()
-        for (code, d), n in wanted.items():
+        for (sid, d), n in wanted.items():
             if d > today:
                 result.future_skipped += 1
                 continue
-            store = stores[code]
+            store = stores_by_id[sid]
             entry = existing.get((store.id, d))
             if entry is None:
                 db.add(OrderEntry(
@@ -302,10 +337,11 @@ def _import_grids(
                 result.kept_existing += 1
 
     if unknown:
-        sample = ", ".join(sorted(unknown)[:8])
+        ordered = sorted(unknown, key=lambda i: shown.get(i, ""))
+        sample = ", ".join(shown.get(i, "?") + (f" ({problems[i]})" if problems.get(i) not in ("", "not found") else "") for i in ordered[:8])
         result.warnings.append(
-            f"{len(unknown)} Outlet ID{'s' if len(unknown) > 1 else ''} not found on {partner.name} "
-            f"and skipped (e.g. {sample}). Import the stores first."
+            f"{len(unknown)} store{'s' if len(unknown) > 1 else ''} not found by Outlet Name on {partner.name} "
+            f"and skipped (e.g. {sample}). Import the stores first, or check the name matches exactly."
         )
     if result.invalid_values:
         result.warnings.append(

@@ -338,9 +338,7 @@ def _parse_date(raw: str | None) -> date | None:
     return parsed
 
 
-def _name_key(name: str | None) -> str:
-    """Outlet Name as a match key: case and extra spaces do not matter."""
-    return " ".join((name or "").lower().split())
+_name_key = store_service.name_key      # a store's name is its identity; capitals and extra spaces do not matter
 
 
 def _clean(value: str | None) -> str | None:
@@ -508,6 +506,8 @@ def _import_rows(
     stores_by_name: dict[str, list[Store]] = {}
     for st in by_code.values():
         stores_by_name.setdefault(_name_key(st.name), []).append(st)
+    name_differs: list[int] = []          # rows whose Outlet ID exists under another name (the name is never changed)
+    added_names: set[str] = set()         # names of stores this sheet adds, so the same name is not added twice
     renamed: list[tuple[str, str]] = []   # (old Outlet ID, new Outlet ID)
     renamed_ids: set[uuid.UUID] = set()
     status_changes: list[tuple[Store, str]] = []
@@ -587,6 +587,15 @@ def _import_rows(
                 by_code[code] = existing
                 renamed_ids.add(existing.id)
         if existing is None:
+            key = _name_key(name)
+            if stores_by_name.get(key) or key in added_names:
+                # Store names are unique: a store with this name is already there, so another one is not added.
+                result.warnings.append(
+                    f"Row {i}: a store named '{name}' already exists"
+                    + (f" (Outlet ID {stores_by_name[key][0].external_code})" if stores_by_name.get(key) else " in this sheet")
+                    + " — not added. Fix the Outlet ID on that store, or merge the duplicates."
+                )
+                continue
             if fields["start_date"] is None:
                 missing_start.append(i)   # still added (employees must see it); flagged below so the date gets filled
             new_store = Store(
@@ -597,12 +606,16 @@ def _import_rows(
             )
             db.add(new_store)
             by_code[code] = new_store
+            added_names.add(key)
             if (new_store.vendor_name or "").strip():
                 vendor_touched.append(new_store)
             result.created += 1
             if result.created % STORE_FLUSH_EVERY == 0:
                 db.flush()   # bounded batches instead of one giant statement; still one transaction, committed at the end
         else:
+            fields.pop("name", None)                  # a store's name is never changed by an import
+            if _name_key(name) != _name_key(existing.name):
+                name_differs.append(i)
             changed = existing.id in renamed_ids      # a new Outlet ID is an update by itself
             old_status = existing.status
             old_vendor = existing.vendor_name
@@ -639,6 +652,12 @@ def _import_rows(
             result.warnings.append(f"{restored} archived order days were restored to re-added stores.")
             vendor_history_service.set_start_dates_from_orders(db, partner.id)   # restored history dates the new stores
 
+    if name_differs:
+        n = len(name_differs)
+        result.warnings.append(
+            f"{n} row{'s' if n > 1 else ''} had an Outlet Name that differs from the store with that Outlet ID (first: row {name_differs[0]}). "
+            "Store names are never changed, so the existing names were kept."
+        )
     if renamed:
         shown = ", ".join(f"{a} → {b}" for a, b in renamed[:6]) + (" …" if len(renamed) > 6 else "")
         result.warnings.insert(

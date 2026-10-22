@@ -355,13 +355,16 @@ def read_grids(filename: str, content: bytes) -> list[list[list[str]]]:
 # ---------------------------------------------------------------- working out which column is which
 
 def _resolve(code: str, name: str, by_code: dict[str, Store], by_name: dict[str, list[Store]]) -> tuple[Store | None, bool]:
-    """(store, ambiguous). The Outlet ID decides when the row has one we know; otherwise the name, unless two stores share it."""
-    store = by_code.get(_norm_code(code)) if code else None
-    if store is None and name:
+    """(store, ambiguous). The Outlet Name decides (it is the store's identity). The Outlet ID only breaks a tie between stores that
+    share a name, or stands in when the row has no name or the name is unknown."""
+    if name:
         matches = by_name.get(_norm_name(name), [])
+        if len(matches) == 1:
+            return matches[0], False
         if len(matches) > 1:
-            return None, True
-        store = matches[0] if matches else None
+            pick = [s for s in matches if code and _norm_code(s.external_code) == _norm_code(code)]
+            return (pick[0], False) if len(pick) == 1 else (None, True)
+    store = by_code.get(_norm_code(code)) if code else None
     return store, False
 
 

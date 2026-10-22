@@ -228,21 +228,21 @@ def _resolve_store(index: _StoreIndex, code: str | None, name: str | None) -> St
     then a name that is the start of the store's name, or the other way round. Each step needs exactly one candidate, so a
     guess is never made between two stores."""
     values = [v for v in (code, name) if v and v.strip()]
-    for v in values:                                              # 1) the id
-        found = index.by_code.get(_code_key(v), [])
-        if len(found) > 1:
-            others = [_name_key(o) for o in values if o is not v]
-            found = [s for s in found if _name_key(s.name) in others] or found
-        if len(found) == 1:
-            return found[0]
-        if found:
-            return None                                           # two stores share it and the name does not settle it
-    for v in values:                                              # 2) the full name
+    for v in values:                                              # 1) the full name: it is the store's identity
         found = index.by_name.get(_name_key(v), [])
+        if len(found) > 1:
+            ids = [_code_key(o) for o in values if o is not v]
+            found = [s for s in found if _code_key(s.external_code) in ids] or found   # the id breaks a tie
         if len(found) == 1:
             return found[0]
         if found:
             return None
+    for v in values:                                              # 2) the id (only when no name matched)
+        found = index.by_code.get(_code_key(v), [])
+        if len(found) == 1:
+            return found[0]
+        if found:
+            return None                                           # two stores share it
     for v in values:                                              # 3) a store code inside a longer label
         tokens = {_code_key(t) for t in re.findall(r"[A-Za-z0-9]+", v)}
         found = [s for s in index.stores if len(_code_key(s.external_code)) >= 3 and _code_key(s.external_code) in tokens]
