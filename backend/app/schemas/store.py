@@ -46,6 +46,7 @@ class StoreOut(BaseModel):
     id: uuid.UUID
     name: str
     external_code: str
+    crm_code: str | None = None          # the permanent system code (BKT000123 / ZPT000045)
     status: str
     entity: str | None = None
     start_date: date | None = None

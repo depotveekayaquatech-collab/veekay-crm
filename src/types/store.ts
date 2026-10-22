@@ -19,12 +19,15 @@ export interface Store {
   partnerOrganizationId: string;
   partnerSlug: string | null;
   partnerName: string | null;
+  /** The permanent system code (BKT000123 / ZPT000045): unique across the whole system, never edited. */
+  crmCode: string;
 }
 
 export interface StoreWire {
   id: string;
   name: string;
   external_code: string;
+  crm_code?: string | null;
   status: StoreStatus;
   entity?: string | null;
   start_date?: string | null;
@@ -47,6 +50,7 @@ export function toStore(w: StoreWire): Store {
     id: w.id,
     name: w.name,
     externalCode: w.external_code,
+    crmCode: w.crm_code ?? "",
     status: w.status,
     entity: w.entity ?? null,
     startDate: w.start_date ?? null,

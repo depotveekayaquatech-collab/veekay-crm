@@ -88,7 +88,10 @@ export default function MarkMany() {
     if (!d || !d.marked) return;
     Haptics.selectionAsync().catch(() => undefined);
     if (d.source !== "employee") {
-      Alert.alert("Only an admin can change this day", "It was not marked by an employee, so an admin has to correct it.");
+      Alert.alert(
+        "Only an admin can change this day",
+        `It was entered by ${d.entered_by ?? "an admin"}${d.entered_at ? ` on ${new Date(d.entered_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}, not by an employee, so an admin has to correct it. If it is wrong, tell your admin.`,
+      );
       return;
     }
     setPicked([]);
@@ -222,7 +225,7 @@ export default function MarkMany() {
             {fixing ? (
               <Card style={{ marginTop: 12, padding: 14, borderColor: colors.brand200, backgroundColor: colors.brand50 }}>
                 <Text style={{ fontSize: 15, fontWeight: "800", color: colors.brand800 }}>Correct {dayLabel(fixing)}</Text>
-                <Text style={[font.small, { marginTop: 2 }]}>Entered as {byDate.get(fixing)?.count ?? 0} bottles. What it should be:</Text>
+                <Text style={[font.small, { marginTop: 2 }]}>Entered as {byDate.get(fixing)?.count ?? 0} bottles{byDate.get(fixing)?.entered_by ? ` by ${byDate.get(fixing)?.entered_by}` : ""}. What it should be:</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
                   <Stepper value={fixValue} onChange={setFixValue} error={fixValue !== "" && !valid(fixValue)} label={dayLabel(fixing)} />
                   <View style={{ flexDirection: "row", gap: 8 }}>

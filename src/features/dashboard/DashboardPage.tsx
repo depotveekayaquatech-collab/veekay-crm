@@ -9,15 +9,16 @@ import { Select } from "@/components/ui/Select";
 import { useTestReports } from "@/features/reports/testReports";
 import { useDebounced } from "@/hooks/useDebounced";
 import { listStores } from "@/services/stores";
+import { usePartners } from "@/features/stores/useStores";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { CappingAlertBanner } from "@/features/capping/CappingAlertBanner";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
-import { useEmployees } from "@/features/team/useTeam";
 import { useInsights, useMyStores } from "@/features/orders/useOrders";
 import { listActivity } from "@/services/activity";
 import { BarList, DonutChart } from "@/features/dashboard/charts";
-import { AlertStrip, DeepInsights, PerformanceKpis, TrendCard } from "@/features/dashboard/InsightsPanel";
+import { AlertStrip, ChannelContext, DeepInsights, PerformanceKpis, TrendCard } from "@/features/dashboard/InsightsPanel";
 import {
   IconActivity,
   IconChart,
@@ -171,8 +172,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function AdminDashboard() {
-  const { data: insights, isLoading } = useInsights();
-  const { data: employees } = useEmployees(1, "");
+  // One channel at a time: every number on this page is for the platform picked here, never Blinkit and Zepto added together.
+  const { data: partners = [] } = usePartners();
+  const [pickedChannel, setChannel] = usePersistentState<string>("dashboard.channel", "");
+  const channel = partners.some((p) => p.slug === pickedChannel) ? pickedChannel : (partners[0]?.slug ?? "");
+  const channelName = partners.find((p) => p.slug === channel)?.name ?? "";
+  const { data: insights, isLoading } = useInsights(channel);
   const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: ["dashboard-activity"],
     queryFn: () => listActivity({ page: 1, pageSize: 8 }),
@@ -210,7 +215,7 @@ function AdminDashboard() {
   const delta = insights ? trendDelta(insights.bottlesToday, insights.bottlesYesterday) : null;
 
   // The store directory is searched and paged on the server (15 rows per request), never downloaded whole.
-  const [storePartner, setStorePartner] = useState("");
+  const storePartner = channel;
   const [storeQuery, setStoreQuery] = useState("");
   const [storePage, setStorePage] = useState(1);
   const storeSearch = useDebounced(storeQuery.trim(), 300);
@@ -232,7 +237,19 @@ function AdminDashboard() {
   ];
 
   return (
+    <ChannelContext.Provider value={channel}>
     <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-surface-border bg-surface px-4 py-3 shadow-card">
+        <div className="w-48 [&_label]:text-xs [&_label]:font-bold [&_label]:uppercase [&_label]:tracking-wider [&_label]:text-gray-500">
+          <Select
+            label="Channel"
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            options={partners.map((p) => ({ value: p.slug, label: p.name }))}
+          />
+        </div>
+        <p className="text-sm text-gray-500">Everything below is for <b className="text-gray-800">{channelName || "…"}</b> only.</p>
+      </div>
       <AlertStrip insights={insights} />
 
       {/* KPI row */}
@@ -264,8 +281,8 @@ function AdminDashboard() {
         <StatCard
           icon={IconUsers}
           label="Employees"
-          value={employees?.total ?? 0}
-          hint={insights ? `${insights.platforms.length} platforms` : undefined}
+          value={insights?.platforms[0]?.employees ?? 0}
+          hint={channelName ? `${channelName} employees` : undefined}
           tone="warning"
           loading={isLoading}
         />
@@ -286,7 +303,7 @@ function AdminDashboard() {
                   label="Platform"
                   value={statusChoice}
                   onChange={(e) => setStatusPick(e.target.value)}
-                  options={[...statusByPlatform.map((p) => ({ value: p.label, label: p.label })), { value: ALL_PLATFORMS, label: "All platforms" }]}
+                  options={statusByPlatform.map((p) => ({ value: p.label, label: p.label }))}
                 />
               </div>
             ) : undefined
@@ -311,7 +328,7 @@ function AdminDashboard() {
               )}
 
               {/* Second section: test reports (Zepto only for now) */}
-              <section className="-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5" aria-label="Test reports">
+              <section className={`-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5 ${channel === "zepto" ? "" : "hidden"}`} aria-label="Test reports">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="text-sm font-bold text-heading">Test reports</h4>
                   <CardLink to="/reports?tab=test">Manage →</CardLink>
@@ -624,6 +641,7 @@ function AdminDashboard() {
         </Card>
       </div>
     </div>
+    </ChannelContext.Provider>
   );
 }
 

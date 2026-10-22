@@ -94,9 +94,9 @@ export function StoresPage() {
                 data &&
                 downloadCsv(
                   `stores-${new Date().toISOString().slice(0, 10)}.csv`,
-                  ["Store", "Code", "Partner", "Region", "State", "City", "Start date", "Status", "POC", "POC number"],
+                  ["Store", "CRM code", "Code", "Partner", "Region", "State", "City", "Start date", "Status", "POC", "POC number"],
                   data.items.map((x) => [
-                    x.name, x.externalCode, x.partnerName, x.regionName, x.state, x.city, x.startDate, x.status, x.pocName, x.pocNumber,
+                    x.name, x.crmCode, x.externalCode, x.partnerName, x.regionName, x.state, x.city, x.startDate, x.status, x.pocName, x.pocNumber,
                   ]),
                 )
               }
@@ -174,7 +174,7 @@ export function StoresPage() {
                 setQ(v);
                 setPage(1);
               }}
-              placeholder="Search store name, outlet ID, city, POC…"
+              placeholder="Search store name, CRM code, outlet ID, city, POC…"
               className="w-full"
             />
           </div>

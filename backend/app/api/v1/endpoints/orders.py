@@ -148,14 +148,16 @@ def correct_entry(
     dependencies=[Depends(require_permission("orders.overview"))],
 )
 def insights(
+    partner: str | None = Query(None, max_length=32, description="Platform (blinkit / zepto): everything is then for that platform only"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DashboardInsights:
-    # Organisation-wide numbers: computed once per few seconds and shared (single-flight), dropped on any write.
+    # Computed once per few seconds per platform and shared (single-flight), dropped on any write.
+    key = (partner or "").strip().lower() or None
     return read_cache.get_or_set(
-        ("insights", user.organization_id), settings.DASHBOARD_CACHE_SECONDS,
-        lambda: order_service.dashboard_insights(db, user),
-    ) if settings.DASHBOARD_CACHE_SECONDS else order_service.dashboard_insights(db, user)
+        ("insights", user.organization_id, key), settings.DASHBOARD_CACHE_SECONDS,
+        lambda: order_service.dashboard_insights(db, user, partner_slug=key),
+    ) if settings.DASHBOARD_CACHE_SECONDS else order_service.dashboard_insights(db, user, partner_slug=key)
 
 
 @router.get(

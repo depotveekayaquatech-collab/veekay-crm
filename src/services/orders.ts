@@ -95,8 +95,10 @@ export async function correctOwnEntry(
   );
 }
 
-export async function getInsights(): Promise<DashboardInsights> {
-  return toInsights(await apiRequest("/orders/insights"));
+/** The dashboard numbers for ONE platform (Blinkit and Zepto are never added together). */
+export async function getInsights(partner?: string): Promise<DashboardInsights> {
+  const qs = partner ? `?partner=${encodeURIComponent(partner)}` : "";
+  return toInsights(await apiRequest(`/orders/insights${qs}`));
 }
 
 export async function getDailyOverview(partner: string, dayOffset: number): Promise<DailyOverview> {

@@ -40,6 +40,8 @@ _CSV_URL = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&
 _COLUMN_ALIASES: dict[str, list[str]] = {
     "external_code": ["outlet id", "outlet_id", "store id", "store code", "outlet code", "id"],
     "name": ["outlet name", "store name", "outlet", "name"],
+    # the permanent system code the CRM gave the store (BKT000123 / ZPT000045), when a sheet that was exported from the CRM carries it
+    "crm_code": ["crm code", "crm id", "crm store code", "system code", "store key"],
     "region": ["zone", "region"],
     "entity": ["entity"],
     # Veekay's own start date wins; fall back to the partner's go-live date column.
@@ -495,8 +497,10 @@ def _import_rows(
     # are listed under Stores > Duplicates for someone to correct. The sheet's start date is NOT used: a store's start date
     # comes from its first order (or from the manual add form).
     stores_by_name: dict[str, list[Store]] = {}
+    by_crm: dict[str, Store] = {}
     for st in db.execute(select(Store).where(Store.partner_organization_id == partner.id)).scalars():
         stores_by_name.setdefault(_name_key(st.name), []).append(st)
+        by_crm[st.crm_code.upper()] = st
     seen_names: set[str] = set()          # names already handled in this sheet: a name appears once
     issues: list[dict] = []               # rows someone has to sort out; kept with the import so Stores > Duplicates can list them
 
@@ -570,7 +574,15 @@ def _import_rows(
         seen_names.add(key)
         twins = stores_by_name.get(key, [])
         existing = None
-        if len(twins) == 1:
+        crm_given = (_clean(row.get(cols["crm_code"])) or "").upper() if "crm_code" in cols else ""
+        if crm_given:
+            # the system code points at exactly one store: it settles the match with no guessing, but only inside this platform
+            existing = by_crm.get(crm_given)
+            if existing is None:
+                result.warnings.append(f"Row {i}: the code {crm_given} is not a store of {partner.name} — row skipped.")
+                issue(i, name, code, "crm_code_unknown", f"The CRM code {crm_given} does not belong to a {partner.name} store (a code from the other platform, or a typo), so the row was not imported.")
+                continue
+        elif len(twins) == 1:
             existing = twins[0]
         elif len(twins) > 1:
             same_id = [t for t in twins if t.external_code == code]

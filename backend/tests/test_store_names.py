@@ -240,3 +240,69 @@ def test_an_employee_can_correct_or_clear_their_own_entry_but_not_someone_elses(
     assert theirs.status_code == 403 and "marked yourself" in theirs.json()["detail"]
     old = (date.today().replace(day=1) - timedelta(days=70)).isoformat()
     assert client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": old, "bottle_count": 1}).status_code == 422
+
+
+def test_dashboard_numbers_are_per_platform_and_never_added_together(client, admin, db, make_store):
+    b = make_store(code="DB-B", name="Dash Blinkit Mart", platform="blinkit")
+    z = make_store(code="DB-Z", name="Dash Zepto Mart", platform="zepto", region=None)
+    today = date.today()
+    for s, n in ((b, 7), (z, 11)):
+        db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=today, bottle_count=n, source="manual"))
+    db.commit()
+    both = client.get(f"{API}/orders/insights", headers=admin).json()
+    blk = client.get(f"{API}/orders/insights", params={"partner": "blinkit"}, headers=admin).json()
+    zpt = client.get(f"{API}/orders/insights", params={"partner": "zepto"}, headers=admin).json()
+    key = "bottles_today" if "bottles_today" in blk else "bottlesToday"
+    assert blk[key] + zpt[key] == both[key]                                    # the two channels add up to the old mixed number, never inside one view
+    assert {p["slug"] for p in blk["platforms"]} == {"blinkit"} and {p["slug"] for p in zpt["platforms"]} == {"zepto"}
+    assert {p["slug"] for p in blk["status_by_platform"]} == {"blinkit"}
+    assert all(sc["partner_slug"] == "blinkit" for sc in blk["scopes"])
+    assert client.get(f"{API}/orders/insights", params={"partner": "nope"}, headers=admin).status_code == 404
+
+
+def test_every_store_gets_a_permanent_system_code_unique_across_platforms(client, admin, db, make_store):
+    import re
+    b = make_store(code="9001", name="East Patel Nagar", platform="blinkit")
+    z = make_store(code="9001", name="East Patel Nagar", platform="zepto", region=None)      # same name AND same Outlet ID on both platforms
+    assert re.fullmatch(r"BKT\d{6}", b.crm_code) and re.fullmatch(r"ZPT\d{6}", z.crm_code) and b.crm_code != z.crm_code
+    got = client.get(f"{API}/stores", params={"search": z.crm_code}, headers=admin).json()
+    assert [s["crm_code"] for s in got["items"]] == [z.crm_code]                            # one code finds exactly one store
+    again = client.patch(f"{API}/stores/{b.id}", json={"crm_code": "ZPT000001", "city": "Delhi"}, headers=admin)
+    assert again.status_code == 200 and again.json()["crm_code"] == b.crm_code             # the code can never be edited
+
+
+def test_moving_a_store_to_the_other_platform_gives_it_that_platforms_prefix(client, admin, db, make_store):
+    z = make_store(code="MV-1", name="Move Code Mart", platform="zepto", region=None)
+    before = z.crm_code
+    r = client.post(f"{API}/stores/{z.id}/move-platform", json={"to_platform": "blinkit"}, headers=admin)
+    assert r.status_code == 200
+    db.expire_all()
+    assert before.startswith("ZPT") and db.get(Store, z.id).crm_code.startswith("BKT")
+
+
+def test_a_sheet_with_the_crm_code_matches_exactly_and_refuses_the_other_platforms_code(client, dev, db, make_store):
+    from .test_store_import_limits import _xlsx, HEADER
+    from openpyxl import Workbook
+    import io as _io
+    s = make_store(code="CC-1", name="Blinkit - Crm Code Mart")
+    other = make_store(code="CC-2", name="Zepto Crm Code Mart", platform="zepto", region=None)
+    wb = Workbook(); ws = wb.active
+    ws.append(["CRM Code", "Outlet ID", "Outlet Name", "STATUS", "State", "City"])
+    ws.append([s.crm_code, "CC-NEW", "Blinkit - Crm Code Mart", "Live", "Delhi", "Delhi"])       # the code settles it; the ID is corrected
+    ws.append([other.crm_code, "CC-X", "Blinkit - Wrong Platform Row", "Live", "Delhi", "Delhi"])  # a Zepto code in a Blinkit upload
+    buf = _io.BytesIO(); wb.save(buf)
+    r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.xlsx", buf.getvalue(), "application/octet-stream")}, headers=dev)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["created"] == 0 and any("not a store of" in w for w in out["warnings"])
+    db.expire_all()
+    assert db.get(Store, s.id).external_code == "CC-NEW"
+
+
+def test_the_calendar_says_who_entered_each_day(client, emp, admin, db, make_store):
+    s = make_store(code="PV-1", region="NORTH")
+    today = date.today().isoformat()
+    client.post(f"{API}/orders/mark", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 4})
+    cal = client.get(f"{API}/orders/calendar", params={"store_id": str(s.id)}, headers=emp).json()
+    day = next(d for d in cal["days"] if d["date"] == today)
+    assert day["source"] == "employee" and day["entered_by"] and day["entered_at"]

@@ -41,6 +41,7 @@ export function StoreCard({
 
       <div className="flex flex-col gap-1">
         <Line label="Store ID">{store.externalCode}</Line>
+        {store.crmCode ? <Line label="CRM code">{store.crmCode}</Line> : null}
         {(store.regionName || store.entity) && (
           <Line label="Region">
             {store.regionName ?? "—"}

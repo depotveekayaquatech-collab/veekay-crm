@@ -189,6 +189,11 @@ def get_calendar(
     store = _resolve_store(db, user, store_id, is_admin=is_admin)
     repo = OrderEntryRepository(db)
     entries = repo.month_map(store.id, year, month)
+    who = {
+        r[0]: r[1] for r in db.execute(
+            select(User.id, User.full_name).where(User.id.in_({e.marked_by_user_id for e in entries.values() if e.marked_by_user_id}))
+        )
+    } if entries else {}
     today = _today()
     days_in_month = _calendar.monthrange(year, month)[1]
 
@@ -203,6 +208,8 @@ def get_calendar(
                 marked=entry is not None,
                 count=entry.bottle_count if entry else None,
                 source=entry.source if entry else None,
+                entered_by=who.get(entry.marked_by_user_id) if entry else None,
+                entered_at=(entry.updated_at or entry.created_at) if entry else None,
                 is_today=(the_date == today),
                 is_future=(the_date > today),
             )
@@ -472,14 +479,25 @@ def _recent(db: Session, org_id: uuid.UUID, partner_id: uuid.UUID) -> list[Submi
 # admin: dashboard insights (charts)
 # --------------------------------------------------------------------------
 
-def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardInsights:
+def dashboard_insights(db: Session, admin: User, days: int = 14, partner_slug: str | None = None) -> DashboardInsights:
+    """The dashboard numbers. With `partner_slug` EVERYTHING is for that one platform (Blinkit and Zepto are never added together);
+    without it the legacy organisation-wide view is returned."""
     org_id = admin.organization_id
+    pid = None
+    if partner_slug:
+        pid = db.execute(
+            select(Organization.id).where(Organization.slug == partner_slug.strip().lower(), Organization.kind == OrganizationKind.PARTNER.value)
+        ).scalar_one_or_none()
+        if pid is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Platform '{partner_slug}' not found.")
+    pf = (Store.partner_organization_id == pid,) if pid else ()                      # every store query below is limited to the channel
+    pids = [Organization.id == pid] if pid else []                                   # and every partner list
     today = _today()
     repo = OrderEntryRepository(db)
 
     # --- trend: last `days` days, org-wide ---
     start = today - timedelta(days=days - 1)
-    totals = repo.daily_totals_between(org_id, start, today)
+    totals = repo.daily_totals_between(org_id, start, today, partner_slug=partner_slug.strip().lower() if partner_slug else None)
     trend: list[TrendPoint] = []
     for i in range(days):
         d = start + timedelta(days=i)
@@ -491,7 +509,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
     # --- store status breakdown ---
     status_rows = db.execute(
         select(Store.status, func.count(Store.id))
-        .where(Store.organization_id == org_id)
+        .where(Store.organization_id == org_id, *pf)
         .group_by(Store.status)
     ).all()
     store_status = {s.value: 0 for s in StoreStatus}
@@ -503,7 +521,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
         select(Organization.id, Organization.slug, Organization.name, Store.status, func.count(Store.id))
         .select_from(Store)
         .join(Organization, Organization.id == Store.partner_organization_id)
-        .where(Store.organization_id == org_id)
+        .where(Store.organization_id == org_id, *pf)
         .group_by(Organization.id, Organization.slug, Organization.name, Store.status)
         .order_by(Organization.name)
     ).all()
@@ -511,7 +529,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
     # Every active partner is listed, even one with no stores yet (e.g. a freshly deployed Zepto).
     for pid, slug, label in db.execute(
         select(Organization.id, Organization.slug, Organization.name)
-        .where(Organization.kind == OrganizationKind.PARTNER.value, Organization.is_active.is_(True))
+        .where(Organization.kind == OrganizationKind.PARTNER.value, Organization.is_active.is_(True), *pids)
         .order_by(Organization.name)
     ).all():
         by_platform[pid] = {"slug": slug, "label": label, "LIVE": 0, "PENDING": 0, "CLOSE": 0}
@@ -532,7 +550,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
             .select_from(Store)
             .join(Organization, Organization.id == Store.partner_organization_id)
             .outerjoin(Region, Region.id == Store.region_id)
-            .where(Store.organization_id == org_id)
+            .where(Store.organization_id == org_id, *pf)
             .group_by(Organization.slug, Region.name, Store.state)
             .order_by(Organization.slug, Region.name, Store.state)
         ).all()
@@ -548,7 +566,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
             .select_from(Store)
             .join(Organization, Organization.id == Store.partner_organization_id)
             .outerjoin(Region, Region.id == Store.region_id)
-            .where(Store.organization_id == org_id, Store.status != StoreStatus.LIVE.value)
+            .where(Store.organization_id == org_id, *pf, Store.status != StoreStatus.LIVE.value)
             .order_by(Store.status, Store.name)
             .limit(50)
         ).all()
@@ -556,7 +574,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
 
     # --- live stores with no order in the last 30 days ---
     recent = exists().where(OrderEntry.store_id == Store.id, OrderEntry.order_date >= today - timedelta(days=29))
-    dormant_where = (Store.organization_id == org_id, Store.status == StoreStatus.LIVE.value, ~recent)
+    dormant_where = (Store.organization_id == org_id, *pf, Store.status == StoreStatus.LIVE.value, ~recent)
     dormant_live = int(db.execute(select(func.count(Store.id)).where(*dormant_where)).scalar_one())
     dormant_stores = [
         AttentionStore(
@@ -575,7 +593,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
 
     # --- per-platform today summary + leaderboard (bulk: no per-employee queries) ---
     partners = db.execute(
-        select(Organization).where(Organization.kind == OrganizationKind.PARTNER.value)
+        select(Organization).where(Organization.kind == OrganizationKind.PARTNER.value, *pids)
     ).scalars().all()
 
     platforms: list[PlatformSummary] = []
@@ -614,7 +632,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
         select(Region.name, live_case, func.count(Store.id))
         .select_from(Store)
         .outerjoin(Region, Region.id == Store.region_id)
-        .where(Store.organization_id == org_id)
+        .where(Store.organization_id == org_id, *pf)
         .group_by(Region.name)
         .order_by(func.count(Store.id).desc())
     ).all()
@@ -625,7 +643,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14) -> DashboardIns
 
     state_rows = db.execute(
         select(Store.state, live_case, func.count(Store.id))
-        .where(Store.organization_id == org_id)
+        .where(Store.organization_id == org_id, *pf)
         .group_by(Store.state)
         .order_by(func.count(Store.id).desc())
         .limit(12)

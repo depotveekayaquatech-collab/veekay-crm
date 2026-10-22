@@ -323,7 +323,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 type="button"
                 onClick={() => pick(d)}
                 disabled={!isClickable}
-                title={d.marked ? `${d.count} bottles (${d.source})` : d.isFuture ? undefined : "Not marked"}
+                title={d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}` : d.isFuture ? undefined : "Not marked"}
                 style={
                   !isPicked && d.marked && d.source !== "admin"
                     ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` }

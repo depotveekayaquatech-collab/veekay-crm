@@ -113,7 +113,7 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
                       />
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-gray-900">{s.store.externalCode}</span>
+                      <span className="block truncate font-medium text-gray-900">{s.store.externalCode} <span className="text-xs font-normal text-gray-400">· {s.store.crmCode}</span></span>
                       <span className="block truncate text-xs text-gray-500">
                         {s.store.name} · added {day(s.createdAt)}
                         {s.store.city ? ` · ${s.store.city}` : ""}
@@ -201,7 +201,7 @@ function PlatformCheck({ canMove }: { canMove: boolean }) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-gray-900">{r.store.name}</span>
                       <span className="block truncate text-xs text-gray-500">
-                        {r.store.externalCode} · on <b>{r.platform}</b> · {r.store.status} · {r.orderDays} order day{r.orderDays === 1 ? "" : "s"}
+                        {r.store.crmCode} · {r.store.externalCode} · on <b>{r.platform}</b> · {r.store.status} · {r.orderDays} order day{r.orderDays === 1 ? "" : "s"}
                         {r.hasCapping ? " · has a capping number" : ""}
                       </span>
                       <span className="block text-xs text-status-danger">{r.reasons.join(" · ")}</span>

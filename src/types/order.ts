@@ -25,6 +25,9 @@ export interface CalendarDay {
   marked: boolean;
   count: number | null;
   source: "employee" | "admin" | null;
+  /** Who wrote this day's number (an employee, or the admin / developer who imported or corrected it) and when. */
+  enteredBy: string | null;
+  enteredAt: string | null;
   isToday: boolean;
   isFuture: boolean;
 }
@@ -266,6 +269,8 @@ interface CalendarWire {
     marked: boolean;
     count: number | null;
     source: "employee" | "admin" | null;
+    entered_by?: string | null;
+    entered_at?: string | null;
     is_today: boolean;
     is_future: boolean;
   }[];
@@ -286,6 +291,8 @@ export function toCalendar(w: CalendarWire): OrderCalendar {
       marked: d.marked,
       count: d.count,
       source: d.source,
+      enteredBy: d.entered_by ?? null,
+      enteredAt: d.entered_at ?? null,
       isToday: d.is_today,
       isFuture: d.is_future,
     })),

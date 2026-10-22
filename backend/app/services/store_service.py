@@ -32,6 +32,7 @@ def to_out(store: Store) -> StoreOut:
         id=store.id,
         name=store.name,
         external_code=store.external_code,
+        crm_code=store.crm_code,
         status=store.status,
         entity=store.entity,
         start_date=store.start_date,
@@ -303,6 +304,7 @@ def move_stores(db: Session, actor: User, from_slug: str, to_slug: str, contains
     moving = list(db.execute(select(Store.id).where(*movable)).scalars().all())
     db.execute(update(Store).where(*movable).values(partner_organization_id=dst.id))
     _drop_caps_outside_zepto(db, moving, dst)
+    _reissue_codes(db, moving, dst)
     activity_service.record(
         db, actor=actor, action="store.platform_moved", entity_type="organization", entity_id=actor.organization_id,
         metadata={"from": src.slug, "to": dst.slug, "contains": needle, "moved": int(n)},
@@ -312,6 +314,15 @@ def move_stores(db: Session, actor: User, from_slug: str, to_slug: str, contains
 
 
 CAPPING_PLATFORM = "zepto"      # per-store capping exists for this platform only (see capping_service.PLATFORM)
+
+
+def _reissue_codes(db: Session, store_ids: list[uuid.UUID], dst: Organization) -> None:
+    """A store that changes platform gets a code with the new platform's prefix (its id, orders and history do not change)."""
+    from app.models.store import issue_crm_code
+
+    conn = db.connection()
+    for sid in store_ids:
+        db.execute(update(Store).where(Store.id == sid).values(crm_code=issue_crm_code(conn, dst.id)))
 
 
 def _drop_caps_outside_zepto(db: Session, store_ids: list[uuid.UUID], dst: Organization) -> int:
@@ -343,13 +354,18 @@ def move_store_platform(db: Session, actor: User, store_id: uuid.UUID, to_slug: 
     src = db.get(Organization, store.partner_organization_id)
     store.partner_organization_id = dst.id
     caps_removed = _drop_caps_outside_zepto(db, [store.id], dst)
+    old_code = store.crm_code
+    from app.models.store import issue_crm_code
+
+    store.crm_code = issue_crm_code(db.connection(), dst.id)          # a new platform means a new prefix; the store itself does not change
     from app.services import assignment_service
 
     if assignment_service.is_employee_model(dst.slug):
         store.region_id = None                 # Zepto stores are scoped by state, not region
     activity_service.record(
         db, actor=actor, action="store.platform_moved", entity_type="store", entity_id=store.id,
-        metadata={"name": store.name, "external_code": store.external_code, "from": src.slug if src else None, "to": dst.slug, "capping_removed": caps_removed},
+        metadata={"name": store.name, "external_code": store.external_code, "from": src.slug if src else None, "to": dst.slug, "capping_removed": caps_removed,
+                  "crm_code_from": old_code, "crm_code_to": store.crm_code},
     )
     db.commit()
     return {"id": str(store.id), "name": store.name, "platform": dst.name, "capping_removed": caps_removed}

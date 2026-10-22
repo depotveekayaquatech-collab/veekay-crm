@@ -13,6 +13,8 @@ class CalendarDay(BaseModel):
     source: str | None
     is_today: bool
     is_future: bool
+    entered_by: str | None = None          # who wrote this day's number (an employee, or the admin / developer who imported or corrected it)
+    entered_at: datetime | None = None     # and when
 
 
 class OrderCalendar(BaseModel):

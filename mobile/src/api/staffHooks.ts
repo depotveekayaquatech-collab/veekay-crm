@@ -19,7 +19,7 @@ export const useLeaves = () => useQuery({ queryKey: ["s-leaves"], queryFn: staff
 
 export const useMyStores = (enabled = true) => useQuery({ queryKey: ["s-stores"], queryFn: staffApi.myStores, staleTime: FRESH, enabled });
 
-export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; is_today: boolean; is_future: boolean }
+export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; entered_by?: string | null; entered_at?: string | null; is_today: boolean; is_future: boolean }
 export interface Calendar {
   store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[];
   /** False when this month cannot be marked by the caller (view only). */

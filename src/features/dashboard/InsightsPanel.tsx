@@ -3,7 +3,7 @@
  * /orders/report + /orders/pending + /orders/insights endpoints — nothing
  * here is computed from made-up data.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/feedback/Skeleton";
@@ -60,13 +60,17 @@ function sum(a: number[]): number {
 
 /* ------------------------- data hook (shared) ----------------------- */
 
+/** The platform the dashboard is showing (Blinkit or Zepto). Every report and list on the page is limited to it, never added together. */
+export const ChannelContext = createContext<string>("");
+
 function useInsightData() {
+  const channel = useContext(ChannelContext);
   const end = daysAgo(0);
   // r60 is only used for its daily series; r30 for its totals, store count and the top 6 stores — so no full store lists.
-  const r60 = useReport(daysAgo(59), end, "partner");
-  const r30 = useReport(daysAgo(29), end, "store", { limit: 6 });
-  const reg = useReport(daysAgo(29), end, "region");
-  const pending = usePending(0, "");
+  const r60 = useReport(daysAgo(59), end, "partner", { partner: channel });
+  const r30 = useReport(daysAgo(29), end, "store", { limit: 6, partner: channel });
+  const reg = useReport(daysAgo(29), end, "region", { partner: channel });
+  const pending = usePending(0, channel);
   return { r60, r30, reg, pending };
 }
 
@@ -219,7 +223,7 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
   const [preset, setPreset] = useState<Preset>("30");
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(today);
-  const [partner, setPartner] = useState("");
+  const partner = useContext(ChannelContext);          // fixed to the channel picked on the dashboard
   const [region, setRegion] = useState("");
   const [state, setState] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -239,7 +243,7 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
               ? "Dates can't be in the future."
               : null;
   const filters = { partner, region, state };
-  const filtered = Boolean(partner || region || state);
+  const filtered = Boolean(region || state);
 
   // One query gives the daily series AND the per-partner split for the whole range.
   const report = useReport(rangeError ? "" : start, rangeError ? "" : end, "partner", filters);
@@ -318,11 +322,6 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
             </label>
           </>
         )}
-        {partnerOptions.length > 0 && (
-          <div className="w-full sm:w-44 [&_label]:sr-only">
-            <Select label="Partner" value={partner} onChange={(e) => { setPartner(e.target.value); setRegion(""); setState(""); }} placeholder="All partners" options={partnerOptions} />
-          </div>
-        )}
         {regionOptions.length > 0 && (
           <div className="w-full sm:w-44 [&_label]:sr-only">
             <Select label="Region" value={region} onChange={(e) => { setRegion(e.target.value); setState(""); }} placeholder="All regions" options={regionOptions} />
@@ -337,7 +336,6 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
           <button
             type="button"
             onClick={() => {
-              setPartner("");
               setRegion("");
               setState("");
             }}
