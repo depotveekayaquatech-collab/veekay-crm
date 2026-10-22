@@ -543,7 +543,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14, partner_slug: s
         select(Organization.id, Organization.slug, Organization.name, Store.status, func.count(Store.id))
         .select_from(Store)
         .join(Organization, Organization.id == Store.partner_organization_id)
-        .where(Store.organization_id == org_id, *pf)
+        .where(Store.organization_id == org_id)          # every platform: this is a breakdown BY platform, not a mixed total
         .group_by(Organization.id, Organization.slug, Organization.name, Store.status)
         .order_by(Organization.name)
     ).all()
@@ -551,7 +551,7 @@ def dashboard_insights(db: Session, admin: User, days: int = 14, partner_slug: s
     # Every active partner is listed, even one with no stores yet (e.g. a freshly deployed Zepto).
     for pid, slug, label in db.execute(
         select(Organization.id, Organization.slug, Organization.name)
-        .where(Organization.kind == OrganizationKind.PARTNER.value, Organization.is_active.is_(True), *pids)
+        .where(Organization.kind == OrganizationKind.PARTNER.value, Organization.is_active.is_(True))
         .order_by(Organization.name)
     ).all():
         by_platform[pid] = {"slug": slug, "label": label, "LIVE": 0, "PENDING": 0, "CLOSE": 0}

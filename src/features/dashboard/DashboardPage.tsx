@@ -198,7 +198,7 @@ function AdminDashboard() {
     [insights],
   );
   const [statusPick, setStatusPick] = useState<string | null>(null);
-  const statusChoice = statusPick ?? statusByPlatform[0]?.label ?? ALL_PLATFORMS;
+  const statusChoice = statusPick ?? ALL_PLATFORMS;          // all platforms by default; Blinkit and Zepto each in the dropdown
   const statusShown = useMemo(() => {
     if (statusChoice === ALL_PLATFORMS) {
       const counts = { LIVE: 0, PENDING: 0, CLOSE: 0 };
@@ -303,7 +303,7 @@ function AdminDashboard() {
                   label="Platform"
                   value={statusChoice}
                   onChange={(e) => setStatusPick(e.target.value)}
-                  options={statusByPlatform.map((p) => ({ value: p.label, label: p.label }))}
+                  options={[{ value: ALL_PLATFORMS, label: "All platforms" }, ...statusByPlatform.map((p) => ({ value: p.label, label: p.label }))]}
                 />
               </div>
             ) : undefined
@@ -328,7 +328,7 @@ function AdminDashboard() {
               )}
 
               {/* Second section: test reports (Zepto only for now) */}
-              <section className={`-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5 ${channel === "zepto" ? "" : "hidden"}`} aria-label="Test reports">
+              <section className="-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5" aria-label="Test reports">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="text-sm font-bold text-heading">Test reports</h4>
                   <CardLink to="/reports?tab=test">Manage →</CardLink>

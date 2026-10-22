@@ -255,7 +255,7 @@ def test_dashboard_numbers_are_per_platform_and_never_added_together(client, adm
     key = "bottles_today" if "bottles_today" in blk else "bottlesToday"
     assert blk[key] + zpt[key] == both[key]                                    # the two channels add up to the old mixed number, never inside one view
     assert {p["slug"] for p in blk["platforms"]} == {"blinkit"} and {p["slug"] for p in zpt["platforms"]} == {"zepto"}
-    assert {p["slug"] for p in blk["status_by_platform"]} == {"blinkit"}
+    assert {"blinkit", "zepto"} <= {p["slug"] for p in blk["status_by_platform"]}          # the Store status card lists every platform, each on its own
     assert all(sc["partner_slug"] == "blinkit" for sc in blk["scopes"])
     assert client.get(f"{API}/orders/insights", params={"partner": "nope"}, headers=admin).status_code == 404
 
