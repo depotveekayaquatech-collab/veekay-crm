@@ -510,24 +510,7 @@ function AdminDashboard() {
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex flex-wrap gap-1.5">
-                {[{ slug: "", label: "All", count: insights.statusByPlatform.reduce((n, p) => n + p.total, 0) }, ...insights.statusByPlatform.map((p) => ({ slug: p.slug, label: p.label, count: p.total }))].map((p) => (
-                  <button
-                    key={p.slug || "all"}
-                    onClick={() => {
-                      setStorePartner(p.slug);
-                      setStorePage(1);
-                    }}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                      storePartner === p.slug
-                        ? "bg-brand-500 text-white"
-                        : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
-                    }`}
-                  >
-                    {p.label} ({p.count.toLocaleString()})
-                  </button>
-                ))}
-              </div>
+              <p className="text-sm text-gray-500">{channelName} stores</p>
               <input
                 value={storeQuery}
                 onChange={(e) => {

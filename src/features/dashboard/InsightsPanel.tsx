@@ -263,7 +263,6 @@ export function TrendCard({ insights }: { insights?: DashboardInsights }) {
   const vsAvg = dayPoint && avg > 0 ? Math.round(((dayPoint.bottles - avg) / avg) * 100) : null;
 
   // Region and State only offer what exists for the chosen partner (and State also for the chosen region).
-  const partnerOptions = (insights?.platforms ?? []).map((p) => ({ value: p.slug, label: p.label }));
   const ofPartner = useMemo(
     () => (insights?.scopes ?? []).filter((x) => !partner || x.partnerSlug === partner),
     [insights?.scopes, partner],
