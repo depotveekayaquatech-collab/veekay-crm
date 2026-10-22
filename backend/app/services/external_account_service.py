@@ -14,13 +14,12 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
+from app.core.security import pwd_context
 from app.models.external_account import AccountKind, ExternalAccount, ExternalAccountStore
 from app.models.organization import Organization
 from app.models.store import Store
@@ -134,20 +133,26 @@ def check_unique(plans: list[Plan]) -> None:
         raise ValueError(f"Duplicate logins would be created: {dupes[:5]}")
 
 
+# First passwords follow a public pattern (123456 for vendors, <name>@123 for POCs), so slow hashing protects nothing here and
+# cost ~0.25 s each: a thousand accounts took minutes. They use a cheap bcrypt cost (about 4 ms) instead; the hash still verifies
+# like any other, and a password set or reset later (hash_password) gets the full cost.
+FIRST_PASSWORD_ROUNDS = 6
+_first_password_context = pwd_context.using(bcrypt__rounds=FIRST_PASSWORD_ROUNDS)
+
+
+def _first_password_hash(plain: str) -> str:
+    return _first_password_context.hash(plain)
+
+
 def apply(db: Session, org_id: uuid.UUID, plans: list[Plan]) -> dict[str, int]:
     """Creates the missing accounts and refreshes every account's store list. Existing accounts keep their password.
 
-    Built to be quick for hundreds of accounts: a password is hashed once per distinct first password (every vendor starts with
-    the same one) and the distinct ones are hashed on both CPU cores, the store links are read in one query, and nothing is
-    flushed per account."""
+    Built to be quick for thousands of accounts: a first password is hashed once per distinct value (every vendor starts with the
+    same one) at a cheap cost, the store links are read in one query, and nothing is flushed per account."""
     check_unique(plans)
     existing = {a.email: a for a in db.execute(select(ExternalAccount).where(ExternalAccount.organization_id == org_id)).scalars()}
     wanted = sorted({p.password for plan in plans for p in plan.people if p.email not in existing})
-    if wanted:
-        with ThreadPoolExecutor(max_workers=2) as pool:           # bcrypt releases the GIL, so two workers use both cores
-            hashes = dict(zip(wanted, pool.map(hash_password, wanted)))
-    else:
-        hashes = {}
+    hashes = {pw: _first_password_hash(pw) for pw in wanted}
 
     links: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     ids = [a.id for a in existing.values()]

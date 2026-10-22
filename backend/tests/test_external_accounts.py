@@ -57,8 +57,8 @@ def test_creating_many_logins_hashes_each_distinct_password_once(db, make_store,
     vendors, _, _ = plan_for([{"name": f"Bulkvendor{i}", "number": None, "store_id": stores[i].id, "platform": "blinkit"} for i in range(6)], "vendor")
     pocs, _, _ = plan_for([{"name": f"Bulkpoc{i}", "number": None, "store_id": stores[i].id, "platform": "blinkit"} for i in range(6)], "poc")
     calls = []
-    real = svc.hash_password
-    monkeypatch.setattr(svc, "hash_password", lambda p: (calls.append(p), real(p))[1])
+    real = svc._first_password_hash
+    monkeypatch.setattr(svc, "_first_password_hash", lambda p: (calls.append(p), real(p))[1])
     out = svc.apply(db, org.id, [svc.Plan(vendors, [], {}), svc.Plan(pocs, [], {})])
     assert out == {"created": 12, "updated": 0}
     assert len(calls) == 1 + 6                                   # one for every vendor's "123456", one per POC
