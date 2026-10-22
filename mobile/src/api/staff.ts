@@ -65,7 +65,9 @@ export interface Payslip {
 }
 
 export interface MyStore {
-  id: string; name: string; external_code: string; state: string | null; city: string | null; region_name: string | null; vendor_name: string | null;
+  id: string; name: string; external_code: string;
+  /** The store's permanent system code (BKT000123 / ZPT000045), and whether another store of this platform has exactly this name. */
+  crm_code?: string | null; duplicate_name?: boolean; state: string | null; city: string | null; region_name: string | null; vendor_name: string | null;
   status: string; partner_name: string | null; today: string; today_count: number | null; yesterday_count?: number | null;
   /** Days up to yesterday with no entry since the store's last filled day this month (0: only today is still due). */
   pending_days?: number;

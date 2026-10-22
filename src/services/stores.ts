@@ -174,6 +174,7 @@ export async function getStoreVendors(id: string): Promise<VendorPeriod[]> {
 export interface DuplicateStore {
   store: Store;
   orderDays: number;
+  orderDaysThisMonth: number;
   createdAt: string;
 }
 
@@ -182,6 +183,8 @@ export interface DuplicateGroup {
   label: string;
   platform: string | null;
   stores: DuplicateStore[];
+  /** This month's entries sit on more than one copy: employees and the CRM can be looking at different ones. */
+  entriesSplit: boolean;
 }
 
 export interface DuplicateReport {
@@ -195,7 +198,7 @@ export async function listDuplicateStores(): Promise<DuplicateReport> {
   const w = await apiRequest<{
     total_groups: number;
     total_stores: number;
-    groups: { kind: "name" | "id"; label: string; platform: string | null; stores: (StoreWire & { order_days: number; created_at: string })[] }[];
+    groups: { kind: "name" | "id"; label: string; platform: string | null; entries_split?: boolean; stores: (StoreWire & { order_days: number; order_days_this_month?: number; created_at: string })[] }[];
   }>("/stores/duplicates");
   return {
     totalGroups: w.total_groups,
@@ -204,7 +207,8 @@ export async function listDuplicateStores(): Promise<DuplicateReport> {
       kind: g.kind,
       label: g.label,
       platform: g.platform,
-      stores: g.stores.map((s) => ({ store: toStore(s), orderDays: s.order_days, createdAt: s.created_at })),
+      entriesSplit: Boolean(g.entries_split),
+      stores: g.stores.map((s) => ({ store: toStore(s), orderDays: s.order_days, orderDaysThisMonth: s.order_days_this_month ?? 0, createdAt: s.created_at })),
     })),
   };
 }

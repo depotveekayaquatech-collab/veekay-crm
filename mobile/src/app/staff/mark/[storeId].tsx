@@ -183,7 +183,13 @@ export default function MarkMany() {
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
         {cal.isLoading ? <ListSkeleton rows={4} /> : cal.isError ? <ErrorNote message={cal.error.message} onRetry={() => cal.refetch()} /> : (
           <>
-            <Text style={font.small}>{cal.data!.store_code} · {cal.data!.month_label}</Text>
+            <Text style={font.small}>{cal.data!.store_code}{totals?.crm_code ? ` · ${totals.crm_code}` : ""} · {cal.data!.month_label}</Text>
+            {totals?.duplicate_name ? (
+              <View style={{ marginTop: 8, padding: 12, borderRadius: radius.md, backgroundColor: colors.dangerSoft }}>
+                <Text style={{ color: colors.danger, fontWeight: "800" }}>This store is listed twice in the CRM</Text>
+                <Text style={[font.small, { marginTop: 2 }]}>Another store has exactly this name, so your entries may not show on the other copy. Tell your admin before you keep marking it.</Text>
+              </View>
+            ) : null}
             <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. Tap a green number to correct what you marked.</Text>
             {lastOpenUntil ? (
               <View style={{ marginTop: 12, gap: 8 }}>

@@ -267,6 +267,12 @@ def duplicates(db: Session, actor: User) -> dict:
     days = dict(
         db.execute(select(OrderEntry.store_id, func.count()).where(OrderEntry.store_id.in_(ids)).group_by(OrderEntry.store_id)).all()
     ) if ids else {}
+    month_start = date.today().replace(day=1)
+    this_month = dict(
+        db.execute(
+            select(OrderEntry.store_id, func.count()).where(OrderEntry.store_id.in_(ids), OrderEntry.order_date >= month_start).group_by(OrderEntry.store_id)
+        ).all()
+    ) if ids else {}
     groups = []
     for _, kind, g in wanted:
         g = sorted(g, key=lambda s: s.created_at)
@@ -276,7 +282,9 @@ def duplicates(db: Session, actor: User) -> dict:
             "label": first.name if kind == "name" else first.external_code,
             "platform": first.partner_organization.name if first.partner_organization else None,
             "stores": [{**store_service.to_out(s).model_dump(mode="json"), "order_days": int(days.get(s.id, 0)),
-                        "created_at": s.created_at.isoformat()} for s in g],
+                        "order_days_this_month": int(this_month.get(s.id, 0)), "created_at": s.created_at.isoformat()} for s in g],
+            # entries for the current month sit on more than one copy: employees and the CRM can be looking at different ones
+            "entries_split": sum(1 for s in g if this_month.get(s.id)) > 1,
         })
     groups.sort(key=lambda x: ((x["platform"] or "").lower(), x["kind"], x["label"].lower()))
     return {"total_groups": len(groups), "total_stores": len(ids), "groups": groups}

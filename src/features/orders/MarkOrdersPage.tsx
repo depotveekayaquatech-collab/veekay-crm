@@ -53,6 +53,10 @@ function StoreSummary({ store }: { store: MyStore }) {
               <h3 className="truncate text-lg font-extrabold text-heading">{store.name}</h3>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 text-sm text-gray-500">
                 <span className="font-semibold text-gray-700">{store.externalCode}</span>
+                {store.crmCode && <span className="text-xs text-gray-400">{store.crmCode}</span>}
+                {store.duplicateName && (
+                  <span className="rounded-full bg-status-danger-soft px-2 py-0.5 text-xs font-bold text-status-danger">Listed twice in the CRM</span>
+                )}
                 {place && (
                   <span className="flex items-center gap-1">
                     <IconMapPin className="h-3.5 w-3.5" aria-hidden="true" />

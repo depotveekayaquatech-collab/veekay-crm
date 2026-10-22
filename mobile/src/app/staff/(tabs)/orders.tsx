@@ -129,7 +129,8 @@ export default function Orders() {
             </View>
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
-              <Text numberOfLines={1} style={font.small}>{s.external_code}{s.city ? ` · ${s.city}` : ""}{!vendor && s.vendor_name ? ` · ${s.vendor_name}` : ""}</Text>
+              <Text numberOfLines={1} style={font.small}>{s.external_code}{s.crm_code ? ` · ${s.crm_code}` : ""}{s.city ? ` · ${s.city}` : ""}{!vendor && s.vendor_name ? ` · ${s.vendor_name}` : ""}</Text>
+              {s.duplicate_name ? <Text numberOfLines={1} style={{ color: colors.danger, fontSize: 12, fontWeight: "800" }}>Listed twice in the CRM: tell your admin</Text> : null}
               <Text numberOfLines={1} style={font.tiny}>This month {fmtNumber(s.month_bottles ?? 0)} · Last month {fmtNumber(s.last_month_bottles ?? 0)} bottles</Text>
               {filter === "lastmonth" ? (
                 <View style={{ marginTop: 6, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>

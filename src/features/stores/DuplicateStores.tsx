@@ -80,7 +80,10 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
             <section key={key} className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-card">
               <header className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border bg-surface-subtle px-4 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-gray-900">{g.label}</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">
+                    {g.label}
+                    {g.entriesSplit && <span className="ml-2 rounded-full bg-status-danger-soft px-2 py-0.5 text-xs font-bold text-status-danger">This month's entries are split across these copies</span>}
+                  </p>
                   <p className="text-xs text-gray-500">
                     {g.platform} · {g.kind === "name" ? "same store name" : "same Outlet ID (ignoring capitals, spaces and dashes)"} · {g.stores.length} stores
                   </p>
@@ -122,7 +125,7 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
                       </span>
                     </span>
                     <Badge tone={s.store.status === "LIVE" ? "success" : "neutral"}>{s.store.status}</Badge>
-                    <span className="w-24 text-right text-xs tabular-nums text-gray-600">{s.orderDays} order day{s.orderDays === 1 ? "" : "s"}</span>
+                    <span className="w-32 text-right text-xs tabular-nums text-gray-600">{s.orderDays} order day{s.orderDays === 1 ? "" : "s"} · {s.orderDaysThisMonth} this month</span>
                     <Button size="sm" variant="secondary" onClick={() => onEdit(s.store)}>Edit</Button>
                   </li>
                 ))}

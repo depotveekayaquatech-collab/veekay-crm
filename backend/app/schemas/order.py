@@ -20,6 +20,7 @@ class CalendarDay(BaseModel):
 class OrderCalendar(BaseModel):
     store_id: uuid.UUID
     store_name: str
+    store_crm_code: str | None = None
     store_code: str
     region_name: str | None
     year: int
@@ -48,6 +49,8 @@ class MyStore(BaseModel):
     id: uuid.UUID
     name: str
     external_code: str
+    crm_code: str | None = None        # the store's permanent system code (BKT000123 / ZPT000045)
+    duplicate_name: bool = False       # another store of the same platform has this exact name: entries may be split between the two
     state: str | None
     city: str | None
     region_name: str | None

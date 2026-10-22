@@ -347,3 +347,21 @@ def test_an_order_import_can_be_undone_for_one_month_and_nothing_else(client, de
         assert db.query(OrderEntry).filter_by(store_id=s.id, order_date=last_month).count() == 1           # other months are untouched
     assert db.query(DeletedRow).filter(DeletedRow.table_name == "order_entries", DeletedRow.row_id.isnot(None)).count() >= 1   # and the deleted rows are kept
     assert client.get(f"{API}/orders/import-runs", params={"platform": "blinkit", "month": month}, headers=admin).status_code == 403   # developer only
+
+
+def test_a_store_that_exists_twice_is_flagged_to_the_employee_and_the_split_is_shown(client, emp, admin, db, make_store):
+    a = make_store(code="TW-1", name="Twin Entries Mart", region="NORTH")
+    b = make_store(code="TW-2", name="Twin Entries Mart", region="NORTH")
+    solo = make_store(code="TW-3", name="Single Entries Mart", region="NORTH")
+    today = date.today()
+    for s in (a, b):
+        db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=today, bottle_count=5, source="employee"))
+    db.commit()
+    mine = {s["id"]: s for s in client.get(f"{API}/orders/my-stores", headers=emp).json()}
+    assert mine[str(a.id)]["duplicate_name"] is True and mine[str(b.id)]["duplicate_name"] is True and mine[str(solo.id)]["duplicate_name"] is False
+    assert mine[str(a.id)]["crm_code"] == a.crm_code
+    cal = client.get(f"{API}/orders/calendar", params={"store_id": str(a.id)}, headers=emp).json()
+    assert cal["store_crm_code"] == a.crm_code
+    groups = client.get(f"{API}/stores/duplicates", headers=admin).json()["groups"]
+    g = next(x for x in groups if x["kind"] == "name" and x["label"] == "Twin Entries Mart")
+    assert g["entries_split"] is True and all(s["order_days_this_month"] == 1 for s in g["stores"])

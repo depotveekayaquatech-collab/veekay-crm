@@ -2,6 +2,10 @@ export interface MyStore {
   id: string;
   name: string;
   externalCode: string;
+  /** The store's permanent system code (BKT000123 / ZPT000045). */
+  crmCode: string;
+  /** Another store of this platform has exactly this name: entries can be split between the two. */
+  duplicateName: boolean;
   state: string | null;
   city: string | null;
   regionName: string | null;
@@ -303,6 +307,8 @@ interface MyStoreWire {
   id: string;
   name: string;
   external_code: string;
+  crm_code?: string | null;
+  duplicate_name?: boolean;
   state: string | null;
   city: string | null;
   region_name: string | null;
@@ -324,6 +330,8 @@ export function toMyStore(w: MyStoreWire): MyStore {
     id: w.id,
     name: w.name,
     externalCode: w.external_code,
+    crmCode: w.crm_code ?? "",
+    duplicateName: Boolean(w.duplicate_name),
     state: w.state,
     city: w.city,
     regionName: w.region_name,

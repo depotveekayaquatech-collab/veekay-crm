@@ -12,7 +12,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, func, select
+from sqlalchemy import literal_column, case, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -98,8 +98,26 @@ def _last_month_missing(entries: int, start: date | None, today: date) -> int:
     return 0 if first > last_end else max(0, (last_end - first).days + 1 - entries)
 
 
+def _twin_names(db: Session, org_id: uuid.UUID) -> set[tuple[str, str]]:
+    """{(platform slug, normalised name)} of every name that two or more stores of one platform share."""
+    rows = db.execute(
+        select(Organization.slug, func.lower(func.regexp_replace(func.btrim(Store.name), r"\s+", " ", "g")))
+        .select_from(Store).join(Organization, Organization.id == Store.partner_organization_id)
+        .where(Store.organization_id == org_id)
+        .group_by(literal_column("1"), literal_column("2"))          # by position: the same expression with fresh bind parameters would not match
+        .having(func.count(Store.id) > 1)
+    ).all()
+    return {(r[0], r[1]) for r in rows}
+
+
+def _name_key(name: str | None) -> str:
+    return " ".join((name or "").lower().split())
+
+
 def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[MyStore]:
     from app.services import inventory_service
+
+    twins = _twin_names(db, employee.organization_id)
 
     def _month_stats(ids: list[uuid.UUID], day: date) -> dict:
         return inventory_service.month_stats(db, ids, day)
@@ -122,7 +140,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             select(
                 Store.id, Store.name, Store.external_code, Store.state, Store.city, Region.name, Store.vendor_name,
                 Store.vendor_number, Store.poc_name, Store.poc_number, Store.status, Organization.slug, Organization.name,
-                Store.region_id, Store.start_date,
+                Store.region_id, Store.start_date, Store.crm_code,
             )
             .select_from(Store)
             .outerjoin(Region, Region.id == Store.region_id)
@@ -142,7 +160,8 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
         totals = _month_totals(db, [r[0] for r in rows], today, net=False)
         return [
             MyStore(
-                id=r[0], name=r[1], external_code=r[2], state=r[3], city=r[4], region_name=r[5], vendor_name=r[6],
+                id=r[0], name=r[1], external_code=r[2], crm_code=r[15], duplicate_name=(r[11], _name_key(r[1])) in twins,
+                state=r[3], city=r[4], region_name=r[5], vendor_name=r[6],
                 vendor_number=r[7], poc_name=r[8], poc_number=r[9], status=r[10], today=today, partner_slug=r[11],
                 partner_name=r[12], region_id=r[13], today_count=counts.get((r[0], today)),
                 yesterday_count=counts.get((r[0], yesterday)), pending_days=_pending(stats, r[0], today, r[14]),
@@ -166,7 +185,9 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
     totals = _month_totals(db, [s.id for s in stores], today, net=True)
     return [
         MyStore(
-            id=s.id, name=s.name, external_code=s.external_code, state=s.state, city=s.city,
+            id=s.id, name=s.name, external_code=s.external_code, crm_code=s.crm_code,
+            duplicate_name=((s.partner_organization.slug if s.partner_organization else ""), _name_key(s.name)) in twins,
+            state=s.state, city=s.city,
             region_name=s.region.name if s.region else None,
             vendor_name=s.vendor_name, vendor_number=s.vendor_number,
             poc_name=s.poc_name, poc_number=s.poc_number,
@@ -218,6 +239,7 @@ def get_calendar(
     return OrderCalendar(
         store_id=store.id,
         store_name=store.name,
+        store_crm_code=store.crm_code,
         store_code=store.external_code,
         region_name=store.region.name if store.region else None,
         year=year,
