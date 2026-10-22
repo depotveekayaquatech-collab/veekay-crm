@@ -97,3 +97,27 @@ install, open the app. For the mandatory page set `minVersionCode` above the ins
 6. Leave the app 30+ minutes, reopen: no crash; session still valid (or a clean sign-in prompt).
 7. Update alert (see above) and OTA banner behave as described.
 8. Compare what you saved on the phone with the web CRM.
+
+## Separate updates for employees and for vendors / POCs
+
+One app serves both, so the update file can give each its own rules (needs build 20 or later installed first):
+
+```json
+{ "android": { "latestVersionCode": 20, "minVersionCode": 18, "downloadUrl": "...",       // shared rules (signed out, old builds)
+               "staff":   { "latestVersionCode": 22, ... },                                  // Veekay employees only
+               "partner": { "latestVersionCode": 21, ... } } }                               // vendors / POCs only
+```
+
+A signed-in person follows the shared rules with their own section laid over them; a section with a `latestVersionCode` is a whole release
+(build, link, size, notes, minimum). Publish with `--audience`:
+
+```
+npm run release:publish -- --audience both    --notes "..."   # everyone (default); clears the separate sections
+npm run release:publish -- --audience staff   --notes "..."   # only employees are offered it; vendors / POCs stay put
+npm run release:publish -- --audience partner --notes "..."   # only vendors / POCs
+```
+
+- The first release made with an app that understands this must be `both`; separate sections only work after that.
+- A release keeps the minimum that already applies to its audience (nobody is newly forced); pass `--min <build>` to force one.
+- APK files the file still points at stay in `public/downloads/`; older ones are removed.
+- `npm run release:check -- --audience staff` shows what an employee would see.

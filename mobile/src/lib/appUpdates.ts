@@ -11,7 +11,7 @@ import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
-import { apkUpdateState, parseManifest, parseVersionCode, type ApkManifest, type ApkUpdateState } from "@/lib/versionPolicy";
+import { apkUpdateState, parseManifest, parseVersionCode, type ApkManifest, type ApkUpdateState, type Audience } from "@/lib/versionPolicy";
 
 /** Where the version file lives. Override per build with EXPO_PUBLIC_UPDATE_MANIFEST_URL. */
 const MANIFEST_URL = process.env.EXPO_PUBLIC_UPDATE_MANIFEST_URL || "https://veekay-crm.vercel.app/app-update.json";
@@ -48,7 +48,8 @@ function useThrottledChecks(fn: () => Promise<void>, enabled: boolean) {
 }
 
 // ---- the newest-APK information, shared by the update banner and the "Check for updates" row ----
-let manifestNow: ApkManifest | null = null;
+let rawManifest: unknown = null;     // the file as read; each caller lays its own audience (employee / vendor-POC) over it
+const manifestFor = (audience: Audience | null | undefined): ApkManifest | null => parseManifest(rawManifest, audience);
 let dismissedCode = 0;
 const subscribers = new Set<() => void>();
 const publish = () => subscribers.forEach((f) => f());
@@ -72,7 +73,7 @@ export async function refreshApkManifest(): Promise<boolean> {
   try {
     const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { signal: ctrl.signal, headers: { "Cache-Control": "no-cache" } });
     if (!res.ok) return false;
-    manifestNow = parseManifest(await res.json());
+    rawManifest = await res.json();
     publish();
     return true;
   } catch {
@@ -86,8 +87,9 @@ export async function refreshApkManifest(): Promise<boolean> {
 export function installedVersionCode(): number {
   return parseVersionCode(Application.nativeBuildVersion);
 }
-export function currentApkUpdate(): { state: ApkUpdateState; manifest: ApkManifest | null } {
-  return { state: apkUpdateState(installedVersionCode(), manifestNow), manifest: manifestNow };
+export function currentApkUpdate(audience?: Audience | null): { state: ApkUpdateState; manifest: ApkManifest | null } {
+  const manifest = manifestFor(audience);
+  return { state: apkUpdateState(installedVersionCode(), manifest), manifest };
 }
 /** A manual check should always show the update again, even if "Later" was tapped for it before. */
 export function showUpdateAgain() {
@@ -96,7 +98,8 @@ export function showUpdateAgain() {
   publish();
 }
 
-export function useApkUpdate(enabled: boolean): { state: ApkUpdateState; manifest: ApkManifest | null; dismiss: () => void } {
+/** `audience` is who is signed in (null before sign-in): the update file may give employees and vendors / POCs different rules. */
+export function useApkUpdate(enabled: boolean, audience?: Audience | null): { state: ApkUpdateState; manifest: ApkManifest | null; dismiss: () => void } {
   const installed = installedVersionCode();
   const [, bump] = useState(0);
 
@@ -113,17 +116,19 @@ export function useApkUpdate(enabled: boolean): { state: ApkUpdateState; manifes
     await refreshApkManifest();
   }, enabled && installed > 0);
 
-  const state = apkUpdateState(installed, manifestNow);
+  const manifest = manifestFor(audience);
+  const state = apkUpdateState(installed, manifest);
   const dismiss = useCallback(() => {
-    if (!manifestNow) return;
-    dismissedCode = manifestNow.latestVersionCode;
+    const m = manifestFor(audience);
+    if (!m) return;
+    dismissedCode = m.latestVersionCode;
     AsyncStorage.setItem(DISMISSED_KEY, String(dismissedCode)).catch(() => undefined);
     publish();
-  }, []);
+  }, [audience]);
 
   // "Later" hides an optional update until a NEWER one is published; a required update can never be dismissed.
-  const hidden = state === "optional" && manifestNow !== null && dismissedCode >= manifestNow.latestVersionCode;
-  return { state: hidden ? "none" : state, manifest: manifestNow, dismiss };
+  const hidden = state === "optional" && manifest !== null && dismissedCode >= manifest.latestVersionCode;
+  return { state: hidden ? "none" : state, manifest, dismiss };
 }
 
 export type OtaPhase = "idle" | "downloading" | "ready";

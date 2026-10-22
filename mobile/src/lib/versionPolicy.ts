@@ -4,7 +4,16 @@
  * Versions are compared as NUMBERS (Android versionCode), never as strings: 10 > 9 numerically but not alphabetically.
  * The installed versionCode comes from the binary itself (expo-application `nativeBuildVersion`), not from JS that an
  * over-the-air update may have replaced.
+ *
+ * One app serves two kinds of people, so the update file can give each its own rules:
+ *   { "android": { ...rules everyone follows (and builds that predate this feature),
+ *                  "staff":   { ...only what differs for Veekay employees },
+ *                  "partner": { ...only what differs for vendors / POCs } } }
+ * A person signed in as `staff` or `partner` gets the shared rules with that section laid over them. Before anyone is
+ * signed in (and for old builds) only the shared rules apply.
  */
+export type Audience = "staff" | "partner";
+
 export type ApkManifest = {
   latestVersionCode: number;
   latestVersionName: string;
@@ -19,10 +28,31 @@ export type ApkManifest = {
 
 export type ApkUpdateState = "none" | "optional" | "required";
 
+type Entry = Record<string, unknown>;
+const FIELDS = ["latestVersionCode", "latestVersionName", "minVersionCode", "downloadUrl", "notes", "apkSizeBytes", "apkSha256"] as const;
+
+const isObject = (v: unknown): v is Entry => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * The shared rules with one audience's section on top. A section that sets a newest build replaces the whole release (its
+ * build, link, size and notes belong together); a section with no `latestVersionCode` may only change the minimum.
+ */
+function layered(android: Entry, audience: Audience | null | undefined): Entry {
+  const over = audience ? android[audience] : undefined;
+  if (!isObject(over)) return android;
+  if (over.latestVersionCode !== undefined) {
+    const own: Entry = {};
+    for (const f of FIELDS) if (over[f] !== undefined) own[f] = over[f];
+    return own;
+  }
+  return over.minVersionCode !== undefined ? { ...android, minVersionCode: over.minVersionCode } : android;
+}
+
 /** Reads the hosted `app-update.json`. Anything malformed returns null, which means "no update info": the app carries on. */
-export function parseManifest(json: unknown): ApkManifest | null {
-  const a = (json as { android?: Record<string, unknown> } | null)?.android;
-  if (!a || typeof a !== "object") return null;
+export function parseManifest(json: unknown, audience?: Audience | null): ApkManifest | null {
+  const base = isObject(json) && isObject(json.android) ? json.android : null;
+  if (!base) return null;
+  const a = layered(base, audience);
   const latest = Number(a.latestVersionCode);
   const min = Number(a.minVersionCode ?? 0);
   const url = typeof a.downloadUrl === "string" ? a.downloadUrl.trim() : "";

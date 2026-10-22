@@ -6,6 +6,7 @@
  *   npm run release:check -- --installed 6,8,9          which build numbers to simulate (default: 5 up to the newest)
  *   npm run release:check -- --apk build/apk/Veekay-Partner-1.0.1-code9.apk   check a local APK file instead of downloading
  *   npm run release:check -- --no-download              only read the update file and test the link, skip the big download
+ *   npm run release:check -- --audience staff           what a signed-in EMPLOYEE (or "partner": vendor / POC) would see; default: the shared rules
  *
  * It reports: what the update file says; what each installed build would see (nothing / "update available" / "update
  * required"), using the SAME rules as the app (src/lib/versionPolicy.ts); that the download link serves a real APK of the
@@ -42,9 +43,12 @@ try {
 }
 let json;
 try { json = JSON.parse(raw); } catch { console.error("  FAIL  it is not valid JSON"); process.exit(1); }
-const m = parseManifest(json);
+const audience = opt("audience") === "staff" || opt("audience") === "partner" ? opt("audience") : null;
+const m = parseManifest(json, audience);
 if (!m) { console.error("  FAIL  the app would ignore this file (no usable android.latestVersionCode)"); process.exit(1); }
 const sha = String(json.android?.apkSha256 ?? "").toLowerCase();
+const sections = ["staff", "partner"].filter((a) => json.android?.[a] && typeof json.android[a] === "object");
+if (sections.length) console.log(`  separate rules for: ${sections.join(", ")}${audience ? `  (showing ${audience})` : "  (showing the shared rules; use --audience to see one)"}`);
 console.log(`  newest build ${m.latestVersionCode} (${m.latestVersionName}); builds below ${m.minVersionCode || "none"} are forced to update`);
 console.log(`  notes: ${m.notes || "(none)"}`);
 console.log(`  link:  ${m.downloadUrl || "(none: the app would never offer an update)"}`);

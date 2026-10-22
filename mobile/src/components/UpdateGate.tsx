@@ -3,6 +3,7 @@ import { Linking, Text, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui";
+import { useAuth } from "@/auth/AuthProvider";
 import { useApkUpdate, useOtaUpdate } from "@/lib/appUpdates";
 import { downloadAndInstall, InstallError } from "@/lib/apkInstaller";
 import { colors, radius, shadow, space } from "@/theme";
@@ -14,7 +15,8 @@ import { colors, radius, shadow, space } from "@/theme";
  *    or restarts the app by itself, so nobody loses what they are typing.
  */
 export function UpdateGate({ children, enabled }: { children: ReactNode; enabled: boolean }) {
-  const apk = useApkUpdate(enabled);
+  const { account, staff } = useAuth();
+  const apk = useApkUpdate(enabled, staff ? "staff" : account ? "partner" : null);     // the update file can treat employees and vendors / POCs differently
   const ota = useOtaUpdate(enabled);
   const insets = useSafeAreaInsets();
   const [otaLater, setOtaLater] = useState(false);

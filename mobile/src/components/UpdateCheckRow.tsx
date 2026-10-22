@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
+import { useAuth } from "@/auth/AuthProvider";
 import { currentApkUpdate, installedVersionCode, refreshApkManifest, showUpdateAgain } from "@/lib/appUpdates";
 import { colors } from "@/theme";
 
@@ -11,6 +12,8 @@ export const versionLabel = () => `version ${Constants.expoConfig?.version ?? "1
 /** Checks for a newer APK right now, whatever the 10-minute timer says, and says plainly what it found. */
 export function UpdateCheckRow() {
   const [busy, setBusy] = useState(false);
+  const { account, staff } = useAuth();
+  const audience = staff ? "staff" : account ? "partner" : null;
 
   async function check() {
     if (busy) return;
@@ -20,7 +23,7 @@ export function UpdateCheckRow() {
         Alert.alert("Couldn't check for updates", "Check your internet connection and try again.");
         return;
       }
-      const { state, manifest } = currentApkUpdate();
+      const { state, manifest } = currentApkUpdate(audience);
       if (state !== "none" && manifest) {
         showUpdateAgain();
         Alert.alert("Update available", `Version ${manifest.latestVersionName} is ready. Tap "Update now" in the box at the bottom of the screen.`);
