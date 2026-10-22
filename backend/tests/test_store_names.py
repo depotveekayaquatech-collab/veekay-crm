@@ -389,3 +389,16 @@ def test_deleted_entries_can_be_restored_for_employees_only(client, dev, db, mak
     db.expire_all()
     back = db.query(OrderEntry).filter_by(store_id=s.id).all()
     assert [(e.order_date, e.bottle_count, e.source) for e in back] == [(d1, 12, "employee")]      # only the employee's entry came back
+
+
+def test_the_delivery_matrix_never_drops_a_store_that_has_entries_in_the_period(client, admin, db, make_store):
+    s = make_store(code="MX-1", name="Matrix Late Start Mart")
+    day = date.today() - timedelta(days=2)
+    db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=day, bottle_count=37, source="employee"))
+    s.start_date = date.today() + timedelta(days=30)           # a start date later than the whole period (set by a sync, a typo...)
+    db.commit()
+    params = {"start": (date.today() - timedelta(days=6)).isoformat(), "end": date.today().isoformat(), "partner": "blinkit", "page_size": 200}
+    m = client.get(f"{API}/orders/matrix", params=params, headers=admin).json()
+    assert any(r["code"] == "MX-1" if "code" in r else r.get("external_code") == "MX-1" or "MX-1" in str(r) for r in m["rows"])
+    rep = client.get(f"{API}/orders/report", params={"start": params["start"], "end": params["end"], "group_by": "partner", "partner": "blinkit"}, headers=admin).json()
+    assert m["grand_total_bottles"] == rep["total_bottles"]                      # the matrix and the report add up to the same number

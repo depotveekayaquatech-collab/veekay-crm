@@ -40,7 +40,9 @@ def _stores(
     stmt = (
         select(Store)
         .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry),
-               or_(Store.start_date.is_(None), Store.start_date <= end))   # not yet supplied by the end of this period: not shown
+               # not yet supplied by the end of this period: not shown, UNLESS it has entries in the period (a bottle that was delivered
+               # must never drop out of the matrix, or its totals stop matching the region report)
+               or_(Store.start_date.is_(None), Store.start_date <= end, has_entry))
         .options(joinedload(Store.partner_organization), joinedload(Store.region))
         .order_by(Store.state, Store.city, Store.name)
     )
@@ -67,7 +69,9 @@ def _store_rows(
         .select_from(Store)
         .join(Organization, Organization.id == Store.partner_organization_id)
         .where(Store.organization_id == admin.organization_id, or_(Store.status == StoreStatus.LIVE.value, has_entry),
-               or_(Store.start_date.is_(None), Store.start_date <= end))   # not yet supplied by the end of this period: not shown
+               # not yet supplied by the end of this period: not shown, UNLESS it has entries in the period (a bottle that was delivered
+               # must never drop out of the matrix, or its totals stop matching the region report)
+               or_(Store.start_date.is_(None), Store.start_date <= end, has_entry))
         .order_by(Store.state, Store.city, Store.name)
     )
     if partner:
