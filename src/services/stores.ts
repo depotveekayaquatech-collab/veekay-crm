@@ -51,6 +51,29 @@ export async function closeStore(id: string): Promise<Store> {
   return toStore(await apiRequest<StoreWire>(`/stores/${id}`, { method: "DELETE" }));
 }
 
+export interface DeleteClosedResult {
+  dryRun: boolean;
+  closed: number;
+  deletableCount: number;
+  keptWithOrders: number;
+  keptWithOtherRecords: number;
+  deleted: number;
+  deletable: { id: string; name: string; externalCode: string; platform: string }[];
+}
+
+/** Delete Closed stores that hold no history at all (no orders, documents, tickets or cash purchases). `dryRun` only reports. */
+export async function deleteClosedStores(opts: { platform?: string; storeIds?: string[]; dryRun: boolean }): Promise<DeleteClosedResult> {
+  const w = await apiRequest<{
+    dry_run: boolean; closed: number; deletable_count: number; kept_with_orders: number; kept_with_other_records: number; deleted: number;
+    deletable: { id: string; name: string; external_code: string; platform: string }[];
+  }>("/stores/delete-closed", { method: "POST", body: { platform: opts.platform || null, store_ids: opts.storeIds ?? null, dry_run: opts.dryRun } });
+  return {
+    dryRun: w.dry_run, closed: w.closed, deletableCount: w.deletable_count, keptWithOrders: w.kept_with_orders,
+    keptWithOtherRecords: w.kept_with_other_records, deleted: w.deleted,
+    deletable: w.deletable.map((d) => ({ id: d.id, name: d.name, externalCode: d.external_code, platform: d.platform })),
+  };
+}
+
 export async function syncStores(platform?: string): Promise<StoreSyncResult[]> {
   const qs = platform ? `?platform=${encodeURIComponent(platform)}` : "";
   const wire = await apiRequest<Parameters<typeof toSyncResult>[0][]>(`/stores/sync${qs}`, {
@@ -220,7 +243,15 @@ export interface MergeResult {
 }
 
 /** Move everything a temporary-ID store holds onto the store with the real Outlet ID, then remove it (developer only). */
-export async function mergeStores(platform: string, pairs: { oldCode: string; newCode: string }[], dryRun: boolean): Promise<MergeResult> {
+export interface MergePairInput {
+  oldCode: string;
+  newCode: string;
+  /** Exact store ids; needed when several stores share an Outlet ID. */
+  oldId?: string;
+  newId?: string;
+}
+
+export async function mergeStores(platform: string, pairs: MergePairInput[], dryRun: boolean): Promise<MergeResult> {
   const w = await apiRequest<{
     platform: string;
     dry_run: boolean;
@@ -229,7 +260,7 @@ export async function mergeStores(platform: string, pairs: { oldCode: string; ne
     results: { old_code: string; new_code: string; name: string | null; ok: boolean; reason: string | null; moved: Record<string, number> }[];
   }>("/stores/merge", {
     method: "POST",
-    body: { platform, dry_run: dryRun, pairs: pairs.map((p) => ({ old_code: p.oldCode, new_code: p.newCode })) },
+    body: { platform, dry_run: dryRun, pairs: pairs.map((p) => ({ old_code: p.oldCode, new_code: p.newCode, old_id: p.oldId, new_id: p.newId })) },
   });
   return {
     platform: w.platform,

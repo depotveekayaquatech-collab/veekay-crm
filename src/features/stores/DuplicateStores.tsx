@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { MergeStoresModal } from "@/features/stores/MergeStoresModal";
-import { listDuplicateStores, type DuplicateGroup } from "@/services/stores";
+import { listDuplicateStores, type DuplicateGroup, type MergePairInput } from "@/services/stores";
 import type { Store } from "@/types/store";
 
 export const DUPLICATES_KEY = ["duplicate-stores"];
@@ -25,7 +25,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
 export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => void; canMerge: boolean }) {
   const { data, isLoading, isError, refetch } = useDuplicateStores();
   const [keep, setKeep] = useState<Record<string, string>>({});
-  const [merging, setMerging] = useState<{ platform: string; pairs: string } | null>(null);
+  const [merging, setMerging] = useState<{ platform: string; pairs: MergePairInput[] } | null>(null);
 
   if (isLoading) return <Skeleton className="h-64" />;
   if (isError || !data) return <ErrorState message="Couldn't load the duplicate stores." onRetry={() => refetch()} />;
@@ -62,7 +62,10 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
                   size="sm"
                   variant="secondary"
                   onClick={() =>
-                    setMerging({ platform: kept.store.partnerSlug ?? "", pairs: others.map((o) => `${o.store.externalCode}\t${kept.store.externalCode}`).join("\n") })
+                    setMerging({
+                      platform: kept.store.partnerSlug ?? "",
+                      pairs: others.map((o) => ({ oldCode: o.store.externalCode, newCode: kept.store.externalCode, oldId: o.store.id, newId: kept.store.id })),
+                    })
                   }
                 >
                   Merge {others.length} into the selected

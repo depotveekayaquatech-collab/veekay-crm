@@ -87,3 +87,65 @@ def test_merging_a_duplicate_keeps_every_order(client, dev, db, make_store):
     assert r.status_code == 200 and r.json()["merged"] == 1
     assert sorted((e.order_date, e.bottle_count) for e in db.query(OrderEntry).filter_by(store_id=nid)) == [(d1, 2), (d2, 5)]
     assert db.query(Store).filter(Store.name == "Merge Keep Mart").count() == 1
+
+
+def _closed(make_store, code, name):
+    return make_store(code=code, name=name, status="CLOSE")
+
+
+def test_only_closed_stores_without_history_are_deleted(client, admin, db, make_store):
+    empty = _closed(make_store, "DC-1", "Del Empty Mart")
+    used = _closed(make_store, "DC-2", "Del Used Mart")
+    live = make_store(code="DC-3", name="Del Live Mart", status="LIVE")
+    db.add(OrderEntry(organization_id=used.organization_id, store_id=used.id, order_date=date.today() - timedelta(days=3), bottle_count=4, source="manual"))
+    db.commit()
+    ids = [str(empty.id), str(used.id), str(live.id)]
+    eid, uid, lid = empty.id, used.id, live.id
+
+    prev = client.post(f"{API}/stores/delete-closed", json={"store_ids": ids}, headers=admin).json()
+    assert prev["dry_run"] is True and prev["deleted"] == 0
+    assert prev["closed"] == 2 and prev["deletable_count"] == 1 and prev["kept_with_orders"] == 1
+    assert [d["external_code"] for d in prev["deletable"]] == ["DC-1"]
+    db.expire_all()
+    assert db.get(Store, eid) is not None                                  # a preview deletes nothing
+
+    done = client.post(f"{API}/stores/delete-closed", json={"store_ids": ids, "dry_run": False}, headers=admin).json()
+    assert done["deleted"] == 1
+    db.expire_all()
+    assert db.get(Store, eid) is None
+    assert db.get(Store, uid) is not None and db.query(OrderEntry).filter_by(store_id=uid).count() == 1   # history untouched
+    assert db.get(Store, lid) is not None                                  # live stores are never touched
+
+
+def test_a_closed_store_with_other_records_is_kept(client, admin, db, make_store):
+    from app.models.cash_purchase import CashPurchase
+    s = _closed(make_store, "DC-4", "Del Cash Mart")
+    sid = s.id
+    row = CashPurchase(organization_id=s.organization_id, kind="STORE", store_id=s.id, purchase_date=date.today(), category="EMERGENCY_REQUIREMENT",
+                       amount=10, created_by_user_id=None)
+    db.add(row)
+    db.commit()
+    r = client.post(f"{API}/stores/delete-closed", json={"store_ids": [str(sid)], "dry_run": False}, headers=admin).json()
+    assert r["deleted"] == 0 and r["kept_with_other_records"] == 1
+    db.expire_all()
+    assert db.get(Store, sid) is not None
+    db.delete(db.get(CashPurchase, row.id))
+    db.commit()
+
+
+def test_deleting_closed_stores_needs_the_manage_permission(client, emp):
+    assert client.post(f"{API}/stores/delete-closed", json={}, headers=emp).status_code == 403
+
+
+def test_stores_sharing_an_outlet_id_are_merged_by_store_id(client, dev, db, make_store):
+    a = make_store(code="DUP-ID-1", name="Share Id Mart One")
+    b = make_store(code="DUP-ID-1", name="Share Id Mart Two")
+    day = date.today() - timedelta(days=1)
+    db.add(OrderEntry(organization_id=a.organization_id, store_id=a.id, order_date=day, bottle_count=6, source="manual"))
+    db.commit()
+    by_code = client.post(f"{API}/stores/merge", json={"platform": "blinkit", "pairs": [{"old_code": "DUP-ID-1", "new_code": "DUP-ID-1"}]}, headers=dev).json()
+    assert by_code["merged"] == 0 and "share Outlet ID" in by_code["results"][0]["reason"]      # an ambiguous ID is refused, never guessed
+    exact = client.post(f"{API}/stores/merge", headers=dev, json={"platform": "blinkit", "dry_run": False,
+                                                                   "pairs": [{"old_id": str(a.id), "new_id": str(b.id)}]}).json()
+    assert exact["merged"] == 1
+    assert db.query(OrderEntry).filter_by(store_id=b.id, order_date=day).one().bottle_count == 6

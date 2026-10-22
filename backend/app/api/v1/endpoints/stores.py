@@ -121,14 +121,37 @@ class MovePlatformRequest(BaseModel):
 
 
 class MergePair(BaseModel):
-    old_code: str = Field(min_length=1, max_length=64)
-    new_code: str = Field(min_length=1, max_length=64)
+    """Each side is a store id (exact) or an Outlet ID (when only one store has it)."""
+    old_code: str = Field(default="", max_length=64)
+    new_code: str = Field(default="", max_length=64)
+    old_id: uuid.UUID | None = None
+    new_id: uuid.UUID | None = None
 
 
 class MergeStoresRequest(BaseModel):
     platform: str
     pairs: list[MergePair]
     dry_run: bool = True
+
+
+class DeleteClosedRequest(BaseModel):
+    platform: str | None = None
+    store_ids: list[uuid.UUID] | None = None
+    dry_run: bool = True
+
+
+@router.post("/delete-closed", dependencies=[Depends(require_permission("stores.manage"))])
+def delete_closed_stores(
+    payload: DeleteClosedRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Delete Closed stores that have no history (no order days, archived orders, documents, tickets, cash purchases...).
+    Closed stores that hold anything are kept. `dry_run` (default) only reports what would go."""
+    result = store_service.delete_closed(db, user, platform_slug=payload.platform, store_ids=payload.store_ids, dry_run=payload.dry_run)
+    if result["deleted"]:
+        read_cache.invalidate()
+    return result
 
 
 @router.get("/duplicates", dependencies=[Depends(require_permission("stores.view"))])
@@ -156,7 +179,7 @@ def merge_stores(
     """Developer only. Move everything a temporary-ID store holds (orders, documents, tickets, cash purchases, vendor history...)
     onto the store created with the real Outlet ID, then remove the temporary one. `dry_run` (default) only reports."""
     return store_merge_service.merge(
-        db, user, payload.platform, [(p.old_code, p.new_code) for p in payload.pairs], dry_run=payload.dry_run
+        db, user, payload.platform, [p.model_dump() for p in payload.pairs], dry_run=payload.dry_run
     )
 
 

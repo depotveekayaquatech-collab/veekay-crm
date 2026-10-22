@@ -13,6 +13,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { StoreCard } from "@/features/stores/StoreCard";
 import { StoreDetailsModal } from "@/features/stores/StoreDetailsModal";
+import { DeleteClosedStoresModal } from "@/features/stores/DeleteClosedStoresModal";
 import { DuplicateStores, useDuplicateStores } from "@/features/stores/DuplicateStores";
 import { StoreFormModal } from "@/features/stores/StoreFormModal";
 import { useAllStores } from "@/features/stores/useAllStores";
@@ -39,6 +40,7 @@ export function StoresPage() {
   const canManage = usePermission("stores.manage");
   const canMerge = usePermission("sheets.sync");           // developer only
   const [view, setView] = useState<"stores" | "duplicates">("stores");
+  const [deletingClosed, setDeletingClosed] = useState(false);
   const duplicates = useDuplicateStores();
   const duplicateGroups = duplicates.data?.totalGroups ?? 0;
   const { data: allRegions = [] } = useAllRegions();
@@ -102,6 +104,11 @@ export function StoresPage() {
               <IconDownload className="h-4 w-4" />
               Export CSV
             </Button>
+            {canManage && (
+              <Button variant="secondary" onClick={() => setDeletingClosed(true)}>
+                Delete closed stores
+              </Button>
+            )}
             {canManage && (
               <Button onClick={() => setEditing(null)}>
                 <IconPlus className="h-4 w-4" />
@@ -248,6 +255,7 @@ export function StoresPage() {
       {editing !== undefined && (
         <StoreFormModal key={editing?.id ?? "new"} onClose={() => setEditing(undefined)} store={editing ?? null} />
       )}
+      {deletingClosed && <DeleteClosedStoresModal onClose={() => setDeletingClosed(false)} />}
     </div>
   );
 }

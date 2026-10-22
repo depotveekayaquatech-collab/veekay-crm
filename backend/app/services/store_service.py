@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.organization import Organization, OrganizationKind
 from app.models.audit_log import AuditLog
@@ -315,10 +315,14 @@ def restore_archived_history(db: Session, org_id: uuid.UUID, partner_id: uuid.UU
     holds a platform's WHOLE order history (hundreds of thousands of rows), and pulling that into Python and building one
     giant statement is what exhausted the server's memory. Memory use here no longer depends on the archive size."""
     A = OrderEntryArchive
+    twin = aliased(Store)
     same_store = (
         (Store.partner_organization_id == A.partner_organization_id)
         & (Store.external_code == A.external_code)
         & (Store.organization_id == A.organization_id)
+        # an Outlet ID that two stores share could put the history on the wrong one: those wait until it is corrected
+        & ~select(twin.id).where(twin.partner_organization_id == Store.partner_organization_id,
+                                 twin.external_code == Store.external_code, twin.id != Store.id).exists()
     )
     cond = [A.organization_id == org_id]
     if partner_id is not None:
@@ -359,3 +363,67 @@ def _validate_partner(db: Session, partner_org_id: uuid.UUID) -> None:
 def _validate_region(db: Session, actor: User, region_id: uuid.UUID) -> None:
     if RegionRepository(db).get(actor.organization_id, region_id) is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid region.")
+
+
+def delete_closed(
+    db: Session, actor: User, *, platform_slug: str | None = None, store_ids: list[uuid.UUID] | None = None, dry_run: bool = True
+) -> dict:
+    """Delete Closed stores that hold no history at all. A closed store is kept (and counted) when it has any order day, any
+    archived order history under its Outlet ID, or any other record (documents, tickets, cash purchases, bottles, deliveries...):
+    deleting it would lose that. `store_ids` narrows it to chosen stores; `dry_run` only reports."""
+    from app.services.store_merge_service import _MOVES      # every column that points at a store
+
+    cond = [Store.organization_id == actor.organization_id, Store.status == "CLOSE"]
+    if platform_slug:
+        cond.append(Store.partner_organization_id == _partner_by_slug(db, platform_slug).id)
+    if store_ids is not None:
+        cond.append(Store.id.in_(store_ids))
+    closed = db.execute(
+        select(Store.id, Store.name, Store.external_code, Store.partner_organization_id, Organization.name)
+        .join(Organization, Organization.id == Store.partner_organization_id)
+        .where(*cond).order_by(Organization.name, Store.name)
+    ).all()
+    ids = [r[0] for r in closed]
+
+    def holders(col) -> set[uuid.UUID]:
+        return set(db.execute(select(col).where(col.in_(ids)).distinct()).scalars().all()) if ids else set()
+
+    with_orders = holders(OrderEntry.store_id)
+    archived: set[uuid.UUID] = set()
+    if ids:
+        pairs = {(r[3], r[2]): r[0] for r in closed}
+        for partner_id, code in db.execute(
+            select(OrderEntryArchive.partner_organization_id, OrderEntryArchive.external_code)
+            .where(OrderEntryArchive.organization_id == actor.organization_id,
+                   OrderEntryArchive.partner_organization_id.in_({p for p, _ in pairs}))
+            .distinct()
+        ).all():
+            if (partner_id, code) in pairs:
+                archived.add(pairs[(partner_id, code)])
+    with_orders |= archived
+    with_other: set[uuid.UUID] = set()
+    for label, col in _MOVES:
+        if col is not OrderEntry.store_id:
+            with_other |= holders(col)
+    with_other -= with_orders
+
+    deletable = [r for r in closed if r[0] not in with_orders and r[0] not in with_other]
+    out = {
+        "dry_run": dry_run, "closed": len(closed), "deletable_count": len(deletable),
+        "kept_with_orders": len([r for r in closed if r[0] in with_orders]),
+        "kept_with_other_records": len([r for r in closed if r[0] in with_other]),
+        "deletable": [{"id": str(r[0]), "name": r[1], "external_code": r[2], "platform": r[4]} for r in deletable[:500]],
+        "deleted": 0,
+    }
+    if dry_run or not deletable:
+        return out
+    gone = [r[0] for r in deletable]
+    for i in range(0, len(gone), 500):
+        db.execute(delete(Store).where(Store.id.in_(gone[i:i + 500])))
+    activity_service.record(
+        db, actor=actor, action="store.deleted_closed", entity_type="organization", entity_id=actor.organization_id,
+        metadata={"deleted": len(gone), "stores": [{"name": r[1], "external_code": r[2], "platform": r[4]} for r in deletable[:200]]},
+    )
+    db.commit()
+    out["deleted"] = len(gone)
+    return out

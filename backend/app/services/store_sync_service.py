@@ -23,7 +23,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -490,32 +490,19 @@ def _import_rows(
     }
     # One query for every store of this platform; the loop below then touches the database only to insert/update
     # in bulk at the end (a per-row lookup + flush was ~2 round trips per row: minutes on a remote database).
-    by_code: dict[str, Store] = {
-        s.external_code: s
-        for s in db.execute(select(Store).where(Store.partner_organization_id == partner.id)).scalars()
-    }
-    # A store made under a temporary Outlet ID is found again by its Outlet Name when the real ID arrives, and gets the real ID,
-    # instead of being added a second time. Only when the match is unambiguous: one store of the platform and one row of the
-    # sheet with that name, and the store's current ID is not used by any row of this sheet.
-    sheet_codes = {c for c in (_clean(r.get(cols["external_code"])) for r in rows) if c}
-    sheet_names: dict[str, int] = {}
-    for r in rows:
-        k = _name_key(_clean(r.get(cols["name"])))
-        if k:
-            sheet_names[k] = sheet_names.get(k, 0) + 1
+    # The store NAME is its identity: a row finds its store by name. A store made under a temporary Outlet ID is therefore found
+    # again when the real ID arrives and simply gets that ID. The Outlet ID may repeat (two stores can share one); the repeats
+    # are listed under Stores > Duplicates for someone to correct. The sheet's start date is NOT used: a store's start date
+    # comes from its first order (or from the manual add form).
     stores_by_name: dict[str, list[Store]] = {}
-    for st in by_code.values():
+    for st in db.execute(select(Store).where(Store.partner_organization_id == partner.id)).scalars():
         stores_by_name.setdefault(_name_key(st.name), []).append(st)
-    name_differs: list[int] = []          # rows whose Outlet ID exists under another name (the name is never changed)
-    added_names: set[str] = set()         # names of stores this sheet adds, so the same name is not added twice
+    seen_names: set[str] = set()          # names already handled in this sheet: a name appears once
     renamed: list[tuple[str, str]] = []   # (old Outlet ID, new Outlet ID)
     renamed_ids: set[uuid.UUID] = set()
     status_changes: list[tuple[Store, str]] = []
-    seen_codes: set[str] = set()
     trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
-    bad_dates: list[int] = []            # rows whose start date couldn't be read
     vendor_touched: list[Store] = []     # stores whose vendor was set or changed by this import
-    missing_start: list[int] = []        # NEW stores added without a start date (the sheet gave no readable one)
     unknown_status: list[int] = []       # rows whose status text isn't recognised (existing stores keep their status)
 
     for i, row in enumerate(rows, start=2):  # sheet row number (1 = header)
@@ -526,10 +513,6 @@ def _import_rows(
         if len(code) > _CODE_LIMIT:
             result.warnings.append(f"Row {i}: Outlet ID is longer than {_CODE_LIMIT} characters — skipped.")
             continue
-        if code in seen_codes:
-            result.warnings.append(f"Row {i}: duplicate Outlet ID '{code}' — skipped.")
-            continue
-        seen_codes.add(code)
 
         raw_status = row.get(cols["status"]) if "status" in cols else None
         status = parse_status(raw_status)          # None: blank or unrecognised -> an existing store keeps its status
@@ -552,7 +535,6 @@ def _import_rows(
         fields = {
             "name": name,
             "entity": _clean(row.get(cols["entity"])) if "entity" in cols else None,
-            "start_date": _parse_date(row.get(cols["start_date"])) if "start_date" in cols else None,
             "state": _clean(row.get(cols["state"])) if "state" in cols else None,
             "city": _clean(row.get(cols["city"])) if "city" in cols else None,
             "address": _clean(row.get(cols["address"])) if "address" in cols else None,
@@ -566,38 +548,36 @@ def _import_rows(
         if status is None:
             fields.pop("status")                   # not written for existing stores; a new store defaults to PENDING
 
-        if "start_date" in cols and _clean(row.get(cols["start_date"])) and fields["start_date"] is None:
-            bad_dates.append(i)
-
         for fname, limit in _FIELD_LIMITS.items():
             val = fields.get(fname)
             if isinstance(val, str) and len(val) > limit:
                 fields[fname] = val[:limit].rstrip()
                 trimmed.setdefault(fname, []).append(i)
 
-        existing = by_code.get(code)
-        if existing is None:
-            key = _name_key(name)
-            twins = stores_by_name.get(key, [])
-            if len(twins) == 1 and sheet_names.get(key) == 1 and twins[0].external_code not in sheet_codes:
-                existing = twins[0]
-                renamed.append((existing.external_code, code))
-                by_code.pop(existing.external_code, None)
-                existing.external_code = code
-                by_code[code] = existing
-                renamed_ids.add(existing.id)
-        if existing is None:
-            key = _name_key(name)
-            if stores_by_name.get(key) or key in added_names:
-                # Store names are unique: a store with this name is already there, so another one is not added.
+        key = _name_key(name)
+        if key in seen_names:
+            result.warnings.append(f"Row {i}: the store name '{name}' appears more than once in this sheet — only the first row was used.")
+            continue
+        seen_names.add(key)
+        twins = stores_by_name.get(key, [])
+        existing = None
+        if len(twins) == 1:
+            existing = twins[0]
+        elif len(twins) > 1:
+            same_id = [t for t in twins if t.external_code == code]
+            if len(same_id) == 1:
+                existing = same_id[0]
+            else:
                 result.warnings.append(
-                    f"Row {i}: a store named '{name}' already exists"
-                    + (f" (Outlet ID {stores_by_name[key][0].external_code})" if stores_by_name.get(key) else " in this sheet")
-                    + " — not added. Fix the Outlet ID on that store, or merge the duplicates."
+                    f"Row {i}: {len(twins)} stores are already named '{name}' — not changed. Merge or correct them under Stores > Duplicates."
                 )
                 continue
-            if fields["start_date"] is None:
-                missing_start.append(i)   # still added (employees must see it); flagged below so the date gets filled
+        if existing is not None and existing.external_code != code:
+            renamed.append((existing.external_code, code))          # the real Outlet ID replaces the temporary one
+            existing.external_code = code
+            renamed_ids.add(existing.id)
+
+        if existing is None:
             new_store = Store(
                 organization_id=actor.organization_id,
                 partner_organization_id=partner.id,
@@ -605,8 +585,6 @@ def _import_rows(
                 **{"status": StoreStatus.PENDING.value, **fields},
             )
             db.add(new_store)
-            by_code[code] = new_store
-            added_names.add(key)
             if (new_store.vendor_name or "").strip():
                 vendor_touched.append(new_store)
             result.created += 1
@@ -614,8 +592,6 @@ def _import_rows(
                 db.flush()   # bounded batches instead of one giant statement; still one transaction, committed at the end
         else:
             fields.pop("name", None)                  # a store's name is never changed by an import
-            if _name_key(name) != _name_key(existing.name):
-                name_differs.append(i)
             changed = existing.id in renamed_ids      # a new Outlet ID is an update by itself
             old_status = existing.status
             old_vendor = existing.vendor_name
@@ -652,12 +628,6 @@ def _import_rows(
             result.warnings.append(f"{restored} archived order days were restored to re-added stores.")
             vendor_history_service.set_start_dates_from_orders(db, partner.id)   # restored history dates the new stores
 
-    if name_differs:
-        n = len(name_differs)
-        result.warnings.append(
-            f"{n} row{'s' if n > 1 else ''} had an Outlet Name that differs from the store with that Outlet ID (first: row {name_differs[0]}). "
-            "Store names are never changed, so the existing names were kept."
-        )
     if renamed:
         shown = ", ".join(f"{a} → {b}" for a, b in renamed[:6]) + (" …" if len(renamed) > 6 else "")
         result.warnings.insert(
@@ -665,16 +635,16 @@ def _import_rows(
             f"{len(renamed)} store{'s were' if len(renamed) > 1 else ' was'} matched by Outlet Name and got the Outlet ID from the sheet "
             f"instead of being added again ({shown}). Their orders, documents and history stayed with them.",
         )
-    if missing_start:
-        # A store added without a date is not hidden or dropped (employees must still see it), but it is flagged.
-        n = len(missing_start)
-        result.without_start_date = n
-        rows_txt = ", ".join(str(r) for r in missing_start[:8]) + (" …" if n > 8 else "")
-        result.warnings.insert(
-            0,
-            f"{n} new store{'s have' if n > 1 else ' has'} no start date in the sheet (rows {rows_txt}). "
-            f"{'They were' if n > 1 else 'It was'} still added so employees can see {'them' if n > 1 else 'it'}. Add the date in the "
-            "store's details, put it in the sheet's 'Start date' column, or use Data sync > Sync start dates once orders exist.",
+    repeats = db.execute(
+        select(func.count()).select_from(
+            select(Store.external_code).where(Store.partner_organization_id == partner.id)
+            .group_by(Store.external_code).having(func.count() > 1).subquery()
+        )
+    ).scalar_one()
+    if repeats:
+        result.warnings.append(
+            f"{repeats} Outlet ID{'s are' if repeats > 1 else ' is'} used by more than one store. The stores were kept; "
+            "see Stores > Duplicates to correct them."
         )
     if unknown_status:
         n = len(unknown_status)
@@ -682,12 +652,6 @@ def _import_rows(
             f"{n} row{'s' if n > 1 else ''} had a status the CRM doesn't recognise (first: row {unknown_status[0]}). "
             "Existing stores kept their current status; new stores were added as Pending. Use Live, Pending or Close."
         )
-    if bad_dates:
-        result.warnings.append(
-            f"{len(bad_dates)} row{'s' if len(bad_dates) > 1 else ''} had a start date that could not be read "
-            f"(first: row {bad_dates[0]}). Existing stores keep their current date."
-        )
-
     for fname, rows_hit in trimmed.items():
         result.warnings.append(
             f"{len(rows_hit)} row{'s' if len(rows_hit) > 1 else ''} had a '{fname}' value longer than "

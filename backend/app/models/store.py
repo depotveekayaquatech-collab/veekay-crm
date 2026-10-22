@@ -14,7 +14,7 @@ import uuid
 from datetime import date
 from enum import StrEnum
 
-from sqlalchemy import Date, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Date, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,7 +30,8 @@ class StoreStatus(StrEnum):
 class Store(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "stores"
     __table_args__ = (
-        UniqueConstraint("partner_organization_id", "external_code", name="uq_store_partner_code"),
+        # The Outlet ID is not unique: a store's NAME is its identity. Repeats are listed under Stores > Duplicates.
+        Index("ix_stores_partner_code", "partner_organization_id", "external_code"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

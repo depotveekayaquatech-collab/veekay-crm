@@ -173,31 +173,47 @@ def _merge_one(db: Session, actor: User, old: Store, new: Store) -> dict[str, in
     return moved
 
 
-def merge(db: Session, actor: User, platform_slug: str, pairs: list[tuple[str, str]], *, dry_run: bool = True) -> dict:
-    """Merge each (old Outlet ID, new Outlet ID) pair of one platform. `dry_run` only reports what would move."""
+def merge(db: Session, actor: User, platform_slug: str, pairs: list[dict], *, dry_run: bool = True) -> dict:
+    """Merge each (old store, new store) pair of one platform. A side is named by its store id (exact) or by its Outlet ID (only
+    when no other store shares that ID). `dry_run` only reports what would move."""
     partner = _partner(db, platform_slug)
     if not pairs:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Add at least one pair of Outlet IDs.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Add at least one pair of stores.")
     if len(pairs) > 2000:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Merge at most 2,000 stores at a time.")
-    by_code = {
-        s.external_code: s
-        for s in db.execute(
-            select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)
-        ).scalars()
-    }
+    all_stores = db.execute(
+        select(Store).where(Store.organization_id == actor.organization_id, Store.partner_organization_id == partner.id)
+    ).scalars().all()
+    by_id = {s.id: s for s in all_stores}
+    by_code: dict[str, list[Store]] = {}
+    for s in all_stores:
+        by_code.setdefault(s.external_code, []).append(s)
+
+    def find(store_id, code: str) -> tuple[Store | None, str]:
+        if store_id is not None:
+            s = by_id.get(store_id)
+            return s, "" if s else f"A store of {partner.name} with that id was not found."
+        hits = by_code.get(code, [])
+        if len(hits) == 1:
+            return hits[0], ""
+        if not hits:
+            return None, f"Outlet ID '{code}' was not found on {partner.name}."
+        return None, f"{len(hits)} stores share Outlet ID '{code}': merge them from Stores > Duplicates, where each is picked exactly."
+
     results, used = [], set()
     merged = 0
-    for old_code, new_code in pairs:
-        old_code, new_code = old_code.strip(), new_code.strip()
-        row = {"old_code": old_code, "new_code": new_code, "name": None, "ok": False, "reason": None, "moved": {}}
-        old, new = by_code.get(old_code), by_code.get(new_code)
+    for pair in pairs:
+        old_code, new_code = (pair.get("old_code") or "").strip(), (pair.get("new_code") or "").strip()
+        old, why_old = find(pair.get("old_id"), old_code)
+        new, why_new = find(pair.get("new_id"), new_code)
+        row = {"old_code": old.external_code if old else old_code, "new_code": new.external_code if new else new_code,
+               "name": None, "ok": False, "reason": None, "moved": {}}
         if old is None:
-            row["reason"] = f"Outlet ID '{old_code}' was not found on {partner.name}."
+            row["reason"] = why_old
         elif new is None:
-            row["reason"] = f"Outlet ID '{new_code}' was not found on {partner.name}. Upload the sheet with the real IDs first."
+            row["reason"] = why_new + (" Upload the sheet with the real IDs first." if "was not found" in why_new else "")
         elif old.id == new.id:
-            row["reason"] = "The old and the new Outlet ID are the same."
+            row["reason"] = "The old and the new store are the same."
         elif old.id in used or new.id in used:
             row["reason"] = "This store appears in more than one pair."
         else:

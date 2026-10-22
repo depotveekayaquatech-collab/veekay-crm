@@ -29,8 +29,8 @@ class StoreRepository:
         stmt = select(Store).where(
             Store.partner_organization_id == partner_org_id,
             Store.external_code == external_code,
-        )
-        return self.db.execute(stmt).scalar_one_or_none()
+        ).order_by(Store.created_at)
+        return self.db.execute(stmt).scalars().first()      # the Outlet ID may repeat: the oldest store wins
 
     def list(
         self,

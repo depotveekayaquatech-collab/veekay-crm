@@ -259,25 +259,28 @@ def test_a_new_store_needs_a_start_date_and_it_cannot_be_removed_later(client, a
     db.commit()
 
 
-def test_file_import_adds_new_stores_without_a_start_date_but_flags_them(client, dev, db, make_store):
+def test_file_import_never_uses_the_sheets_start_date(client, dev, db, make_store):
+    """A store's start date comes from its first order (or the manual add form), never from the store sheet."""
     existing = make_store(code="SD-IMP-1", name="Old Name")
+    existing.start_date = date(2026, 2, 1)
+    db.commit()
     csv = "\n".join([
         "Outlet ID,Outlet Name,STATUS,Start date",
-        "SD-IMP-1,Old Name,Live,",                      # existing store, blank date: fine
-        "SD-IMP-2,Brand New With Date,Live,2026-03-01",
+        "SD-IMP-1,Old Name,Live,2026-01-01",                # existing store: its date is left alone
+        "SD-IMP-2,Brand New With Date,Live,2026-03-01",      # a date in the sheet is ignored
         "SD-IMP-3,Brand New No Date,Live,",
         "SD-IMP-4,Brand New Bad Date,Live,not a date",
     ]).encode()
     r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("s.csv", csv, "text/csv")}, headers=dev)
     assert r.status_code == 200, r.text
     body = r.json()
-    # nothing is dropped: employees must still see every live store
-    assert (body["created"], body["updated"], body["without_start_date"]) == (3, 0, 2)
-    assert "no start date" in body["warnings"][0] and "still added" in body["warnings"][0]
+    assert (body["created"], body["updated"]) == (3, 0)
+    assert not any("start date" in w.lower() for w in body["warnings"])             # no start-date complaints any more
     db.expire_all()
-    assert existing.name == "Old Name"
+    assert existing.name == "Old Name" and existing.start_date == date(2026, 2, 1)
     rows = {s.external_code: s for s in db.query(Store).filter(Store.external_code.like("SD-IMP-%"))}
-    assert rows["SD-IMP-2"].start_date == date(2026, 3, 1) and rows["SD-IMP-3"].start_date is None and rows["SD-IMP-3"].status == "LIVE"
+    assert all(rows[c].start_date is None for c in ("SD-IMP-2", "SD-IMP-3", "SD-IMP-4"))
+    assert rows["SD-IMP-3"].status == "LIVE"
     db.query(Store).filter(Store.external_code.in_(["SD-IMP-2", "SD-IMP-3", "SD-IMP-4"])).delete(synchronize_session=False)
     db.commit()
 
@@ -286,9 +289,9 @@ def test_an_import_never_turns_live_stores_into_pending_by_accident(client, dev,
     """A sheet with no STATUS column, a blank status or unrecognised text must leave an existing store's status alone
     (a PENDING store is invisible to employees); a recognised status still applies; a new store defaults to PENDING."""
     a, b, c = (make_store(code=f"ST-KEEP-{i}") for i in range(3))
-    no_col = "Outlet ID,Outlet Name\nST-KEEP-0,A\nST-NEW-1,Brand New\n".encode()
+    no_col = f"Outlet ID,Outlet Name\nST-KEEP-0,{a.name}\nST-NEW-1,Brand New\n".encode()
     assert client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("a.csv", no_col, "text/csv")}, headers=dev).status_code == 200
-    odd = "Outlet ID,Outlet Name,STATUS\nST-KEEP-0,A,\nST-KEEP-1,B,Supplying nicely\nST-KEEP-2,C,Close\n".encode()
+    odd = f"Outlet ID,Outlet Name,STATUS\nST-KEEP-0,{a.name},\nST-KEEP-1,{b.name},Supplying nicely\nST-KEEP-2,{c.name},Close\n".encode()
     r = client.post(f"{API}/stores/import", data={"platform": "blinkit"}, files={"file": ("b.csv", odd, "text/csv")}, headers=dev)
     assert r.status_code == 200, r.text
     assert any("doesn't recognise" in w for w in r.json()["warnings"])

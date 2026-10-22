@@ -4,7 +4,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { usePartners } from "@/features/stores/useStores";
-import { mergeStores, mergeSuggestions } from "@/services/stores";
+import { mergeStores, mergeSuggestions, type MergePairInput } from "@/services/stores";
 import { pushToast } from "@/lib/toast";
 
 /** "OLD NEW" per line (space, comma or tab between the two IDs). */
@@ -26,20 +26,26 @@ const movedText = (m: Record<string, number>) =>
  * This moves the temporary store's orders, documents, tickets, cash purchases and vendor history onto the real one and removes
  * the temporary one. A preview comes first; a pair that would overwrite anything is refused and left untouched.
  */
-export function MergeStoresModal({ onClose, initial }: { onClose: () => void; initial?: { platform: string; pairs: string } }) {
+export function MergeStoresModal({ onClose, initial }: { onClose: () => void; initial?: { platform: string; pairs: MergePairInput[] } }) {
   const qc = useQueryClient();
   const { data: partners = [] } = usePartners();
   const [platform, setPlatform] = useState(initial?.platform ?? "");
   const slug = platform || partners[0]?.slug || "";
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
-  const [manual, setManual] = useState(initial?.pairs ?? "");
+  const [manual, setManual] = useState("");
+  const fixed = initial?.pairs ?? [];              // exact pairs chosen on the Duplicates page (by store id)
 
   const found = useQuery({ queryKey: ["merge-suggestions", slug], queryFn: () => mergeSuggestions(slug), enabled: !!slug });
   const suggestions = found.data ?? [];
   useEffect(() => setSkipped(new Set()), [slug]);
 
   const pairs = useMemo(
-    () => [...suggestions.filter((s) => !skipped.has(s.oldCode)).map((s) => ({ oldCode: s.oldCode, newCode: s.newCode })), ...parsePairs(manual)],
+    () => [
+      ...fixed,
+      ...(initial ? [] : suggestions.filter((s) => !skipped.has(s.oldCode)).map((s) => ({ oldCode: s.oldCode, newCode: s.newCode }))),
+      ...parsePairs(manual),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [suggestions, skipped, manual],
   );
 
@@ -94,8 +100,19 @@ export function MergeStoresModal({ onClose, initial }: { onClose: () => void; in
           value={slug}
           onChange={(e) => { setPlatform(e.target.value); run.reset(); }}
           options={partners.map((p) => ({ value: p.slug, label: p.name }))}
+          disabled={!!initial}
         />
 
+        {initial ? (
+          <ul className="divide-y divide-surface-border rounded-lg border border-surface-border text-sm">
+            {fixed.map((f) => (
+              <li key={`${f.oldId}-${f.newId}`} className="px-3 py-2 text-gray-700">
+                Move everything from <b>{f.oldCode}</b> into <b>{f.newCode}</b>, then remove <b>{f.oldCode}</b>.
+              </li>
+            ))}
+          </ul>
+        ) : (
+        <>
         <div>
           <p className="text-sm font-semibold text-gray-800">Found automatically (same store name under two Outlet IDs)</p>
           {found.isLoading ? (
@@ -131,6 +148,8 @@ export function MergeStoresModal({ onClose, initial }: { onClose: () => void; in
             className="rounded-lg border border-surface-border bg-surface px-3 py-2 font-mono text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
           />
         </label>
+        </>
+        )}
 
         {shown && (
           <div className="rounded-lg bg-surface-subtle px-3 py-2 text-sm text-gray-700">
