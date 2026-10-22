@@ -2,7 +2,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
 from app.schemas.store import StoreCreate, StoreOut, StoreSyncResult, StoreUpdate, VendorPeriodOut
-from app.services import activity_service, store_service, store_sync_service, vendor_history_service
+from app.services import activity_service, store_merge_service, store_service, store_sync_service, vendor_history_service
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 _ALL_STORES = TypeAdapter(list[StoreOut])
@@ -118,6 +118,40 @@ class MovePlatformRequest(BaseModel):
     to_platform: str
     contains: str = ""          # only stores whose name or Outlet ID contains this text (blank = all)
     dry_run: bool = True
+
+
+class MergePair(BaseModel):
+    old_code: str = Field(min_length=1, max_length=64)
+    new_code: str = Field(min_length=1, max_length=64)
+
+
+class MergeStoresRequest(BaseModel):
+    platform: str
+    pairs: list[MergePair]
+    dry_run: bool = True
+
+
+@router.get("/merge-suggestions", dependencies=[Depends(require_permission("sheets.sync"))])
+def merge_suggestions(
+    platform: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Developer only. Stores of a platform that exist twice under two Outlet IDs with the same name."""
+    return store_merge_service.suggestions(db, user, platform)
+
+
+@router.post("/merge", dependencies=[Depends(require_permission("sheets.sync"))])
+def merge_stores(
+    payload: MergeStoresRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Developer only. Move everything a temporary-ID store holds (orders, documents, tickets, cash purchases, vendor history...)
+    onto the store created with the real Outlet ID, then remove the temporary one. `dry_run` (default) only reports."""
+    return store_merge_service.merge(
+        db, user, payload.platform, [(p.old_code, p.new_code) for p in payload.pairs], dry_run=payload.dry_run
+    )
 
 
 @router.post("/move-platform", dependencies=[Depends(require_permission("sheets.sync"))])

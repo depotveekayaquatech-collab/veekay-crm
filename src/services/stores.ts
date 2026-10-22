@@ -147,3 +147,57 @@ export async function getStoreVendors(id: string): Promise<VendorPeriod[]> {
   const rows = await apiRequest<Parameters<typeof toVendorPeriod>[0][]>(`/stores/${id}/vendors`);
   return rows.map(toVendorPeriod);
 }
+
+export interface MergeSuggestion {
+  name: string;
+  oldCode: string;
+  newCode: string;
+  oldOrderDays: number;
+  newOrderDays: number;
+}
+
+/** Stores of a platform that exist twice under two Outlet IDs with the same name (developer only). */
+export async function mergeSuggestions(platform: string): Promise<MergeSuggestion[]> {
+  const w = await apiRequest<{ name: string; old_code: string; new_code: string; old_order_days: number; new_order_days: number }[]>(
+    `/stores/merge-suggestions?platform=${encodeURIComponent(platform)}`,
+  );
+  return w.map((r) => ({ name: r.name, oldCode: r.old_code, newCode: r.new_code, oldOrderDays: r.old_order_days, newOrderDays: r.new_order_days }));
+}
+
+export interface MergeRow {
+  oldCode: string;
+  newCode: string;
+  name: string | null;
+  ok: boolean;
+  reason: string | null;
+  moved: Record<string, number>;
+}
+
+export interface MergeResult {
+  platform: string;
+  dryRun: boolean;
+  merged: number;
+  skipped: number;
+  results: MergeRow[];
+}
+
+/** Move everything a temporary-ID store holds onto the store with the real Outlet ID, then remove it (developer only). */
+export async function mergeStores(platform: string, pairs: { oldCode: string; newCode: string }[], dryRun: boolean): Promise<MergeResult> {
+  const w = await apiRequest<{
+    platform: string;
+    dry_run: boolean;
+    merged: number;
+    skipped: number;
+    results: { old_code: string; new_code: string; name: string | null; ok: boolean; reason: string | null; moved: Record<string, number> }[];
+  }>("/stores/merge", {
+    method: "POST",
+    body: { platform, dry_run: dryRun, pairs: pairs.map((p) => ({ old_code: p.oldCode, new_code: p.newCode })) },
+  });
+  return {
+    platform: w.platform,
+    dryRun: w.dry_run,
+    merged: w.merged,
+    skipped: w.skipped,
+    results: w.results.map((r) => ({ oldCode: r.old_code, newCode: r.new_code, name: r.name, ok: r.ok, reason: r.reason, moved: r.moved })),
+  };
+}

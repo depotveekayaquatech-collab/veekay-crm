@@ -338,6 +338,11 @@ def _parse_date(raw: str | None) -> date | None:
     return parsed
 
 
+def _name_key(name: str | None) -> str:
+    """Outlet Name as a match key: case and extra spaces do not matter."""
+    return " ".join((name or "").lower().split())
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
@@ -491,6 +496,20 @@ def _import_rows(
         s.external_code: s
         for s in db.execute(select(Store).where(Store.partner_organization_id == partner.id)).scalars()
     }
+    # A store made under a temporary Outlet ID is found again by its Outlet Name when the real ID arrives, and gets the real ID,
+    # instead of being added a second time. Only when the match is unambiguous: one store of the platform and one row of the
+    # sheet with that name, and the store's current ID is not used by any row of this sheet.
+    sheet_codes = {c for c in (_clean(r.get(cols["external_code"])) for r in rows) if c}
+    sheet_names: dict[str, int] = {}
+    for r in rows:
+        k = _name_key(_clean(r.get(cols["name"])))
+        if k:
+            sheet_names[k] = sheet_names.get(k, 0) + 1
+    stores_by_name: dict[str, list[Store]] = {}
+    for st in by_code.values():
+        stores_by_name.setdefault(_name_key(st.name), []).append(st)
+    renamed: list[tuple[str, str]] = []   # (old Outlet ID, new Outlet ID)
+    renamed_ids: set[uuid.UUID] = set()
     status_changes: list[tuple[Store, str]] = []
     seen_codes: set[str] = set()
     trimmed: dict[str, list[int]] = {}  # field -> sheet rows that were cut to fit
@@ -558,6 +577,16 @@ def _import_rows(
 
         existing = by_code.get(code)
         if existing is None:
+            key = _name_key(name)
+            twins = stores_by_name.get(key, [])
+            if len(twins) == 1 and sheet_names.get(key) == 1 and twins[0].external_code not in sheet_codes:
+                existing = twins[0]
+                renamed.append((existing.external_code, code))
+                by_code.pop(existing.external_code, None)
+                existing.external_code = code
+                by_code[code] = existing
+                renamed_ids.add(existing.id)
+        if existing is None:
             if fields["start_date"] is None:
                 missing_start.append(i)   # still added (employees must see it); flagged below so the date gets filled
             new_store = Store(
@@ -574,7 +603,7 @@ def _import_rows(
             if result.created % STORE_FLUSH_EVERY == 0:
                 db.flush()   # bounded batches instead of one giant statement; still one transaction, committed at the end
         else:
-            changed = False
+            changed = existing.id in renamed_ids      # a new Outlet ID is an update by itself
             old_status = existing.status
             old_vendor = existing.vendor_name
             for k, v in fields.items():
@@ -610,6 +639,13 @@ def _import_rows(
             result.warnings.append(f"{restored} archived order days were restored to re-added stores.")
             vendor_history_service.set_start_dates_from_orders(db, partner.id)   # restored history dates the new stores
 
+    if renamed:
+        shown = ", ".join(f"{a} → {b}" for a, b in renamed[:6]) + (" …" if len(renamed) > 6 else "")
+        result.warnings.insert(
+            0,
+            f"{len(renamed)} store{'s were' if len(renamed) > 1 else ' was'} matched by Outlet Name and got the Outlet ID from the sheet "
+            f"instead of being added again ({shown}). Their orders, documents and history stayed with them.",
+        )
     if missing_start:
         # A store added without a date is not hidden or dropped (employees must still see it), but it is flagged.
         n = len(missing_start)
@@ -647,6 +683,7 @@ def _import_rows(
             "created": result.created,
             "updated": result.updated,
             "rows_read": result.rows_read,
+            "ids_renamed_by_name": [{"from": a, "to": b} for a, b in renamed[:200]],
         },
     )
     db.commit()

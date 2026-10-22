@@ -5,6 +5,7 @@ import { IconRefresh, IconUpload } from "@/components/ui/icons";
 import { ImportOrdersModal } from "@/features/orders/ImportOrdersModal";
 import { useSyncOrders } from "@/features/orders/useOrders";
 import { DeleteAllStoresModal } from "@/features/stores/DeleteAllStoresModal";
+import { MergeStoresModal } from "@/features/stores/MergeStoresModal";
 import { MovePlatformModal } from "@/features/stores/MovePlatformModal";
 import { EntryAudit } from "@/features/datasync/EntryAudit";
 import { ImportStoresModal } from "@/features/stores/ImportStoresModal";
@@ -73,6 +74,7 @@ export function DataSyncPage() {
   const [importStores, setImportStores] = useState(false);
   const [removingStores, setRemovingStores] = useState(false);
   const [movingStores, setMovingStores] = useState(false);
+  const [mergingStores, setMergingStores] = useState(false);
   const [syncingDates, setSyncingDates] = useState(false);
   const [importOrders, setImportOrders] = useState(false);
   const { sync: syncStores } = useStoreMutations();
@@ -97,6 +99,9 @@ export function DataSyncPage() {
             </Button>
             <Button variant="secondary" onClick={() => setMovingStores(true)}>
               Fix wrong platform
+            </Button>
+            <Button variant="secondary" onClick={() => setMergingStores(true)}>
+              Merge duplicate stores
             </Button>
             <Button variant="danger" onClick={() => setRemovingStores(true)}>
               Remove all stores
@@ -123,6 +128,7 @@ export function DataSyncPage() {
       </Card>
       {syncingDates && <SyncStartDatesModal onClose={() => setSyncingDates(false)} />}
       {movingStores && <MovePlatformModal onClose={() => setMovingStores(false)} />}
+      {mergingStores && <MergeStoresModal onClose={() => setMergingStores(false)} />}
       {removingStores && <DeleteAllStoresModal onClose={() => setRemovingStores(false)} />}
       {importStores && <ImportStoresModal onClose={() => setImportStores(false)} />}
       {importOrders && <ImportOrdersModal onClose={() => setImportOrders(false)} />}
