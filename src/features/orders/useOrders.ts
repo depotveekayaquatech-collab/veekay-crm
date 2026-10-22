@@ -26,7 +26,7 @@ export function useCalendar(storeId: string | null, year?: number, month?: numbe
 }
 
 export function useInsights(partner?: string) {
-  return useQuery({ queryKey: ["order-insights", partner ?? ""], queryFn: () => getInsights(partner), staleTime: 60_000, enabled: partner !== "" });
+  return useQuery({ queryKey: ["order-insights", partner ?? ""], queryFn: () => getInsights(partner), staleTime: 60_000 });
 }
 
 export function useDailyOverview(partner: string, dayOffset: number) {

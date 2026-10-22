@@ -172,11 +172,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function AdminDashboard() {
-  // One channel at a time: every number on this page is for the platform picked here, never Blinkit and Zepto added together.
+  // All platforms combined by default; the Channel filter narrows every number on this page to Blinkit or to Zepto.
   const { data: partners = [] } = usePartners();
   const [pickedChannel, setChannel] = usePersistentState<string>("dashboard.channel", "");
-  const channel = partners.some((p) => p.slug === pickedChannel) ? pickedChannel : (partners[0]?.slug ?? "");
-  const channelName = partners.find((p) => p.slug === channel)?.name ?? "";
+  const channel = partners.some((p) => p.slug === pickedChannel) ? pickedChannel : "";          // "" = all platforms
+  const channelName = partners.find((p) => p.slug === channel)?.name ?? "All platforms";
   const { data: insights, isLoading } = useInsights(channel);
   const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: ["dashboard-activity"],
@@ -245,10 +245,13 @@ function AdminDashboard() {
             label="Channel"
             value={channel}
             onChange={(e) => setChannel(e.target.value)}
+            placeholder="All platforms"
             options={partners.map((p) => ({ value: p.slug, label: p.name }))}
           />
         </div>
-        <p className="text-sm text-gray-500">Everything below is for <b className="text-gray-800">{channelName || "…"}</b> only.</p>
+        <p className="text-sm text-gray-500">
+          {channel ? <>Everything below is for <b className="text-gray-800">{channelName}</b> only.</> : "Showing all platforms combined. Pick a platform to filter everything below."}
+        </p>
       </div>
       <AlertStrip insights={insights} />
 
@@ -281,8 +284,8 @@ function AdminDashboard() {
         <StatCard
           icon={IconUsers}
           label="Employees"
-          value={insights?.platforms[0]?.employees ?? 0}
-          hint={channelName ? `${channelName} employees` : undefined}
+          value={(insights?.platforms ?? []).reduce((n, p) => n + p.employees, 0)}
+          hint={channel ? `${channelName} employees` : insights ? `${insights.platforms.length} platforms` : undefined}
           tone="warning"
           loading={isLoading}
         />
