@@ -59,11 +59,21 @@ def test_accounts_can_see_add_and_download(client, make_user):
     assert client.get(f"{URL}/export", headers=acc).status_code == 200
 
 
-def test_a_user_without_cash_permissions_is_locked_out(client, make_user):
-    nobody = _token(client, make_user, "employee", grants=("orders.view",))
-    assert client.get(URL, headers=nobody).status_code == 403
-    assert client.get(f"{URL}/options", headers=nobody).status_code == 403
-    assert _post(client, nobody).status_code == 403
+def test_every_staff_login_can_record_cash_purchases_without_a_grant(client, make_user, make_store):
+    plain = _token(client, make_user, "employee", grants=("orders.view",))     # no cash permission ticked
+    assert client.get(f"{URL}/options", headers=plain).status_code == 200
+    assert _post(client, plain).status_code == 201                              # office purchase
+    assert client.get(URL, headers=plain).json()["total"] == 1                 # sees only their own
+    assert client.get(f"{URL}/export", headers=plain).status_code == 403       # but not the sheet
+    me = client.get(f"{API}/auth/me", headers=plain).json()
+    assert "cash.add" in me["permissions"]                                      # so the apps show the Expenses screens
+
+
+def test_partner_logins_are_still_locked_out_of_cash_purchases(client, make_user):
+    partner = _token(client, make_user, "partner")
+    assert client.get(URL, headers=partner).status_code == 403
+    assert client.get(f"{URL}/options", headers=partner).status_code == 403
+    assert _post(client, partner).status_code == 403
 
 
 def test_other_needs_a_description_and_known_reasons_are_enforced(client, emp):

@@ -15,6 +15,10 @@ from app.models.user import User, UserRole
 from app.models.user_permission import UserPermission
 
 
+# Every staff login (employee, accounts, any custom role) may record cash purchases without being granted it: office
+# purchases for anyone, store purchases for the stores they work with. Partner (Blinkit / Zepto) logins are the exception.
+EVERYONE_ON_STAFF = "cash.add"
+
 
 class UserRepository:
     def __init__(self, db: Session):
@@ -56,6 +60,8 @@ class UserRepository:
         codes = set(self.db.execute(from_roles).scalars().all())
         # Reserved permissions only ever come from the developer role, never from a per-person grant.
         codes.update(set(self.db.execute(direct).scalars().all()) - RESERVED_PERMISSIONS)
+        if "partner" not in roles:
+            codes.add(EVERYONE_ON_STAFF)
         return codes
 
     def _role_permission_codes(self, user_id: uuid.UUID) -> set[str]:

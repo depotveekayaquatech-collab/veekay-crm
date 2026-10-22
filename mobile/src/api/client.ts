@@ -162,6 +162,11 @@ async function send(path: string, o: Options): Promise<Response> {
 }
 
 export async function request<T>(path: string, o: Options = {}): Promise<T> {
+  // A form with photos must go through XMLHttpRequest: expo/fetch cannot read React Native's { uri, name, type } file parts,
+  // so it throws before anything is sent (which looked like "Unable to reach the server").
+  if (typeof FormData !== "undefined" && o.body instanceof FormData && (o.method ?? "GET") === "POST") {
+    return requestUpload<T>(path, o.body, { idempotencyKey: o.idempotencyKey });
+  }
   const res = await send(path, o);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
