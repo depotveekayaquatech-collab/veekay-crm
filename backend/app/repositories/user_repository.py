@@ -30,9 +30,9 @@ class UserRepository:
     def get_by_org_and_code(self, organization_id: uuid.UUID, employee_code: str) -> User | None:
         stmt = select(User).where(
             User.organization_id == organization_id,
-            func.lower(User.employee_code) == employee_code.strip().lower(),
+            func.lower(func.trim(User.employee_code)) == employee_code.strip().lower(),  # trim: a stored ID with a stray space still matches
         )
-        return self.db.execute(stmt).scalar_one_or_none()
+        return self.db.execute(stmt).scalars().first()
 
     def code_exists(self, organization_id: uuid.UUID, employee_code: str) -> bool:
         return self.get_by_org_and_code(organization_id, employee_code) is not None

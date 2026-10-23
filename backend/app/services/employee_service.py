@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.roles import ADMIN, CATEGORY_LABELS, DEVELOPER, MANAGER, PARTNER, PARTNER_PERMISSIONS, staff_category
-from app.core.security import generate_temp_password, hash_password
+from app.core.security import generate_temp_password, set_password, unseal_password
 from app.models.organization import Organization, OrganizationKind
 from app.models.permission import Permission
 from app.models.role import Role
@@ -188,10 +188,10 @@ def create_employee(db: Session, actor: User, payload: EmployeeCreate) -> Employ
         full_name=payload.full_name,
         email=payload.email.lower() if payload.email else None,
         phone=payload.phone,
-        password_hash=hash_password(payload.password),
-        must_change_password=True,  # the admin chose it, so the person must replace it
+        password_hash="",
         status=UserStatus.ACTIVE.value,
     )
+    set_password(user, payload.password, must_change=True)  # the admin chose it, so the person must replace it
     db.add(user)
     db.flush()
     db.add(UserRole(user_id=user.id, role_id=role.id))
@@ -211,8 +211,7 @@ def update_employee(
     user = require_employee(db, actor, employee_id)
     data = payload.model_dump(exclude_unset=True)
     if "password" in data and data["password"]:
-        user.password_hash = hash_password(data.pop("password"))
-        user.must_change_password = True
+        set_password(user, data.pop("password"), must_change=True)
         session_service.revoke_user_sessions(db, user.id)  # old devices are signed out
     if "email" in data and data["email"]:
         data["email"] = data["email"].lower()
@@ -321,8 +320,8 @@ def delete_employee_permanently(db: Session, actor: User, employee_id: uuid.UUID
         user.status = UserStatus.DELETED.value
         user.is_active = False
         user.email = user.phone = None
-        user.password_hash = hash_password(generate_temp_password())   # nobody knows it
-        user.must_change_password = False
+        set_password(user, generate_temp_password(), must_change=False)   # nobody knows it
+        user.password_enc = None                                          # ...and no readable copy is kept either
     db.commit()
     return snapshot
 
@@ -413,9 +412,7 @@ def reset_password(db: Session, actor: User, employee_id: uuid.UUID) -> str:
     """Give an employee a new random temporary password (returned once), unlock the account,
     sign every device out and require a change at next sign-in."""
     user = require_employee(db, actor, employee_id)
-    temp = generate_temp_password()
-    user.password_hash = hash_password(temp)
-    user.must_change_password = True
+    temp = set_password(user, generate_temp_password(), must_change=True)
     user.failed_login_attempts = 0
     user.locked_until = None
     if user.status == UserStatus.LOCKED.value:
@@ -427,3 +424,44 @@ def reset_password(db: Session, actor: User, employee_id: uuid.UUID) -> str:
     )
     db.commit()
     return temp
+
+
+def password_overview(db: Session, actor: User) -> list[dict]:
+    """Developer only (`employees.view_password`): every sign-in account with its current password and how long ago it changed.
+    The readable copy is decrypted here; a password that predates the copy shows as None until that person next signs in or has it reset.
+    The audit log records that the list was opened and how many passwords it held, never the passwords."""
+    from datetime import datetime, timezone
+
+    rows = db.execute(
+        select(User).where(User.organization_id == actor.organization_id, User.status != UserStatus.DELETED.value)
+        .order_by(User.employee_code)
+    ).scalars().all()
+    roles_by_user: dict[uuid.UUID, list[str]] = {}
+    for uid, code in db.execute(
+        select(UserRole.user_id, Role.code).join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id.in_([u.id for u in rows]))
+    ):
+        roles_by_user.setdefault(uid, []).append(code)
+
+    now = datetime.now(timezone.utc)
+    out = []
+    for u in rows:
+        roles = roles_by_user.get(u.id, [])
+        category = DEVELOPER if DEVELOPER in roles else staff_category(roles, u.platform_organization.slug if u.platform_organization else None)
+        changed = u.password_changed_at or u.created_at   # never changed through the app: the password is still the one it was created with
+        out.append({
+            "id": u.id, "employee_code": u.employee_code, "full_name": u.full_name,
+            "category": category, "category_label": "Developer" if category == DEVELOPER else CATEGORY_LABELS.get(category, category),
+            "is_active": u.is_active and u.status == UserStatus.ACTIVE.value, "status": u.status,
+            "password": unseal_password(u.password_enc),
+            "must_change_password": u.must_change_password,
+            "password_changed_at": changed,
+            "changed_date_exact": u.password_changed_at is not None,
+            "days_since_change": max(0, (now - changed).days) if changed else None,
+        })
+    activity_service.record(
+        db, actor=actor, action="employee.passwords_viewed", entity_type="employee", entity_id=actor.id,
+        metadata={"accounts": len(out), "with_password": sum(1 for r in out if r["password"])},
+    )
+    db.commit()
+    return out

@@ -1,5 +1,6 @@
 """Employee (= User with the 'employee' role) request/response contracts."""
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
@@ -94,3 +95,18 @@ class EmployeeImportResult(BaseModel):
     assignments: int
     credentials: list[ImportedCredential]
     warnings: list[str]
+
+
+class PasswordRow(BaseModel):
+    id: uuid.UUID
+    employee_code: str
+    full_name: str
+    category: str
+    category_label: str
+    is_active: bool
+    status: str
+    password: str | None = None            # None = not recorded yet (set before this view existed and not signed in since)
+    must_change_password: bool = False
+    password_changed_at: datetime | None = None
+    changed_date_exact: bool = False       # False: the account has never had its password changed, this is when it was created
+    days_since_change: int | None = None

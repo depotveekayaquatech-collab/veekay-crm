@@ -11,6 +11,8 @@ Tokens:
   refresh — long-lived, its `jti` is a row in refresh_sessions so it can be
             rotated, detected if reused, and revoked.
 """
+import base64
+import hashlib
 import re
 import secrets
 import string
@@ -20,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
 from passlib.context import CryptContext
 
 from app.core.config import settings
@@ -48,6 +51,58 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 def burn_password_check(plain_password: str) -> None:
     """Spend the same time a real password check would (user-enumeration defence)."""
     pwd_context.verify(plain_password, _DUMMY_HASH)
+
+
+def match_password(plain_password: str, password_hash: str) -> str | None:
+    """The form of what was typed that matches the stored hash, or None when it doesn't.
+
+    The exact text is tried first. Then the same text without leading / trailing whitespace: phone keyboards and autofill append a
+    space, and a password copied from a chat arrives with one, and nobody can see it. Passwords are stored without that whitespace
+    (see `set_password`), so this only ever rescues the typed side, and accounts whose password was saved before that rule still work
+    through the exact attempt."""
+    if verify_password(plain_password, password_hash):
+        return plain_password
+    trimmed = plain_password.strip()
+    if trimmed and trimmed != plain_password and verify_password(trimmed, password_hash):
+        return trimmed
+    return None
+
+
+# --------------------------------------------------------------------------
+# readable copy of a password (developer view)
+#   The bcrypt hash stays the only thing sign-in checks. Alongside it we keep the same password encrypted (never plain text in the
+#   database), so the developer can read it back on the Team page. The key comes from PASSWORD_VAULT_KEY, or is derived from the JWT
+#   secret when that is not set. If the key changes, old copies simply stop decrypting (shown as "not recorded") and are refilled the
+#   next time that person signs in or changes their password.
+# --------------------------------------------------------------------------
+
+def _vault() -> Fernet:
+    seed = settings.PASSWORD_VAULT_KEY or f"veekay-password-vault|{settings.JWT_SECRET_KEY}"
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest()))
+
+
+def seal_password(plain_password: str) -> str:
+    return _vault().encrypt(plain_password.encode()).decode()
+
+
+def unseal_password(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        return _vault().decrypt(token.encode()).decode()
+    except (InvalidToken, ValueError):
+        return None
+
+
+def set_password(user, plain_password: str, *, must_change: bool) -> str:
+    """The one way a staff password is saved: hash (for sign-in), encrypted copy (developer view) and the time it changed, together.
+    Leading / trailing whitespace is dropped so what the person sees and types is exactly what is stored. Returns what was stored."""
+    stored = plain_password.strip()
+    user.password_hash = hash_password(stored)
+    user.password_enc = seal_password(stored)
+    user.password_changed_at = datetime.now(timezone.utc)
+    user.must_change_password = must_change
+    return stored
 
 
 # --------------------------------------------------------------------------
@@ -201,8 +256,7 @@ def reset_admin_password() -> None:
             print("ADMIN001 does not exist. No changes made.")
             return
 
-        user.password_hash = hash_password(new_password)
-        user.must_change_password = True
+        set_password(user, new_password, must_change=True)
         db.commit()
         print("ADMIN001 password reset successfully.")
     except Exception:

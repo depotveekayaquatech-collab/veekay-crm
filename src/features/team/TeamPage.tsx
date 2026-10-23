@@ -17,6 +17,7 @@ import { AdminAccountModal } from "@/features/team/AdminAccountModal";
 import { useAuth } from "@/features/auth/useAuth";
 import { PartnerAccountModal } from "@/features/team/PartnerAccountModal";
 import { LoginsPanel } from "@/features/logins/LoginsPage";
+import { PasswordsPanel } from "@/features/team/PasswordsPanel";
 import { StateBoardPanel } from "@/features/team/StateBoardPanel";
 import { useEmployees, useTeamMutations } from "@/features/team/useTeam";
 import type { Employee } from "@/types/employee";
@@ -39,7 +40,8 @@ export function TeamPage() {
   const canDelete = usePermission("employees.delete"); // developer only
   const [deleting, setDeleting] = useState<Employee | null>(null);
   const canLogins = usePermission("logins.view");
-  const [view, setView] = useState<"team" | "logins">("team");
+  const canSeePasswords = usePermission("employees.view_password"); // developer only
+  const [view, setView] = useState<"team" | "logins" | "passwords">("team");
   const { deactivate } = useTeamMutations();
   const [category, setCategory] = useState("");
   const { data, isLoading, isError, refetch } = useEmployees(page, q, category);
@@ -108,9 +110,22 @@ export function TeamPage() {
             Vendor &amp; POC logins
           </button>
         )}
+        {canSeePasswords && (
+          <button
+            role="tab"
+            aria-selected={view === "passwords"}
+            onClick={() => setView("passwords")}
+            className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
+              view === "passwords" ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+            }`}
+          >
+            Passwords
+          </button>
+        )}
       </div>
 
       {view === "logins" && <LoginsPanel />}
+      {view === "passwords" && canSeePasswords && <PasswordsPanel />}
       {view === "team" && (<>
       <Input
         label="Search"

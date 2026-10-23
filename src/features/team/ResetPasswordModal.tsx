@@ -6,7 +6,7 @@ import { apiRequest } from "@/services/api";
 import { pushToast } from "@/lib/toast";
 import type { Employee } from "@/types/employee";
 
-/** Admin: issue a one-time temporary password. It is shown once and never stored readable. */
+/** Admin: issue a one-time temporary password. It is shown to the admin once; only the developer can look it up again (Users & access > Passwords). */
 export function ResetPasswordModal({ employee, onClose }: { employee: Employee; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const reset = useMutation({

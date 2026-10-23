@@ -9,7 +9,7 @@ from enum import StrEnum
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -50,6 +50,8 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     password_hash: Mapped[str] = mapped_column(String(255))
+    # The same password, encrypted (never plain): only the developer can read it back. Null until it is next set or the person next signs in.
+    password_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     # True for admin-set / generated / imported passwords: the person must choose their own before doing anything else.
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

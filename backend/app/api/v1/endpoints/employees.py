@@ -2,7 +2,7 @@
 import uuid
 
 from starlette.concurrency import run_in_threadpool
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_page_params, require_permission
@@ -15,6 +15,7 @@ from app.schemas.employee import (
     EmployeeImportResult,
     EmployeeOut,
     EmployeeUpdate,
+    PasswordRow,
     PermissionSet,
 )
 from pydantic import BaseModel
@@ -41,6 +42,20 @@ def list_employees(
     return employee_service.list_employees(
         db, user, params, q=q, region_id=region_id, platform_id=platform_id, category=category
     )
+
+
+@router.get(
+    "/passwords", response_model=list[PasswordRow],
+    dependencies=[Depends(require_permission("employees.view_password"))],
+)
+def list_passwords(
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[PasswordRow]:
+    """Developer only: every account's current password and how many days ago it changed."""
+    response.headers["Cache-Control"] = "no-store"
+    return [PasswordRow(**r) for r in employee_service.password_overview(db, user)]
 
 
 @router.post(

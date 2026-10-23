@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { useTestReports } from "@/features/reports/testReports";
 import { useDebounced } from "@/hooks/useDebounced";
 import { listStores } from "@/services/stores";
+import type { DashboardInsights } from "@/types/order";
 import { usePartners } from "@/features/stores/useStores";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -171,88 +172,43 @@ const STATUS_COLORS: Record<string, string> = {
   CLOSE: "#98a0b5",
 };
 
-function AdminDashboard() {
-  // All platforms combined by default; the Channel filter narrows every number on this page to Blinkit or to Zepto.
+type SectionData = { channel: string; channelName: string; insights: DashboardInsights | undefined; isLoading: boolean };
+
+/**
+ * A dashboard section with its OWN platform dropdown (All platforms by default, then Blinkit or Zepto). Everything inside follows it, so
+ * each kind of insight can be looked at on its own platform without changing the rest of the page.
+ */
+function ChannelSection({ id, title, children }: { id: string; title: string; children: (c: SectionData) => ReactNode }) {
   const { data: partners = [] } = usePartners();
-  const [pickedChannel, setChannel] = usePersistentState<string>("dashboard.channel", "");
-  const channel = partners.some((p) => p.slug === pickedChannel) ? pickedChannel : "";          // "" = all platforms
+  const [picked, setPicked] = usePersistentState<string>(`dashboard.channel.${id}`, "");
+  const channel = partners.some((p) => p.slug === picked) ? picked : "";          // "" = all platforms
   const channelName = partners.find((p) => p.slug === channel)?.name ?? "All platforms";
   const { data: insights, isLoading } = useInsights(channel);
-  const { data: activity, isLoading: activityLoading } = useQuery({
-    queryKey: ["dashboard-activity"],
-    queryFn: () => listActivity({ page: 1, pageSize: 8 }),
-  });
-
-  const totalStores = insights
-    ? insights.storeStatus.LIVE + insights.storeStatus.PENDING + insights.storeStatus.CLOSE
-    : 0;
-  const overallPercent =
-    insights && insights.platforms.length
-      ? insights.platforms.reduce((s, p) => s + p.entriesDone, 0) /
-        Math.max(1, insights.platforms.reduce((s, p) => s + p.totalStores, 0)) *
-        100
-      : 0;
-  // One donut per platform: the server sends the counts, not every store.
-  const statusByPlatform = useMemo(
-    () => (insights?.statusByPlatform ?? []).map((p) => ({ label: p.label, total: p.total, counts: { LIVE: p.live, PENDING: p.pending, CLOSE: p.close } })),
-    [insights],
-  );
-  const [statusPick, setStatusPick] = useState<string | null>(null);
-  const statusChoice = statusPick ?? ALL_PLATFORMS;          // all platforms by default; Blinkit and Zepto each in the dropdown
-  const statusShown = useMemo(() => {
-    if (statusChoice === ALL_PLATFORMS) {
-      const counts = { LIVE: 0, PENDING: 0, CLOSE: 0 };
-      statusByPlatform.forEach((p) => {
-        counts.LIVE += p.counts.LIVE;
-        counts.PENDING += p.counts.PENDING;
-        counts.CLOSE += p.counts.CLOSE;
-      });
-      return { label: "All platforms", total: statusByPlatform.reduce((n, p) => n + p.total, 0), counts };
-    }
-    return statusByPlatform.find((p) => p.label === statusChoice) ?? null;
-  }, [statusByPlatform, statusChoice]);
-  const testReports = useTestReports("zepto");
-  const delta = insights ? trendDelta(insights.bottlesToday, insights.bottlesYesterday) : null;
-
-  // The store directory is searched and paged on the server (15 rows per request), never downloaded whole.
-  const storePartner = channel;
-  const [storeQuery, setStoreQuery] = useState("");
-  const [storePage, setStorePage] = useState(1);
-  const storeSearch = useDebounced(storeQuery.trim(), 300);
-  const directory = useQuery({
-    queryKey: ["dashboard-stores", storePartner, storeSearch, storePage],
-    queryFn: () => listStores({ page: storePage, pageSize: STORE_PAGE, partner: storePartner || undefined, search: storeSearch || undefined }),
-    placeholderData: (prev) => prev,
-  });
-  const storeRows = directory.data?.items ?? [];
-  const storeTotal = directory.data?.total ?? 0;
-  const storePages = Math.max(1, Math.ceil(storeTotal / STORE_PAGE));
-
-  const quickActions = [
-    { to: "/orders/overview", label: "Daily overview", icon: IconChart, perm: "orders.overview" },
-    { to: "/orders/correct", label: "Correct entries", icon: IconGrid, perm: "orders.correct" },
-    { to: "/team", label: "Team & access", icon: IconUsers, perm: "employees.view" },
-    { to: "/stores", label: "Manage stores", icon: IconStore, perm: "stores.view" },
-    { to: "/activity", label: "Activity log", icon: IconActivity, perm: "activity.view" },
-  ];
-
   return (
     <ChannelContext.Provider value={channel}>
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-surface-border bg-surface px-4 py-3 shadow-card">
-        <div className="w-48 [&_label]:text-xs [&_label]:font-bold [&_label]:uppercase [&_label]:tracking-wider [&_label]:text-gray-500">
-          <Select
-            label="Channel"
-            value={channel}
-            onChange={(e) => setChannel(e.target.value)}
-            placeholder="All platforms"
-            options={partners.map((p) => ({ value: p.slug, label: p.name }))}
-          />
+      <section className="flex flex-col gap-3" aria-label={title}>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500">{title}</h2>
+          <div className="w-40 [&_label]:sr-only">
+            <Select label={`${title}: platform`} value={channel} onChange={(e) => setPicked(e.target.value)} placeholder="All platforms" options={partners.map((p) => ({ value: p.slug, label: p.name }))} />
+          </div>
         </div>
-        <p className="text-sm text-gray-500">
-          {channel ? <>Everything below is for <b className="text-gray-800">{channelName}</b> only.</> : "Showing all platforms combined. Pick a platform to filter everything below."}
-        </p>
-      </div>
+        {children({ channel, channelName, insights, isLoading })}
+      </section>
+    </ChannelContext.Provider>
+  );
+}
+
+/** The alert strip, the KPI cards and the performance KPIs, for the platform chosen in this section. */
+function OverviewSection({ insights, isLoading, channelName, channel }: SectionData) {
+  const totalStores = insights ? insights.storeStatus.LIVE + insights.storeStatus.PENDING + insights.storeStatus.CLOSE : 0;
+  const overallPercent =
+    insights && insights.platforms.length
+      ? (insights.platforms.reduce((s, p) => s + p.entriesDone, 0) / Math.max(1, insights.platforms.reduce((s, p) => s + p.totalStores, 0))) * 100
+      : 0;
+  const delta = insights ? trendDelta(insights.bottlesToday, insights.bottlesYesterday) : null;
+  return (
+    <div className="flex flex-col gap-6">
       <AlertStrip insights={insights} />
 
       {/* KPI row */}
@@ -292,213 +248,25 @@ function AdminDashboard() {
       </div>
 
       <PerformanceKpis insights={insights} />
+    </div>
+  );
+}
 
-      {/* Trend + status */}
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <TrendCard insights={insights} />
-
-        <Card
-          title="Store status"
-          action={
-            statusByPlatform.length > 0 ? (
-              <div className="w-40 [&_label]:sr-only">
-                <Select
-                  label="Platform"
-                  value={statusChoice}
-                  onChange={(e) => setStatusPick(e.target.value)}
-                  options={[{ value: ALL_PLATFORMS, label: "All platforms" }, ...statusByPlatform.map((p) => ({ value: p.label, label: p.label }))]}
-                />
-              </div>
-            ) : undefined
-          }
-        >
-          {isLoading || !insights ? (
-            <Skeleton className="h-40" />
-          ) : (
-            <div className="flex flex-col gap-6">
-              {statusShown ? (
-                <DonutChart
-                  centerValue={statusShown.total}
-                  centerLabel={statusChoice === ALL_PLATFORMS ? "stores in total" : "stores"}
-                  slices={(["LIVE", "PENDING", "CLOSE"] as const).map((k) => ({
-                    label: k[0] + k.slice(1).toLowerCase(),
-                    value: statusShown.counts[k],
-                    color: STATUS_COLORS[k],
-                  }))}
-                />
-              ) : (
-                <p className="text-sm text-gray-500">No stores yet.</p>
-              )}
-
-              {/* Second section: test reports (Zepto only for now) */}
-              <section className="-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5" aria-label="Test reports">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="text-sm font-bold text-heading">Test reports</h4>
-                  <CardLink to="/reports?tab=test">Manage →</CardLink>
-                </div>
-                {testReports.isLoading ? (
-                  <Skeleton className="mt-3 h-16" />
-                ) : testReports.data?.platform.enabled ? (
-                  <>
-                    <div className="mt-3 flex items-end gap-3">
-                      <p className="text-3xl font-extrabold tabular-nums leading-none text-heading">{testReports.data.summary.reportsTotal}</p>
-                      <p className="pb-0.5 text-xs text-gray-500">
-                        {testReports.data.platform.name} test report{testReports.data.summary.reportsTotal === 1 ? "" : "s"} available
-                        <br />
-                        across {testReports.data.summary.reportsTotal} of {testReports.data.summary.statesTotal} states
-                      </p>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      <Badge tone="success">{testReports.data.summary.valid} valid</Badge>
-                      {testReports.data.summary.expiring > 0 && <Badge tone="warning">{testReports.data.summary.expiring} expiring soon</Badge>}
-                      {testReports.data.summary.expired > 0 && <Badge tone="danger">{testReports.data.summary.expired} expired</Badge>}
-                      {testReports.data.summary.missing > 0 && <Badge tone="neutral">{testReports.data.summary.missing} states with none</Badge>}
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-3 text-sm text-gray-500">Test reports aren't available yet.</p>
-                )}
-              </section>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* Platform progress + leaderboard */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="Today's completion by platform">
-          {isLoading || !insights ? (
-            <Skeleton className="h-40" />
-          ) : insights.platforms.length === 0 ? (
-            <p className="text-sm text-gray-500">No platforms configured.</p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {insights.platforms.map((p) => (
-                <div key={p.slug}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-900">{p.label}</p>
-                    <Badge tone={p.percent >= 85 ? "success" : p.percent >= 50 ? "warning" : "danger"}>
-                      {Math.round(p.percent)}%
-                    </Badge>
-                  </div>
-                  <div className="mt-2">
-                    <ProgressBar percent={p.percent} />
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                    <span>{p.entriesDone} / {p.totalStores} stores</span>
-                    <span>{p.bottles} bottles</span>
-                    <span>{p.employees} employees</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card title="Top performers today" action={<CardLink to="/orders/overview">All →</CardLink>}>
-          {isLoading || !insights ? (
-            <Skeleton className="h-40" />
-          ) : insights.leaderboard.length === 0 ? (
-            <p className="text-sm text-gray-500">No entries yet today.</p>
-          ) : (
-            <BarList
-              items={insights.leaderboard.map((l) => ({
-                label: l.employeeName,
-                sub: `${l.entriesDone}/${l.totalStores} stores${l.regionName ? ` · ${l.regionName}` : ""}`,
-                value: l.bottles,
-                max: Math.max(...insights.leaderboard.map((x) => x.bottles), 1),
-                suffix: " btl",
-              }))}
-            />
-          )}
-        </Card>
-      </div>
-
-      <DeepInsights insights={insights} />
-
-      {/* Store coverage + attention — same `stores` data as the Stores page / Sheet sync */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card
-          title="Store coverage by region"
-          action={
-            insights?.lastStoreSync ? (
-              <span className="text-xs text-gray-400">Synced {ago(insights.lastStoreSync)}</span>
-            ) : (
-              <CardLink to="/stores">Manage →</CardLink>
-            )
-          }
-        >
-          {isLoading || !insights ? (
-            <Skeleton className="h-40" />
-          ) : insights.storesByRegion.length === 0 ? (
-            <p className="text-sm text-gray-500">No stores yet.</p>
-          ) : (
-            <div className="flex flex-col gap-3.5">
-              {insights.storesByRegion.map((r) => {
-                const max = Math.max(...insights.storesByRegion.map((x) => x.total), 1);
-                return (
-                  <div key={r.label}>
-                    <div className="mb-1 flex items-baseline justify-between text-sm">
-                      <span className="font-medium text-gray-800">{r.label}</span>
-                      <span className="tabular-nums text-gray-500">
-                        {r.live} live<span className="text-gray-300"> / {r.total}</span>
-                      </span>
-                    </div>
-                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-                      <div className="h-full bg-status-success" style={{ width: `${(r.live / max) * 100}%` }} />
-                      <div
-                        className="h-full bg-status-warning/50"
-                        style={{ width: `${((r.total - r.live) / max) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              {insights.storesByState.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1.5 border-t border-surface-border pt-3">
-                  {insights.storesByState.map((s) => (
-                    <span
-                      key={s.label}
-                      className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-gray-600"
-                    >
-                      {s.label} <span className="font-medium text-gray-900">{s.total}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
-
-        <Card
-          title="Stores needing attention"
-          action={<CardLink to="/stores">All stores →</CardLink>}
-        >
-          {isLoading || !insights ? (
-            <Skeleton className="h-40" />
-          ) : insights.attentionStores.length === 0 ? (
-            <p className="text-sm text-gray-500">Every store is live. 🎉</p>
-          ) : (
-            <ul className="flex max-h-72 flex-col divide-y divide-surface-border overflow-auto">
-              {insights.attentionStores.map((s) => (
-                <li key={s.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-900">{s.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {s.externalCode}
-                      {s.platform ? ` · ${s.platform}` : ""}
-                      {s.city ? ` · ${s.city}` : s.state ? ` · ${s.state}` : ""}
-                    </p>
-                  </div>
-                  <Badge tone={s.status === "PENDING" ? "warning" : "neutral"}>{s.status}</Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      {/* Store directory — searched and paged on the server */}
+/** The searchable store list for the platform chosen in this section (searched and paged on the server, 15 rows per request). */
+function StoreDirectory({ insights, isLoading, channelName, channel }: SectionData) {
+  const storePartner = channel;
+  const [storeQuery, setStoreQuery] = useState("");
+  const [storePage, setStorePage] = useState(1);
+  const storeSearch = useDebounced(storeQuery.trim(), 300);
+  const directory = useQuery({
+    queryKey: ["dashboard-stores", storePartner, storeSearch, storePage],
+    queryFn: () => listStores({ page: storePage, pageSize: STORE_PAGE, partner: storePartner || undefined, search: storeSearch || undefined }),
+    placeholderData: (prev) => prev,
+  });
+  const storeRows = directory.data?.items ?? [];
+  const storeTotal = directory.data?.total ?? 0;
+  const storePages = Math.max(1, Math.ceil(storeTotal / STORE_PAGE));
+  return (
       <Card
         title="All stores"
         action={
@@ -592,6 +360,270 @@ function AdminDashboard() {
         )}
       </Card>
 
+  );
+}
+
+function AdminDashboard() {
+  // All platforms combined; every section below has its own platform dropdown (see ChannelSection), and the Store status card has one too.
+  const { data: insights, isLoading } = useInsights();
+  const { data: activity, isLoading: activityLoading } = useQuery({
+    queryKey: ["dashboard-activity"],
+    queryFn: () => listActivity({ page: 1, pageSize: 8 }),
+  });
+
+  // One donut per platform: the server sends the counts, not every store.
+  const statusByPlatform = useMemo(
+    () => (insights?.statusByPlatform ?? []).map((p) => ({ label: p.label, total: p.total, counts: { LIVE: p.live, PENDING: p.pending, CLOSE: p.close } })),
+    [insights],
+  );
+  const [statusPick, setStatusPick] = useState<string | null>(null);
+  const statusChoice = statusPick ?? ALL_PLATFORMS;          // all platforms by default; Blinkit and Zepto each in the dropdown
+  const statusShown = useMemo(() => {
+    if (statusChoice === ALL_PLATFORMS) {
+      const counts = { LIVE: 0, PENDING: 0, CLOSE: 0 };
+      statusByPlatform.forEach((p) => {
+        counts.LIVE += p.counts.LIVE;
+        counts.PENDING += p.counts.PENDING;
+        counts.CLOSE += p.counts.CLOSE;
+      });
+      return { label: "All platforms", total: statusByPlatform.reduce((n, p) => n + p.total, 0), counts };
+    }
+    return statusByPlatform.find((p) => p.label === statusChoice) ?? null;
+  }, [statusByPlatform, statusChoice]);
+  const testReports = useTestReports("zepto");
+
+  const quickActions = [
+    { to: "/orders/overview", label: "Daily overview", icon: IconChart, perm: "orders.overview" },
+    { to: "/orders/correct", label: "Correct entries", icon: IconGrid, perm: "orders.correct" },
+    { to: "/team", label: "Team & access", icon: IconUsers, perm: "employees.view" },
+    { to: "/stores", label: "Manage stores", icon: IconStore, perm: "stores.view" },
+    { to: "/activity", label: "Activity log", icon: IconActivity, perm: "activity.view" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <ChannelSection id="overview" title="Overview">{(c) => <OverviewSection {...c} />}</ChannelSection>
+
+      {/* Trend + status */}
+      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+        <ChannelSection id="trend" title="Orders trend">{({ insights }) => <TrendCard insights={insights} />}</ChannelSection>
+
+        <Card
+          title="Store status"
+          action={
+            statusByPlatform.length > 0 ? (
+              <div className="w-40 [&_label]:sr-only">
+                <Select
+                  label="Platform"
+                  value={statusChoice}
+                  onChange={(e) => setStatusPick(e.target.value)}
+                  options={[{ value: ALL_PLATFORMS, label: "All platforms" }, ...statusByPlatform.map((p) => ({ value: p.label, label: p.label }))]}
+                />
+              </div>
+            ) : undefined
+          }
+        >
+          {isLoading || !insights ? (
+            <Skeleton className="h-40" />
+          ) : (
+            <div className="flex flex-col gap-6">
+              {statusShown ? (
+                <DonutChart
+                  centerValue={statusShown.total}
+                  centerLabel={statusChoice === ALL_PLATFORMS ? "stores in total" : "stores"}
+                  slices={(["LIVE", "PENDING", "CLOSE"] as const).map((k) => ({
+                    label: k[0] + k.slice(1).toLowerCase(),
+                    value: statusShown.counts[k],
+                    color: STATUS_COLORS[k],
+                  }))}
+                />
+              ) : (
+                <p className="text-sm text-gray-500">No stores yet.</p>
+              )}
+
+              {/* Second section: test reports (Zepto only for now) */}
+              <section className="-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5" aria-label="Test reports">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-bold text-heading">Test reports</h4>
+                  <CardLink to="/reports?tab=test">Manage →</CardLink>
+                </div>
+                {testReports.isLoading ? (
+                  <Skeleton className="mt-3 h-16" />
+                ) : testReports.data?.platform.enabled ? (
+                  <>
+                    <div className="mt-3 flex items-end gap-3">
+                      <p className="text-3xl font-extrabold tabular-nums leading-none text-heading">{testReports.data.summary.reportsTotal}</p>
+                      <p className="pb-0.5 text-xs text-gray-500">
+                        {testReports.data.platform.name} test report{testReports.data.summary.reportsTotal === 1 ? "" : "s"} available
+                        <br />
+                        across {testReports.data.summary.reportsTotal} of {testReports.data.summary.statesTotal} states
+                      </p>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <Badge tone="success">{testReports.data.summary.valid} valid</Badge>
+                      {testReports.data.summary.expiring > 0 && <Badge tone="warning">{testReports.data.summary.expiring} expiring soon</Badge>}
+                      {testReports.data.summary.expired > 0 && <Badge tone="danger">{testReports.data.summary.expired} expired</Badge>}
+                      {testReports.data.summary.missing > 0 && <Badge tone="neutral">{testReports.data.summary.missing} states with none</Badge>}
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-500">Test reports aren't available yet.</p>
+                )}
+              </section>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <ChannelSection id="performance" title="Platform progress and top performers">
+        {({ insights, isLoading }) => (
+          <>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card title="Today's completion by platform">
+          {isLoading || !insights ? (
+            <Skeleton className="h-40" />
+          ) : insights.platforms.length === 0 ? (
+            <p className="text-sm text-gray-500">No platforms configured.</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {insights.platforms.map((p) => (
+                <div key={p.slug}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-900">{p.label}</p>
+                    <Badge tone={p.percent >= 85 ? "success" : p.percent >= 50 ? "warning" : "danger"}>
+                      {Math.round(p.percent)}%
+                    </Badge>
+                  </div>
+                  <div className="mt-2">
+                    <ProgressBar percent={p.percent} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                    <span>{p.entriesDone} / {p.totalStores} stores</span>
+                    <span>{p.bottles} bottles</span>
+                    <span>{p.employees} employees</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card title="Top performers today" action={<CardLink to="/orders/overview">All →</CardLink>}>
+          {isLoading || !insights ? (
+            <Skeleton className="h-40" />
+          ) : insights.leaderboard.length === 0 ? (
+            <p className="text-sm text-gray-500">No entries yet today.</p>
+          ) : (
+            <BarList
+              items={insights.leaderboard.map((l) => ({
+                label: l.employeeName,
+                sub: `${l.entriesDone}/${l.totalStores} stores${l.regionName ? ` · ${l.regionName}` : ""}`,
+                value: l.bottles,
+                max: Math.max(...insights.leaderboard.map((x) => x.bottles), 1),
+                suffix: " btl",
+              }))}
+            />
+          )}
+        </Card>
+      </div>
+
+          </>
+        )}
+      </ChannelSection>
+
+      <ChannelSection id="deep" title="Insights">{({ insights }) => <DeepInsights insights={insights} />}</ChannelSection>
+
+      <ChannelSection id="coverage" title="Store coverage and attention">
+        {({ insights, isLoading }) => (
+          <>
+      {/* Store coverage + attention — same `stores` data as the Stores page / Sheet sync */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card
+          title="Store coverage by region"
+          action={
+            insights?.lastStoreSync ? (
+              <span className="text-xs text-gray-400">Synced {ago(insights.lastStoreSync)}</span>
+            ) : (
+              <CardLink to="/stores">Manage →</CardLink>
+            )
+          }
+        >
+          {isLoading || !insights ? (
+            <Skeleton className="h-40" />
+          ) : insights.storesByRegion.length === 0 ? (
+            <p className="text-sm text-gray-500">No stores yet.</p>
+          ) : (
+            <div className="flex flex-col gap-3.5">
+              {insights.storesByRegion.map((r) => {
+                const max = Math.max(...insights.storesByRegion.map((x) => x.total), 1);
+                return (
+                  <div key={r.label}>
+                    <div className="mb-1 flex items-baseline justify-between text-sm">
+                      <span className="font-medium text-gray-800">{r.label}</span>
+                      <span className="tabular-nums text-gray-500">
+                        {r.live} live<span className="text-gray-300"> / {r.total}</span>
+                      </span>
+                    </div>
+                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+                      <div className="h-full bg-status-success" style={{ width: `${(r.live / max) * 100}%` }} />
+                      <div
+                        className="h-full bg-status-warning/50"
+                        style={{ width: `${((r.total - r.live) / max) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {insights.storesByState.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1.5 border-t border-surface-border pt-3">
+                  {insights.storesByState.map((s) => (
+                    <span
+                      key={s.label}
+                      className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-gray-600"
+                    >
+                      {s.label} <span className="font-medium text-gray-900">{s.total}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
+        <Card
+          title="Stores needing attention"
+          action={<CardLink to="/stores">All stores →</CardLink>}
+        >
+          {isLoading || !insights ? (
+            <Skeleton className="h-40" />
+          ) : insights.attentionStores.length === 0 ? (
+            <p className="text-sm text-gray-500">Every store is live. 🎉</p>
+          ) : (
+            <ul className="flex max-h-72 flex-col divide-y divide-surface-border overflow-auto">
+              {insights.attentionStores.map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900">{s.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {s.externalCode}
+                      {s.platform ? ` · ${s.platform}` : ""}
+                      {s.city ? ` · ${s.city}` : s.state ? ` · ${s.state}` : ""}
+                    </p>
+                  </div>
+                  <Badge tone={s.status === "PENDING" ? "warning" : "neutral"}>{s.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+          </>
+        )}
+      </ChannelSection>
+
+      <ChannelSection id="directory" title="Stores">{(c) => <StoreDirectory {...c} />}</ChannelSection>
+
       {/* Activity + quick actions */}
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         <Card title="Recent activity" action={<CardLink to="/activity">View all →</CardLink>}>
@@ -627,7 +659,6 @@ function AdminDashboard() {
         </Card>
       </div>
     </div>
-    </ChannelContext.Provider>
   );
 }
 

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
 
     # Login protection
     PASSWORD_MIN_LENGTH: int = 10
+    # Key for the encrypted copy of staff passwords the developer can read. Empty = derived from JWT_SECRET_KEY.
+    PASSWORD_VAULT_KEY: str = Field(default="")
     REFRESH_REUSE_GRACE_SECONDS: int = 15
     LOGIN_IP_MAX_FAILURES: int = 20
     LOGIN_IP_WINDOW_MINUTES: int = 10

@@ -4,6 +4,7 @@ lockout. Routes stay thin (parse request, call service, return response) —
 everything that decides "is this login allowed" lives here so it's testable
 without spinning up FastAPI.
 """
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -17,14 +18,19 @@ from app.core.security import (
     burn_password_check,
     decode_claims,
     hash_password,
+    match_password,
+    seal_password,
+    set_password,
+    unseal_password,
     validate_password_strength,
-    verify_password,
 )
 from app.models.organization import Organization
 from app.models.user import User, UserStatus
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LoginResponse, TokenPair
 from app.services import activity_service, session_service
+
+log = logging.getLogger(__name__)
 
 GENERIC_LOGIN_ERROR = "Incorrect email or password."
 PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED"
@@ -56,7 +62,9 @@ class AuthService:
         self._release_expired_lock(user)
         self._enforce_not_locked(user)
 
-        if not verify_password(password, user.password_hash):
+        matched = match_password(password, user.password_hash)
+        if matched is None:
+            log.info("login refused: wrong password for %s (typed %d characters)", user.employee_code, len(password))
             self._register_failed_attempt(user)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_LOGIN_ERROR)
 
@@ -68,6 +76,14 @@ class AuthService:
 
         user.failed_login_attempts = 0
         user.locked_until = None
+        # Passwords set before the developer view existed have no readable copy: the first correct sign-in is the one moment it is known.
+        if matched != matched.strip():
+            # Saved before stray spaces were dropped: keep it working as typed, but store what the person actually sees from now on
+            # (typing it with or without the space both keep working). Not a password change, so the change date stays.
+            matched = matched.strip()
+            user.password_hash = hash_password(matched)
+        if unseal_password(user.password_enc) != matched:
+            user.password_enc = seal_password(matched)
         pair = session_service.start_session(self.db, user, user_agent=user_agent, ip=ip)
         activity_service.record(
             self.db, actor=user, action="auth.login", entity_type="user", entity_id=user.id,
@@ -90,17 +106,16 @@ class AuthService:
         self, user: User, current_password: str, new_password: str, *, current_family: uuid.UUID | None = None,
         user_agent: str | None = None, ip: str | None = None,
     ) -> TokenPair:
-        if not verify_password(current_password, user.password_hash):
+        if match_password(current_password, user.password_hash) is None:
             self._register_failed_attempt(user)  # guessing the current password counts like a failed login
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Your current password is incorrect.")
 
+        new_password = new_password.strip()  # stored exactly as validated here
         problem = validate_password_strength(new_password, employee_code=user.employee_code, current_hash=user.password_hash)
         if problem:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
 
-        user.password_hash = hash_password(new_password)
-        user.must_change_password = False
-        user.password_changed_at = datetime.now(timezone.utc)
+        set_password(user, new_password, must_change=False)
         user.failed_login_attempts = 0
         # Every other device is signed out; this one gets a fresh session straight away.
         pair = session_service.start_session(self.db, user, user_agent=user_agent, ip=ip)

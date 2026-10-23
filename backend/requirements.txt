@@ -8,6 +8,7 @@ pydantic-settings>=2.4
 PyJWT>=2.8
 passlib==1.7.4
 bcrypt==4.0.1
+cryptography>=42
 python-multipart>=0.0.9
 apscheduler>=3.10,<4
 tzdata>=2024.1

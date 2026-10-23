@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import generate_temp_password, hash_password
+from app.core.security import generate_temp_password, set_password
 from app.models.organization import Organization, OrganizationKind
 from app.models.region import Region
 from app.models.role import Role
@@ -211,11 +211,11 @@ def import_employees(
                 platform_organization_id=platform.id if platform else None,
                 region_id=region.id if region else None,
                 employee_code=code, full_name=name[:128], phone=phone,
-                password_hash=hash_password(password),
-                must_change_password=True,  # sheet / generated passwords are never the long-term one
+                password_hash="",
                 status=UserStatus.ACTIVE.value if active else UserStatus.DEACTIVATED.value,
                 is_active=active,
             )
+            password = set_password(user, password, must_change=True)  # sheet / generated passwords are never the long-term one
             db.add(user)
             db.flush()
             for rc in wanted_roles:
