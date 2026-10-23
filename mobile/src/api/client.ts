@@ -3,6 +3,7 @@
  * the Android Keystore (expo-secure-store) and rotates on every refresh. A 401 triggers one silent refresh and a retry.
  */
 import { fetch as expoFetch } from "expo/fetch";
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { connectivity, MESSAGES, type FailureKind } from "@/lib/connectivityCore";
 
@@ -28,6 +29,8 @@ const KIND_KEY = "veekay.kind";
 export type SessionKind = "partner" | "staff";
 const AUTH_PATH: Record<SessionKind, string> = { partner: "/external/auth", staff: "/auth" };
 const TIMEOUT_MS = 30_000;
+/** Sent on every call so the server can say where an entry came from. It is a label for the audit trail, never an identity: the server knows who you are from your sign-in. */
+const CLIENT_LABEL = `android-app/${Constants.expoConfig?.version ?? "unknown"}`;
 const UPLOAD_TIMEOUT_MS = 90_000;
 
 let accessToken: string | null = null;
@@ -138,6 +141,8 @@ interface Options {
   noRefresh?: boolean;
   /** Same key on every retry of one submission: the server then returns the first result instead of creating a duplicate. */
   idempotencyKey?: string;
+  /** Send this phone's clock too. The server keeps it for diagnosis only; its own time is the one that counts. */
+  clientTime?: boolean;
 }
 
 async function send(path: string, o: Options): Promise<Response> {
@@ -147,6 +152,8 @@ async function send(path: string, o: Options): Promise<Response> {
   if (o.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   if (o.idempotencyKey) headers["Idempotency-Key"] = o.idempotencyKey;
+  if (o.clientTime) headers["X-Client-Time"] = new Date().toISOString();
+  headers["X-Client"] = CLIENT_LABEL;
   const res = await timedFetch(
     `${BASE}${path}`,
     { method: o.method ?? "GET", headers, body: o.body === undefined ? undefined : isForm ? (o.body as FormData) : JSON.stringify(o.body) },

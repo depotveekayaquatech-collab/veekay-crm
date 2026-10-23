@@ -1,5 +1,6 @@
 """
-Monthwise virtual cards: one PDF per vendor, one A4 card per LIVE store of that vendor.
+Monthwise virtual cards: one PDF per vendor, one A4 card per store of that vendor (blank cards: live stores; a chosen month: every store
+supplied in that month, including stores that have since closed).
 
 This reproduces the original Apps Script ("Vendor Standard Cards") rules exactly:
 
@@ -209,39 +210,54 @@ def public_count(db: Session, store_id: uuid.UUID, sig: str) -> dict:
 # store selection + vendors
 # --------------------------------------------------------------------------
 
+def _supplied_in_month(month: date, organization_id: uuid.UUID):
+    """Subquery: the stores that had bottles recorded in `month`, whatever their status is now."""
+    return select(OrderEntry.store_id).where(
+        OrderEntry.organization_id == organization_id, OrderEntry.bottle_count > 0,
+        OrderEntry.order_date >= month, OrderEntry.order_date <= store_activity.month_end(month),
+    )
+
+
 def _in_month(db: Session, stores: list[Store], month: date | None) -> list[Store]:
-    """The stores to print for a month: those that had started by then, PLUS any store with bottles recorded in that month whatever
-    its start date says. Orders are the truth, so a wrong start date can never hide a store that was actually supplied."""
-    kept = store_activity.filter_active_in_month(stores, month)
+    """The stores to print for a month. One rule, so the lists never drift apart:
+      * a chosen month  -> exactly the stores that were supplied in it (bottles recorded), live or since closed. A store nobody marked that
+                           month gets no card, and a store that closed later still gets the card for the months it was supplied.
+      * no month (blank write-in cards) -> the live stores, as printed before.
+    Orders are the truth: start dates and sheet status never hide a supplied store."""
     if month is None:
-        return kept
-    have = {s.id for s in kept}
-    rest = [s.id for s in stores if s.id not in have]
-    if rest:
-        supplied = set(db.execute(
-            select(OrderEntry.store_id).where(
-                OrderEntry.store_id.in_(rest), OrderEntry.bottle_count > 0,
-                OrderEntry.order_date >= month, OrderEntry.order_date <= store_activity.month_end(month),
-            ).distinct()
-        ).scalars())
-        kept = kept + [s for s in stores if s.id in supplied]
-    return kept
+        return [s for s in stores if s.status == StoreStatus.LIVE.value]
+    if not stores:
+        return []
+    supplied = set(db.execute(
+        select(OrderEntry.store_id).where(
+            OrderEntry.store_id.in_([s.id for s in stores]), OrderEntry.bottle_count > 0,
+            OrderEntry.order_date >= month, OrderEntry.order_date <= store_activity.month_end(month),
+        ).distinct()
+    ).scalars())
+    return [s for s in stores if s.id in supplied]
 
 
-def _stores(db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None) -> list[Store]:
+def _stores(
+    db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None, month: date | None = None,
+) -> list[Store]:
+    """Candidate stores in the user's scope. With a month, closed stores are candidates too (see _in_month, which then keeps only the supplied)."""
     if is_admin:
         stmt = (
             select(Store)
-            .where(Store.organization_id == user.organization_id, Store.status == StoreStatus.LIVE.value)
+            .where(Store.organization_id == user.organization_id)
             .options(joinedload(Store.region), joinedload(Store.partner_organization))
             .order_by(Store.name)
         )
+        if month is None:
+            stmt = stmt.where(Store.status == StoreStatus.LIVE.value)
+        else:
+            stmt = stmt.where(Store.id.in_(_supplied_in_month(month, user.organization_id)))   # straight to the supplied ones
         if partner:
             stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == partner)
         if region:
             stmt = stmt.where(Store.region_id == region)
         return list(db.execute(stmt).unique().scalars().all())
-    rows = assignment_service.visible_stores(db, user)
+    rows = assignment_service.visible_stores(db, user, include_closed=month is not None)
     if partner:
         rows = [s for s in rows if s.partner_organization and s.partner_organization.slug == partner]
     if region:
@@ -289,7 +305,7 @@ def list_vendors(
     db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None, q: str | None = None,
     month: date | None = None,
 ) -> list[dict]:
-    """Vendors with their live-store counts. With `month`, only stores that had started by then count (the same rule the PDF uses), so a
+    """Vendors with their store counts. With `month`, only stores supplied in that month count (the same rule the PDF uses), so a
     vendor never appears for a month it would have no cards in. With `q`, keep vendors whose name matches or that have a store whose
     name / outlet code / city matches, and report up to MAX_MATCHES of those stores."""
     needle = (q or "").strip().lower()
@@ -298,7 +314,7 @@ def list_vendors(
     # Digit-only matching is for phone-style searches only (no letters), so "es117" can't match on "117" alone.
     digits = "" if re.search(r"[a-z]", needle) else re.sub(r"\D", "", needle)  # lets "98765 43210" or "+91-98765…" still find a phone number
     groups: dict[str, list[Store]] = {}
-    for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
+    for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region, month=month), month):
         groups.setdefault(_vendor_key(s), []).append(s)
     out = []
     for v, ss in groups.items():
@@ -642,8 +658,8 @@ def build_pdf(
     db: Session, user: User, *, is_admin: bool, partner: str | None, vendor: str | None,
     month: date | None, store_id: uuid.UUID | None = None, region: uuid.UUID | None = None,
 ) -> tuple[bytes, int, str]:
-    """One PDF: a card per live store of the vendor (or a single store). month=None -> blank cards."""
-    stores = _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region), month)
+    """One PDF: a card per store of the vendor (or a single store) that qualifies (see _in_month). month=None -> blank cards."""
+    stores = _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region, month=month), month)
     if store_id is not None:
         stores = [s for s in stores if s.id == store_id]
         vendor = vendor or (_vendor_key(stores[0]) if stores else "")
@@ -670,7 +686,7 @@ def build_zip(
     if not wanted:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one vendor.")
     groups: dict[str, list[Store]] = {}
-    for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region), month):
+    for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region, month=month), month):
         if _vendor_key(s).lower() in wanted:
             groups.setdefault(_vendor_key(s), []).append(s)
     if not groups:

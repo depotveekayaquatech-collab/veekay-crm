@@ -19,7 +19,11 @@ export const useLeaves = () => useQuery({ queryKey: ["s-leaves"], queryFn: staff
 
 export const useMyStores = (enabled = true) => useQuery({ queryKey: ["s-stores"], queryFn: staffApi.myStores, staleTime: FRESH, enabled });
 
-export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; entered_by?: string | null; entered_at?: string | null; is_today: boolean; is_future: boolean }
+export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; entered_by?: string | null; entered_at?: string | null; is_today: boolean; is_future: boolean;
+  /** You entered this day. */
+  mine?: boolean;
+  /** A colleague marked it: shown as marked, with no number, name or time. */
+  masked?: boolean }
 export interface Calendar {
   store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[];
   /** False when this month cannot be marked by the caller (view only). */
@@ -50,13 +54,18 @@ export const useCashOptions = () => useQuery({ queryKey: ["s-cash-options"], que
 export const useCashList = (page: number, filter: CashFilter = {}) =>
   useQuery({ queryKey: ["s-cash", page, filter], queryFn: () => staffApi.cashList({ page, page_size: 30, ...filter }), placeholderData: keepPreviousData, staleTime: FRESH });
 
-export interface MarkResult { saved: number; failed: number; results: { order_date: string; ok: boolean; error: string | null }[] }
+/** `status` is present only when the SERVER confirms the entry is stored ("saved", or "already_saved" for a retry of the same number). */
+export interface MarkResult {
+  saved: number; failed: number;
+  results: { order_date: string; ok: boolean; error: string | null; status?: "saved" | "already_saved" | null; entry_id?: string | null; saved_at?: string | null; version?: number | null }[];
+}
 
 export function useMarkMany() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: { store_id: string; entries: { order_date: string; bottle_count: number }[] }) =>
-      request<MarkResult>("/orders/mark-many", { method: "POST", body: b }),
+    // `key` stays the same while the person retries the same submission, so a lost answer never makes a second entry or a false "already marked".
+    mutationFn: (b: { store_id: string; entries: { order_date: string; bottle_count: number }[]; key?: string }) =>
+      request<MarkResult>("/orders/mark-many", { method: "POST", body: { store_id: b.store_id, entries: b.entries }, idempotencyKey: b.key, clientTime: true }),
     onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ["s-calendar"] }), qc.invalidateQueries({ queryKey: ["s-stores"] })]),
   });
 }

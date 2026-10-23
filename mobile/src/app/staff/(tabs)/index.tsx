@@ -88,7 +88,7 @@ export default function Today() {
   const canCompliance = hasPermission("compliance.upload") || hasPermission("compliance.manage");
   // Live lines on the tiles. An admin works with every store, so only an employee gets the "stores left today" count.
   const stores = useMyStores(hasPermission("orders.mark") && !staff?.is_admin);
-  const left = stores.data ? stores.data.filter((s) => s.status === "LIVE" && s.today_count === null).length : null;
+  const left = stores.data ? stores.data.filter((s) => s.status === "LIVE" && !(s.today_marked ?? s.today_count !== null)).length : null;
   const kpis = useComplianceKpis(canCompliance).data;
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);

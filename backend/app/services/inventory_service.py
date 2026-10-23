@@ -61,6 +61,20 @@ def month_stats(db: Session, store_ids: list[uuid.UUID], today: date) -> dict[uu
     return {r[0]: (r[1], int(r[2]), int(r[3]), bool(r[4])) for r in rows}
 
 
+def _own_month_bottles(db: Session, store_ids: list[uuid.UUID], today: date, uid: uuid.UUID) -> dict[uuid.UUID, int]:
+    """{store_id: bottles this month in the entries this person entered (their own number, without any cash adjustment)}."""
+    if not store_ids:
+        return {}
+    from app.core.entry_access import owned_clause
+
+    rows = db.execute(
+        select(OrderEntry.store_id, func.coalesce(func.sum(OrderEntry.bottle_count - OrderEntry.cash_adjustment), 0))
+        .where(OrderEntry.store_id.in_(store_ids), OrderEntry.order_date >= today.replace(day=1), OrderEntry.order_date <= today, owned_clause({uid}))
+        .group_by(OrderEntry.store_id)
+    ).all()
+    return {r[0]: int(r[1]) for r in rows}
+
+
 def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | None) -> Inventory:
     today = _today()
     cols = (
@@ -91,6 +105,8 @@ def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | No
         ]
 
     stats = month_stats(db, [r[0] for r in recs], today)
+    # An Entry Contributor is shown the bottles THEY entered, never a total that includes a colleague's numbers (or a developer's adjustment).
+    own = _own_month_bottles(db, [r[0] for r in recs], today, user.id) if not is_admin else None
     items: list[InventoryStore] = []
     for sid, name, code, plat, plat_slug, region, state, city, vendor, vendor_no, poc, poc_no, start, store_status in recs:
         last, bottles, entries, marked_today = stats.get(sid, (None, 0, 0, False))
@@ -100,7 +116,7 @@ def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | No
             start_date=start, status=store_status,
             # only a live store can be behind on its entries
             last_entry_date=last, pending_days=pending_days(last, today, start) if store_status == StoreStatus.LIVE.value else 0,
-            marked_today=marked_today, month_bottles=bottles, month_entries=entries,
+            marked_today=marked_today, month_bottles=bottles if own is None else own.get(sid, 0), month_entries=entries,
         ))
 
     summary = InventorySummary(

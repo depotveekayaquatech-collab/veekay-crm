@@ -24,6 +24,8 @@ export interface Employee {
   /** For admin accounts: "full" = every permission, "custom" = only what was ticked. */
   adminLevel: "full" | "custom" | null;
   directPermissions: string[];
+  /** The Team Lead this person reports to. */
+  reportsToId: string | null;
 }
 
 export interface EmployeeWire {
@@ -49,6 +51,7 @@ export interface EmployeeWire {
   category_label?: string;
   admin_level?: "full" | "custom" | null;
   direct_permissions: string[];
+  reports_to_id?: string | null;
 }
 
 export function toEmployee(w: EmployeeWire): Employee {
@@ -75,6 +78,7 @@ export function toEmployee(w: EmployeeWire): Employee {
     categoryLabel: w.category_label ?? "",
     adminLevel: w.admin_level ?? null,
     directPermissions: w.direct_permissions,
+    reportsToId: w.reports_to_id ?? null,
   };
 }
 

@@ -96,6 +96,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Reports", to: "/reports", icon: IconReport, permission: "orders.overview" },
       { label: "Delivery reports", to: "/delivery-reports", icon: IconReport, permission: "reports.delivery", requireRole: "partner" },
+      { label: "Store Audit", to: "/audit", icon: IconShield, permission: "entries.audit" },
+      { label: "Team entries", to: "/team-entries", icon: IconClipboard, permission: "entries.team", excludeRole: ["admin", "developer"] },
       { label: "Audit log", to: "/activity", icon: IconActivity, permission: "activity.view" },
     ],
   },

@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.core.entry_access import owned_clause
 from app.models.order_entry import EntrySource, OrderEntry
 from app.models.organization import Organization
 from app.models.store import Store
@@ -200,11 +201,13 @@ def my_entries(db: Session, user: User, days: int) -> dict:
     since = today - timedelta(days=days - 1)
     rows = db.execute(
         select(OrderEntry, Store).join(Store, Store.id == OrderEntry.store_id)
-        .where(OrderEntry.marked_by_user_id == user.id, OrderEntry.order_date >= since, OrderEntry.order_date <= today)
+        .where(owned_clause({user.id}), OrderEntry.order_date >= since, OrderEntry.order_date <= today)
         .order_by(OrderEntry.order_date.desc(), Store.name).limit(5000)
     ).all()
     items = [{
         "order_date": e.order_date, "store_id": s.id, "store_name": s.name, "store_code": s.external_code, "city": s.city, "state": s.state,
         "store_status": s.status, "bottles": e.bottle_count - e.cash_adjustment, "source": e.source, "entered_at": e.created_at,
+        # the server's own record of this entry: shown in the app as "Saved on server"
+        "entry_id": e.id, "version": e.version, "saved_on_server": True, "corrected": e.version > 1,
     } for e, s in rows]
     return {"today": today, "days": days, "total": len(items), "items": items}

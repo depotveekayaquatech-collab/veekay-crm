@@ -4,13 +4,15 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
-from fastapi import APIRouter, Depends, Query, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, Header, Query, File, Form, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.cache import read_cache
 from app.core.cached_json import cached_json_response
+from app.core import entry_access
 from app.core.config import settings
+from app.core.idempotency import idempotency_key_header
 from app.api.deps import get_current_permissions, get_current_user, require_permission
 from app.db.session import get_db
 from app.models.user import User
@@ -40,6 +42,16 @@ ADMIN_VIEW = "orders.correct"  # anyone who can correct sees any store
 
 def _is_admin(perms: set[str]) -> bool:
     return ADMIN_VIEW in perms
+
+
+def _client_time(value: str | None) -> str | None:
+    """The phone's own clock, kept only for diagnosis (never authoritative). Anything that is not a timestamp is dropped."""
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(value).isoformat() if value else None
+    except ValueError:
+        return None
 
 
 @router.get(
@@ -84,8 +96,10 @@ def calendar(
     db: Session = Depends(get_db),
 ) -> OrderCalendar:
     today = date.today()
+    admin = _is_admin(perms)
     return order_service.get_calendar(
-        db, user, store_id, year or today.year, month or today.month, is_admin=_is_admin(perms)
+        db, user, store_id, year or today.year, month or today.month, is_admin=admin,
+        scope=None if admin else entry_access.scope_for(db, user, perms),
     )
 
 
@@ -98,8 +112,11 @@ def mark(
     perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    idem: str | None = Depends(idempotency_key_header),
+    client_time: str | None = Header(default=None, alias="X-Client-Time", max_length=40),
 ) -> OrderCalendar:
-    return order_service.mark(db, user, payload, is_admin=_is_admin(perms))
+    """Send the same `Idempotency-Key` when you retry: a lost response then never creates a second entry or a false "already marked"."""
+    return order_service.mark(db, user, payload, is_admin=_is_admin(perms), request_key=idem, client_time=_client_time(client_time))
 
 
 @router.post(
@@ -111,9 +128,12 @@ def mark_many(
     perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    idem: str | None = Depends(idempotency_key_header),
+    client_time: str | None = Header(default=None, alias="X-Client-Time", max_length=40),
 ) -> MarkManyResult:
-    """Several dates of one store with a count each, in one request. Each date is checked on its own (see the per-date results)."""
-    return order_service.mark_many(db, user, payload, is_admin=_is_admin(perms))
+    """Several dates of one store with a count each, in one request. Each date is checked on its own (see the per-date results).
+    A saved date comes back with its entry id, version and server time: that is the server's confirmation."""
+    return order_service.mark_many(db, user, payload, is_admin=_is_admin(perms), request_key=idem, client_time=_client_time(client_time))
 
 
 class RevertImportRequest(BaseModel):

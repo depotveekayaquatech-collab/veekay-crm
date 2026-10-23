@@ -1,3 +1,5 @@
+import { EntryRoleSection } from "@/features/team/EntryRoleSection";
+import { useAuth } from "@/features/auth/useAuth";
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -18,6 +20,7 @@ interface Props {
 }
 
 export function EmployeeAccessModal({ onClose, employee }: Props) {
+  const { hasRole } = useAuth();
   const editing = Boolean(employee);
   const { create, update, setScope, setPermissions } = useTeamMutations();
   const { data: regions = [] } = useAllRegions();
@@ -135,6 +138,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
           />
         )}
         <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Optional" />
+        {employee && (hasRole("admin") || hasRole("developer")) && <EntryRoleSection employee={employee} />}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Select

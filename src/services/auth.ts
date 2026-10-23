@@ -27,6 +27,8 @@ interface MeResponse {
   roles: string[];
   is_admin: boolean;
   must_change_password?: boolean;
+  can_correct_own_entries?: boolean;
+  entry_level?: string;
 }
 
 function toCurrentUser(res: MeResponse): CurrentUser {
@@ -45,6 +47,8 @@ function toCurrentUser(res: MeResponse): CurrentUser {
     roles: res.roles,
     isAdmin: res.is_admin,
     mustChangePassword: res.must_change_password ?? false,
+    canCorrectOwnEntries: res.can_correct_own_entries ?? false,
+    entryLevel: res.entry_level ?? "entry_contributor",
   };
 }
 

@@ -4,6 +4,7 @@ import { api, type Me } from "@/api/api";
 import { ApiError, clearSession, refreshSession, setOnSessionExpired, signInPartner, signInStaff, signOut as endSession, storedSessionKind } from "@/api/client";
 import { staffApi, type StaffMe } from "@/api/staff";
 import { unregisterPush } from "@/lib/push";
+import { setQueueOwner } from "@/lib/scanQueue";
 
 interface AuthValue {
   /** A signed-in vendor or POC (null for anyone else). */
@@ -36,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setOnSessionExpired(() => {
+      setQueueOwner(null);                       // nobody is signed in: nothing waiting on this phone may be sent now
       setAccount(null);
       setStaff(null);
       queryClient.clear();
@@ -47,7 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const kind = await storedSessionKind();
         if (kind && (await refreshSession())) {
           if (kind === "partner") setAccount(await api.me());
-          else setStaff(await staffApi.me());
+          else {
+            const me = await staffApi.me();
+            setQueueOwner(me.id);
+            setStaff(me);
+          }
         }
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) await clearSession();
@@ -62,8 +68,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInPartner(identifier, password);
       setAccount(await api.me());
     } else {
+      setQueueOwner(null);                       // the previous person's scans must not be sent with this login
       await signInStaff(identifier, password);
-      setStaff(await staffApi.me());
+      const me = await staffApi.me();
+      setQueueOwner(me.id);
+      setStaff(me);
     }
   }, []);
 
@@ -72,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    setQueueOwner(null);                         // first: from now on nothing waiting on this phone is sent
     await unregisterPush();
     await endSession();
     queryClient.clear();

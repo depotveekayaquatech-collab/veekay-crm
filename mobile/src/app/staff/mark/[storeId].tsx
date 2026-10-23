@@ -5,6 +5,8 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCalendar, useCorrectEntry, useMarkMany, useMyStores } from "@/api/staffHooks";
+import { useAuth } from "@/auth/AuthProvider";
+import { useSubmissionKey } from "@/lib/submissionKey";
 import { Button, Card, Chips, ErrorNote, ListSkeleton } from "@/components/ui";
 import { MonthGrid, type CellState } from "@/components/MonthGrid";
 import { daysAgo, fmtDate, fmtNumber } from "@/lib/format";
@@ -43,6 +45,13 @@ export default function MarkMany() {
   const insets = useSafeAreaInsets();
   const mark = useMarkMany();
   const correct = useCorrectEntry();
+  const { staff } = useAuth();
+  const canFixOwn = !!staff?.can_correct_own_entries;       // off by default: a saved entry is corrected by a Team Lead or an admin
+  // One key per submission: it stays the same while the person retries after a timeout, so the server answers from what it already saved.
+  const submissionKey = useSubmissionKey();
+  // The server's confirmation of the last submission. Nothing is called "saved" until the server says so.
+  const [confirmed, setConfirmed] = useState<{ dates: number; bottles: number; at: string | null; repeated: number } | null>(null);
+  const [notSaved, setNotSaved] = useState<string | null>(null);   // the request failed: the numbers below were NOT confirmed saved
   const [fixing, setFixing] = useState<string | null>(null);      // a day already marked that the employee is correcting
   const [fixValue, setFixValue] = useState("");
   const mine = useMyStores();
@@ -87,6 +96,17 @@ export default function MarkMany() {
     const d = byDate.get(iso);
     if (!d || !d.marked) return;
     Haptics.selectionAsync().catch(() => undefined);
+    if (d.masked) {
+      Alert.alert("Already marked by a colleague", "Someone else marked this day. You can't see or change their number. If it looks wrong, tell your Team Lead.");
+      return;
+    }
+    if (!canFixOwn) {
+      Alert.alert(
+        "Saved on the server",
+        `You marked ${d.count ?? 0} bottles${d.entered_at ? ` on ${new Date(d.entered_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. A saved entry can't be changed from the app. If it is wrong, ask your Team Lead or an admin to correct it; your original number stays in the history.`,
+      );
+      return;
+    }
     if (d.source !== "employee") {
       Alert.alert(
         "Only an admin can change this day",
@@ -134,6 +154,7 @@ export default function MarkMany() {
   }
 
   function submit() {
+    setNotSaved(null);
     Alert.alert(
       `Mark ${selected.length} date${selected.length === 1 ? "" : "s"}?`,
       `${total} bottles in total. If you get one wrong, tap that date afterwards to correct it.`,
@@ -141,28 +162,40 @@ export default function MarkMany() {
         { text: "Review", style: "cancel" },
         {
           text: "Mark orders",
-          onPress: () =>
-            mark.mutate(
-              { store_id: storeId, entries: selected.map((d) => ({ order_date: d, bottle_count: Number(values[d]) })) },
-              {
-                onSuccess: (r) => {
-                  const failed = r.results.filter((x) => !x.ok);
-                  const done = new Set(r.results.filter((x) => x.ok).map((x) => x.order_date));
-                  setSelected((s) => s.filter((d) => !done.has(d)));
-                  setErrors(Object.fromEntries(failed.map((x) => [x.order_date, x.error ?? "Not saved"])));
-                  if (failed.length === 0) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-                    Alert.alert("Marked", `${r.saved} date${r.saved === 1 ? "" : "s"} saved.`, [{ text: "Done", onPress: () => router.back() }]);
-                  } else {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-                    Alert.alert(`${r.saved} saved, ${failed.length} not saved`, "The dates that were not saved are still selected, with the reason shown.");
-                  }
-                },
-                onError: (e) => Alert.alert("Couldn't mark orders", e.message),
-              },
-            ),
+          onPress: () => send(),
         },
       ],
+    );
+  }
+
+  /** Send the selected dates. A retry after a failure reuses the same key, so the server never saves a second copy. */
+  function send() {
+    setNotSaved(null);
+    setConfirmed(null);
+    const sentTotal = total;
+    mark.mutate(
+      { store_id: storeId, key: submissionKey.get(), entries: selected.map((d) => ({ order_date: d, bottle_count: Number(values[d]) })) },
+      {
+        onSuccess: (r) => {
+          const stored = r.results.filter((x) => x.ok && x.status);           // only what the server confirmed
+          const failed = r.results.filter((x) => !x.ok);
+          const done = new Set(stored.map((x) => x.order_date));
+          setSelected((s) => s.filter((d) => !done.has(d)));
+          setErrors(Object.fromEntries(failed.map((x) => [x.order_date, x.error ?? "Not saved"])));
+          if (stored.length > 0) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+            const times = stored.map((x) => x.saved_at).filter(Boolean).sort();
+            setConfirmed({ dates: stored.length, bottles: failed.length ? 0 : sentTotal, at: times[0] ?? null, repeated: stored.filter((x) => x.status === "already_saved").length });
+          }
+          if (failed.length === 0) submissionKey.renew();
+          else {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+            Alert.alert(`${stored.length} saved, ${failed.length} not saved`, "The dates that were not saved are still selected, with the reason shown. A colleague may already have marked them.");
+          }
+        },
+        // The request failed or timed out: the server may or may not have it. Nothing is confirmed, the numbers stay here, and the retry is safe.
+        onError: (e) => setNotSaved(e.message || "Couldn't reach the server."),
+      },
     );
   }
 
@@ -173,7 +206,8 @@ export default function MarkMany() {
       disabled: d.is_future || cal.data?.can_mark === false,
       selected: selected.includes(iso) || fixing === iso,
       today: d.is_today,
-      badge: d.marked ? d.count : null,
+      badge: d.masked ? "•" : d.marked ? d.count : null,
+      badgeTone: d.masked ? "muted" : "done",
     };
   };
 
@@ -190,7 +224,7 @@ export default function MarkMany() {
                 <Text style={[font.small, { marginTop: 2 }]}>Another store has exactly this name, so your entries may not show on the other copy. Tell your admin before you keep marking it.</Text>
               </View>
             ) : null}
-            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. Tap a green number to correct what you marked.</Text>
+            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. {canFixOwn ? "Tap a green number to correct what you marked." : "A green number is saved on the server; a dot means a colleague marked that day."}</Text>
             {lastOpenUntil ? (
               <View style={{ marginTop: 12, gap: 8 }}>
                 <Chips<"this" | "last"> options={[{ label: "This month", value: "this" }, { label: "Last month", value: "last" }]} value={period} onChange={switchPeriod} />
@@ -210,7 +244,7 @@ export default function MarkMany() {
               <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
                 {([["This month", totals.month_bottles ?? 0], ["Last month", totals.last_month_bottles ?? 0]] as const).map(([label, n]) => (
                   <View key={label} style={{ flex: 1, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 12 }}>
-                    <Text style={font.tiny}>{label} marked</Text>
+                    <Text style={font.tiny}>You marked {label.toLowerCase()}</Text>
                     <Text style={{ fontSize: 22, fontWeight: "800", color: colors.text }}>{fmtNumber(n)}<Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}> bottles</Text></Text>
                   </View>
                 ))}
@@ -294,8 +328,34 @@ export default function MarkMany() {
         )}
       </ScrollView>
 
+      {/* What the server said about the last submission */}
+      {mark.isPending ? (
+        <View accessibilityRole="alert" style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 16, paddingTop: 14, paddingBottom: insets.bottom + 14 }}>
+          <Text style={{ fontWeight: "800", color: colors.text }}>Saving to the server…</Text>
+          <Text style={font.small}>Please wait. Your numbers are not saved until this says so.</Text>
+        </View>
+      ) : notSaved ? (
+        <View accessibilityRole="alert" style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.dangerSoft, borderTopWidth: 1, borderTopColor: colors.danger, paddingHorizontal: 16, paddingTop: 14, paddingBottom: insets.bottom + 14, gap: 8 }}>
+          <Text style={{ fontWeight: "800", color: colors.danger }}>NOT saved yet</Text>
+          <Text style={font.small}>{notSaved} Your numbers are still on this screen. Tap Retry: it will not create duplicates, even if the first try did reach the server.</Text>
+          <Button title="Retry" onPress={send} style={{ minHeight: 48 }} />
+        </View>
+      ) : confirmed && selected.length === 0 ? (
+        <View accessibilityRole="alert" style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.successSoft, borderTopWidth: 1, borderTopColor: colors.success, paddingHorizontal: 16, paddingTop: 14, paddingBottom: insets.bottom + 14, gap: 8 }}>
+          <Text style={{ fontWeight: "800", color: colors.success }}>
+            <Ionicons name="cloud-done-outline" size={16} color={colors.success} /> Saved on the server
+          </Text>
+          <Text style={font.small}>
+            {confirmed.dates} date{confirmed.dates === 1 ? "" : "s"}{confirmed.bottles ? ` · ${confirmed.bottles} bottles` : ""}
+            {confirmed.at ? ` · server time ${new Date(confirmed.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : ""}
+            {confirmed.repeated ? `. ${confirmed.repeated} had already been saved by your earlier try, nothing was duplicated.` : "."}
+          </Text>
+          <Button title="Done" onPress={() => router.back()} style={{ minHeight: 48 }} />
+        </View>
+      ) : null}
+
       {/* Sticky summary bar, like a shopping cart */}
-      {selected.length > 0 && (
+      {selected.length > 0 && !mark.isPending && !notSaved && (
         <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 16, paddingTop: 12, paddingBottom: insets.bottom + 12, flexDirection: "row", alignItems: "center", gap: 14 }}>
           <View>
             <Text style={{ fontSize: 12, color: colors.textMuted }}>{selected.length} date{selected.length === 1 ? "" : "s"}</Text>

@@ -13,6 +13,10 @@ export interface CurrentUser {
   roles: string[];
   isAdmin: boolean;
   mustChangePassword: boolean;
+  /** The server lets an Entry Contributor change an entry they already submitted (off by default). */
+  canCorrectOwnEntries: boolean;
+  /** entry_contributor | team_lead | entry_reviewer | administrator */
+  entryLevel: string;
 }
 
 export interface TokenPair {

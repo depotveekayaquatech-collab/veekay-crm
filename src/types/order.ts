@@ -19,8 +19,12 @@ export interface MyStore {
   regionId: string | null;
   /** The server's "today" (YYYY-MM-DD) — quick entry marks against this, not the browser clock. */
   today: string;
+  /** YOUR number for the day; null when you have not marked it, or somebody else did (their number is never shown to you). */
   todayCount: number | null;
   yesterdayCount: number | null;
+  /** Somebody (you or a colleague) marked the day. */
+  todayMarked: boolean;
+  yesterdayMarked: boolean;
 }
 
 export interface CalendarDay {
@@ -34,6 +38,15 @@ export interface CalendarDay {
   enteredAt: string | null;
   isToday: boolean;
   isFuture: boolean;
+  /** You entered this day's number. */
+  mine: boolean;
+  /** Marked by somebody else: shown as marked, with no number, name or time. */
+  masked: boolean;
+  /** Administrators only. */
+  entryId: string | null;
+  version: number | null;
+  creatorName: string | null;
+  creatorVerified: boolean | null;
 }
 
 export interface OrderCalendar {
@@ -56,6 +69,11 @@ export interface MarkManyResultItem {
   orderDate: string;
   ok: boolean;
   error: string | null;
+  /** "saved" | "already_saved" only when the SERVER confirmed the entry is stored. */
+  status: string | null;
+  entryId: string | null;
+  savedAt: string | null;
+  version: number | null;
 }
 
 export interface MarkManyResult {
@@ -277,6 +295,12 @@ interface CalendarWire {
     entered_at?: string | null;
     is_today: boolean;
     is_future: boolean;
+    mine?: boolean;
+    masked?: boolean;
+    entry_id?: string | null;
+    version?: number | null;
+    creator_name?: string | null;
+    creator_verified?: boolean | null;
   }[];
 }
 
@@ -299,6 +323,12 @@ export function toCalendar(w: CalendarWire): OrderCalendar {
       enteredAt: d.entered_at ?? null,
       isToday: d.is_today,
       isFuture: d.is_future,
+      mine: Boolean(d.mine),
+      masked: Boolean(d.masked),
+      entryId: d.entry_id ?? null,
+      version: d.version ?? null,
+      creatorName: d.creator_name ?? null,
+      creatorVerified: d.creator_verified ?? null,
     })),
   };
 }
@@ -323,6 +353,8 @@ interface MyStoreWire {
   today: string;
   today_count: number | null;
   yesterday_count: number | null;
+  today_marked?: boolean;
+  yesterday_marked?: boolean;
 }
 
 export function toMyStore(w: MyStoreWire): MyStore {
@@ -346,6 +378,8 @@ export function toMyStore(w: MyStoreWire): MyStore {
     today: w.today,
     todayCount: w.today_count,
     yesterdayCount: w.yesterday_count,
+    todayMarked: w.today_marked ?? w.today_count !== null,
+    yesterdayMarked: w.yesterday_marked ?? w.yesterday_count !== null,
   };
 }
 

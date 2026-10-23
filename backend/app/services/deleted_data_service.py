@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.deleted_row import DeletedRow
+from app.core import audit_context
 from app.models.order_entry import OrderEntry
 from app.models.store import Store
 from app.models.user import User
@@ -138,11 +139,19 @@ def restore(
     for r, store, day in plan:
         d = r.data
         marker = _uuid(d.get("marked_by_user_id"))
+        # The restored entry keeps its ORIGINAL creator (and says so was verified or not), exactly as it was when it was removed;
+        # the restore itself is recorded as a RESTORED event naming the person who did it.
+        creator = _uuid(d.get("created_by_user_id"))
+        audit_context.bind(db, keep_creator="on" if creator else None, event_type="RESTORED")
         db.add(OrderEntry(
             organization_id=org, store_id=store.id, order_date=day, bottle_count=int(d["bottle_count"]),
             cash_adjustment=int(d.get("cash_adjustment") or 0), source=d.get("source") or "employee",
             marked_by_user_id=marker if marker in users else None,
+            created_by_user_id=creator, created_by_role=d.get("created_by_role"), created_by_name=d.get("created_by_name"),
+            created_by_code=d.get("created_by_code"), creator_verified=bool(d.get("creator_verified")) if creator else False,
+            created_via=d.get("created_via"), request_id=d.get("request_id"), source_app=d.get("source_app"),
         ))
+        db.flush()
         r.restored_at = now
         out["restored"] += 1
     activity_service.record(

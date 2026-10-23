@@ -19,6 +19,10 @@ export interface StaffMe {
   roles: string[];
   is_admin: boolean;
   must_change_password: boolean;
+  /** The server lets you change an entry you already saved (off by default: a Team Lead or an admin corrects it). */
+  can_correct_own_entries?: boolean;
+  /** entry_contributor | team_lead | entry_reviewer | administrator */
+  entry_level?: string;
 }
 
 export interface AttendanceToday {
@@ -43,6 +47,8 @@ export interface Reading { latitude?: number; longitude?: number; accuracy?: num
 export interface MyEntry {
   order_date: string; store_id: string; store_name: string; store_code: string; city: string | null; state: string | null;
   store_status: string; bottles: number; source: string; entered_at: string;
+  /** The server's own record of this entry. */
+  entry_id?: string; version?: number; saved_on_server?: boolean; corrected?: boolean;
 }
 export interface MyEntries { today: string; days: number; total: number; items: MyEntry[] }
 
@@ -68,7 +74,11 @@ export interface MyStore {
   id: string; name: string; external_code: string;
   /** The store's permanent system code (BKT000123 / ZPT000045), and whether another store of this platform has exactly this name. */
   crm_code?: string | null; duplicate_name?: boolean; state: string | null; city: string | null; region_name: string | null; vendor_name: string | null;
-  status: string; partner_name: string | null; today: string; today_count: number | null; yesterday_count?: number | null;
+  status: string; partner_name: string | null; today: string;
+  /** YOUR number for the day (null when you have not marked it, or a colleague did). */
+  today_count: number | null; yesterday_count?: number | null;
+  /** Somebody (you or a colleague) marked the day. */
+  today_marked?: boolean; yesterday_marked?: boolean;
   /** Days up to yesterday with no entry since the store's last filled day this month (0: only today is still due). */
   pending_days?: number;
   /** Bottles marked for this store so far this month, and in the whole of last month. */

@@ -23,7 +23,8 @@ from pydantic import BaseModel, Field
 from app.core.middleware import rate_windows
 from app.core.security import match_password
 
-from app.services import employee_import_service, employee_service
+from app.schemas.entry import EntryRoleSet
+from app.services import employee_import_service, employee_service, entry_service
 from app.services.store_sync_service import SyncError
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -70,6 +71,19 @@ def list_passwords(
     if match_password(payload.password, user.password_hash) is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Incorrect password.")
     return [PasswordRow(**r) for r in employee_service.password_overview(db, user)]
+
+
+@router.put("/{employee_id}/entry-role", dependencies=[Depends(require_permission("employees.update"))])
+def set_entry_role(
+    employee_id: uuid.UUID,
+    payload: EntryRoleSet,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Administrators only: make someone a Team Lead or Entry Reviewer (or a plain contributor again) and/or choose the Team Lead they report to."""
+    return entry_service.set_entry_role(
+        db, user, employee_id, level=payload.level, reports_to_id=payload.reports_to_id, set_reports_to="reports_to_id" in payload.model_fields_set,
+    )
 
 
 @router.post(

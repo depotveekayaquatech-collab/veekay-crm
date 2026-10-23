@@ -77,6 +77,7 @@ def to_out(db: Session, user: User) -> EmployeeOut:
         category_label=CATEGORY_LABELS[category],
         admin_level="full" if ADMIN in roles else ("custom" if MANAGER in roles else None),
         direct_permissions=sorted(urepo.get_direct_permission_codes(user.id)),
+        reports_to_id=user.reports_to_user_id,
     )
 
 
@@ -119,7 +120,7 @@ def to_out_many(db: Session, users: list[User]) -> list[EmployeeOut]:
             included_states=in_s.get(user.id, []), included_cities=in_c.get(user.id, []),
             states=states.get(user.id, []), roles=r, category=category, category_label=CATEGORY_LABELS[category],
             admin_level="full" if ADMIN in r else ("custom" if MANAGER in r else None),
-            direct_permissions=sorted(direct.get(user.id, [])),
+            direct_permissions=sorted(direct.get(user.id, [])), reports_to_id=user.reports_to_user_id,
         ))
     return out
 

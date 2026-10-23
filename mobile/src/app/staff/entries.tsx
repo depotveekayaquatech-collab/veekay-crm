@@ -60,6 +60,9 @@ export default function MyEntries() {
               <View style={{ flex: 1 }}>
                 <Text numberOfLines={2} style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{item.entry.store_name}</Text>
                 <Text numberOfLines={1} style={font.tiny}>{item.entry.store_code}{item.entry.city ? ` · ${item.entry.city}` : ""}</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success, marginTop: 2 }}>
+                  <Ionicons name="cloud-done-outline" size={12} color={colors.success} /> Saved on the server{item.entry.corrected ? " · corrected by your Team Lead or an admin" : ""}
+                </Text>
                 {item.entry.store_status !== "LIVE" ? (
                   <View style={{ alignSelf: "flex-start", marginTop: 4, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
                     <Ionicons name="information-circle-outline" size={13} color={colors.warning} />

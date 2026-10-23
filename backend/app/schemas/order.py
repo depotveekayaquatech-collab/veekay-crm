@@ -15,6 +15,15 @@ class CalendarDay(BaseModel):
     is_future: bool
     entered_by: str | None = None          # who wrote this day's number (an employee, or the admin / developer who imported or corrected it)
     entered_at: datetime | None = None     # and when
+    # Whose entry this is, for the caller. An Entry Contributor sees only their own numbers: a day somebody else marked shows as marked
+    # (so it can't be marked twice) with no count, no name and no time.
+    mine: bool = False
+    masked: bool = False
+    # Administrators only:
+    entry_id: uuid.UUID | None = None
+    version: int | None = None
+    creator_name: str | None = None
+    creator_verified: bool | None = None
 
 
 class OrderCalendar(BaseModel):
@@ -63,8 +72,10 @@ class MyStore(BaseModel):
     partner_name: str | None = None
     region_id: uuid.UUID | None = None
     today: date  # the server's "today" — the date the quick-entry list marks against
-    today_count: int | None = None
+    today_count: int | None = None                # YOUR number for today (null when you have not marked it, or somebody else did)
     yesterday_count: int | None = None
+    today_marked: bool = False                    # somebody marked today (you or somebody else); the number is only shown if it is yours
+    yesterday_marked: bool = False
     # days up to yesterday with no entry since the store's last filled day (this month); 0 = only today is still due
     pending_days: int = 0
     # bottles marked for this store: so far this month, and in the whole of last month
@@ -218,6 +229,11 @@ class MarkResultItem(BaseModel):
     order_date: date
     ok: bool
     error: str | None = None
+    # Present only when the SERVER confirms the entry is stored: the app shows "Saved on server" from these and nothing else.
+    status: str | None = None             # "saved" | "already_saved" (the same number you sent earlier: a retry, nothing duplicated) | None (not saved)
+    entry_id: uuid.UUID | None = None
+    saved_at: datetime | None = None
+    version: int | None = None
 
 
 class MarkManyResult(BaseModel):

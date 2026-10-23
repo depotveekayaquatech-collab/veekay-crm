@@ -216,6 +216,9 @@ def _import_grids(
     overwrite: bool,
     source: str,
 ) -> OrderImportResult:
+    from app.core import audit_context
+
+    audit_context.bind(db, actor, source=f"order_sheet_import_{source}")     # every entry this import writes names who ran it and where it came from
     partner_slug = partner_slug.strip().lower()
     partner = db.execute(
         select(Organization).where(

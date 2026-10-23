@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from app.models.order_entry import OrderEntry
 from app.models.store import Store
 
-from .conftest import API
+from .conftest import API, plant_entry
 
 AUDIT = f"{API}/developer/order-audit"
 TODAY = datetime.now(timezone.utc).date()
@@ -123,10 +123,9 @@ def test_my_entries_lists_what_the_employee_entered_even_after_the_store_left_li
     # nobody else sees them
     assert not any(i["store_code"] in ("ME-A", "ME-B") for i in client.get(f"{API}/orders/my-entries", headers=zepto_emp).json()["items"])
     # a day outside the window is not listed
-    me = db.query(OrderEntry).filter(OrderEntry.store_id == a.id).one().marked_by_user_id
+    me = db.query(OrderEntry).filter(OrderEntry.store_id == a.id).one().created_by_user_id
     old = make_store(code="ME-OLD")
-    db.add(OrderEntry(organization_id=old.organization_id, store_id=old.id, order_date=TODAY - timedelta(days=10), bottle_count=9, source="employee", marked_by_user_id=me))
-    db.commit()
+    plant_entry(db, old, TODAY - timedelta(days=10), 9, creator=me)
     assert "ME-OLD" not in {i["store_code"] for i in client.get(f"{API}/orders/my-entries", headers=emp, params={"days": 7}).json()["items"]}
     assert "ME-OLD" in {i["store_code"] for i in client.get(f"{API}/orders/my-entries", headers=emp, params={"days": 14}).json()["items"]}
 
@@ -216,11 +215,10 @@ def test_my_stores_shows_the_bottles_marked_this_month_and_last_month(client, em
     _mark(client, emp, s, 40, first)                                   # this month
     if TODAY != first:
         _mark(client, emp, s, 25, TODAY)                               # this month, another day
-    me = db.query(OrderEntry).filter(OrderEntry.store_id == s.id).first().marked_by_user_id
+    me = db.query(OrderEntry).filter(OrderEntry.store_id == s.id).first().created_by_user_id
     for day, n in ((last_month, 100), (last_month + timedelta(days=9), 50)):
-        db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=day, bottle_count=n, source="employee", marked_by_user_id=me))
-    db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=last_month - timedelta(days=1), bottle_count=999, source="employee"))   # the month before: not counted
-    db.commit()
+        plant_entry(db, s, day, n, creator=me)
+    plant_entry(db, s, last_month - timedelta(days=1), 999, creator=me)                    # the month before: not counted
     expected_this = 40 if TODAY == first else 65
     got = {x["external_code"]: x for x in client.get(f"{API}/orders/my-stores", headers=emp).json()}
     assert got["MT-A"]["month_bottles"] == expected_this and got["MT-A"]["last_month_bottles"] == 150

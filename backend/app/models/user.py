@@ -69,6 +69,11 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # soft-delete / deactivation flag
 
+    # The Team Lead this person reports to (their entries are in that lead's team scope). Null = reports to no one.
+    reports_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     organization: Mapped["Organization"] = relationship(
         back_populates="users", foreign_keys=[organization_id]
     )

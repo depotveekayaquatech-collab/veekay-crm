@@ -40,8 +40,10 @@ def _system_actor(db) -> User | None:
 def execute_sync(db, actor: User, source: str) -> dict:
     """One full sync: stores first, then order counts (so a store added by the sheet can get its counts in the same run).
     Used by the daily 10:00 job (source="scheduled") and by "Sync now" (source="manual"). Records when it ran."""
+    from app.core import audit_context
     from app.services import activity_service, order_import_service, store_sync_service
 
+    audit_context.bind(db, actor, source=f"sheet_sync_{source}")      # entries the sync writes name the actor and say they came from the sheet sync
     out: dict = {"stores": [], "orders": []}
     pull_sheets = source != "scheduled" or settings.SHEET_AUTO_SYNC   # automatic runs may be switched off; "Sync now" never is
     if pull_sheets and settings.sheet_sources():

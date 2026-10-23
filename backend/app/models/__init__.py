@@ -12,6 +12,7 @@ from app.models.state_assignment import StateAssignment
 from app.models.idempotency_key import IdempotencyKey
 from app.models.order_archive import OrderEntryArchive
 from app.models.order_entry import EntrySource, OrderEntry
+from app.models.order_entry_event import OrderEntryEvent, SecurityEvent
 from app.models.audit_log import AuditLog
 from app.models.refresh_session import RefreshSession
 from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office

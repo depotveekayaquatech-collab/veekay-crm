@@ -85,8 +85,9 @@ def test_employees_only_see_vendors_of_their_own_stores(client, emp, make_store)
 
 
 # ---------------------------------------------------------------- PDFs
-def test_blank_and_monthly_pdf_for_a_vendor(client, admin, make_store):
-    make_store(vendor="PDF Vendor"), make_store(vendor="PDF Vendor")
+def test_blank_and_monthly_pdf_for_a_vendor(client, db, admin, make_store):
+    a, b = make_store(vendor="PDF Vendor"), make_store(vendor="PDF Vendor")
+    entry(db, a, date(2026, 9, 2), 5), entry(db, b, date(2026, 9, 2), 3)         # a month's cards exist for stores that were supplied in it
     blank = client.get(f"{API}/cards/pdf", headers=admin, params={"partner": "blinkit", "vendor": "PDF Vendor"})
     assert blank.status_code == 200 and blank.content[:5] == b"%PDF-" and blank.headers["x-card-count"] == "2"
     monthly = client.get(f"{API}/cards/pdf", headers=admin, params={"partner": "blinkit", "vendor": "PDF Vendor", "month": "2026-09"})
@@ -122,8 +123,8 @@ def test_zip_has_one_pdf_per_vendor(client, admin, make_store):
     assert all(z.read(n)[:5] == b"%PDF-" for n in z.namelist())
 
 
-def test_zip_with_a_month_is_named_for_it(client, admin, make_store):
-    make_store(vendor="ZIP M")
+def test_zip_with_a_month_is_named_for_it(client, db, admin, make_store):
+    entry(db, make_store(vendor="ZIP M"), date(2026, 9, 2), 5)
     r = client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["ZIP M"], "partner": "blinkit", "month": "2026-09"})
     assert r.status_code == 200 and "2026" in r.headers["content-disposition"] + "".join(zipfile.ZipFile(io.BytesIO(r.content)).namelist())
 
@@ -209,17 +210,42 @@ def test_cards_vendors_returns_public_app_url(client, admin):
 
 
 
-def test_vendor_list_for_a_month_only_has_stores_that_had_started(client, admin, make_store):
-    """A vendor whose stores all started after the chosen month must not be offered for it (its PDF would be empty -> 404)."""
-    late, early = make_store(vendor="ZZ Late Vendor"), make_store(vendor="ZZ Early Vendor")
-    late.start_date, early.start_date = date(2026, 9, 1), date(2026, 5, 1)
-    from sqlalchemy.orm import object_session
-    object_session(late).commit()
+def test_a_month_offers_only_stores_that_were_supplied_in_it(client, db, admin, make_store):
+    """A store nobody marked in the month gets no card and its vendor is not offered for it (its PDF would be empty -> 404)."""
+    supplied, unmarked = make_store(vendor="ZZ Supplied Vendor M"), make_store(vendor="ZZ Unmarked Vendor M")
+    entry(db, supplied, date(2026, 7, 5), 4)
 
     july = {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-07"}).json()["vendors"]}
-    assert "ZZ Early Vendor" in july and "ZZ Late Vendor" not in july
-    assert client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Late Vendor", "month": "2026-07"}).status_code == 404
-    assert "ZZ Late Vendor" in {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin).json()["vendors"]}   # no month: all
+    assert "ZZ Supplied Vendor M" in july and "ZZ Unmarked Vendor M" not in july
+    assert client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Unmarked Vendor M", "month": "2026-07"}).status_code == 404
+    both = {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin).json()["vendors"]}   # blank cards: every live store
+    assert {"ZZ Supplied Vendor M", "ZZ Unmarked Vendor M"} <= both
+
+
+def test_a_marked_zero_is_not_a_supply(client, db, admin, make_store):
+    s = make_store(vendor="ZZ Zero Vendor")
+    entry(db, s, date(2026, 7, 5), 0)
+    assert "ZZ Zero Vendor" not in {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-07"}).json()["vendors"]}
+
+
+def test_a_store_that_has_since_closed_still_gets_the_cards_of_the_months_it_was_supplied(client, db, admin, emp, make_store):
+    """CPC Sonipat was supplied for some months and is closed now: its cards for those months must still be there."""
+    closed = make_store(vendor="ZZ Closed Vendor", status="CLOSE", name="CPC Sonipat Test")
+    entry(db, closed, date(2026, 7, 9), 12)
+
+    for who in (admin, emp):                                                         # the admin, and an employee whose region it is in
+        july = {v["vendor"]: v["stores"] for v in client.get(f"{API}/cards/vendors", headers=who, params={"month": "2026-07"}).json()["vendors"]}
+        assert july.get("ZZ Closed Vendor") == 1, who
+    pdf = client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Closed Vendor", "month": "2026-07"})
+    assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-" and pdf.headers["x-card-count"] == "1"
+    assert client.post(f"{API}/cards/zip", headers=admin, json={"vendors": ["ZZ Closed Vendor"], "month": "2026-07"}).status_code == 200
+    one = client.get(f"{API}/cards/pdf", headers=admin, params={"store_id": str(closed.id), "month": "2026-07"})
+    assert one.status_code == 200
+    # a month it was NOT supplied in, and blank cards, do not list it
+    assert "ZZ Closed Vendor" not in {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-06"}).json()["vendors"]}
+    assert "ZZ Closed Vendor" not in {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin).json()["vendors"]}
+    # the QR on an old card still opens
+    assert client.get(f"{API}/public/count", params={"s": str(closed.id), "sig": cards.sign_store(closed.id)}).status_code == 200
 
 
 def test_a_store_with_bottles_in_the_month_is_on_that_months_cards_even_if_its_start_date_is_later(client, admin, db, make_store):

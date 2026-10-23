@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { IconMapPin, IconStore } from "@/components/ui/icons";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePermission } from "@/hooks/usePermission";
+import { useAuth } from "@/features/auth/useAuth";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
@@ -90,6 +91,7 @@ export function MarkOrdersPage() {
   const [params] = useSearchParams();
   const canMark = usePermission("orders.mark");
   const isAdmin = usePermission("orders.correct");
+  const { user } = useAuth();
   const [pickedId, setStoreId] = useState(params.get("store") ?? "");
   // Someone with a single store has nothing to pick — open it straight away.
   const storeId = pickedId || (stores?.length === 1 ? stores[0].id : "");
@@ -222,7 +224,7 @@ export function MarkOrdersPage() {
                     marking={mark.isPending || markMany.isPending || correctOwn.isPending}
                     onNavigate={(year, month) => setPeriod({ year, month })}
                     onMark={canMark ? (date, count) => mark.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
-                    onCorrect={canMark && !isAdmin ? (date, count) => correctOwn.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
+                    onCorrect={canMark && !isAdmin && user?.canCorrectOwnEntries ? (date, count) => correctOwn.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
                     onMarkMany={canMark ? (entries) => markMany.mutateAsync({ storeId: selectedStore.id, entries }) : undefined}
                     isAdmin={isAdmin}
                   />

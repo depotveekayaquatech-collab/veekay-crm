@@ -15,6 +15,7 @@ function Chevron({ dir }: { dir: "left" | "right" }) {
 }
 
 function dayTone(d: CalendarDay, clickable: boolean): string {
+  if (d.marked && d.masked) return "border-surface-border bg-surface-muted text-gray-500";   // a colleague marked it: shown as done, no number
   if (d.marked) {
     return d.source === "admin"
       ? "border-status-warning/30 bg-status-warning-soft text-status-warning"
@@ -323,9 +324,9 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 type="button"
                 onClick={() => pick(d)}
                 disabled={!isClickable}
-                title={d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}` : d.isFuture ? undefined : "Not marked"}
+                title={d.masked ? "Marked by a colleague. Only the person who entered a number (and their Team Lead) can see it." : d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}` : d.isFuture ? undefined : "Not marked"}
                 style={
-                  !isPicked && d.marked && d.source !== "admin"
+                  !isPicked && d.marked && !d.masked && d.source !== "admin"
                     ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` }
                     : undefined
                 }
@@ -338,7 +339,9 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 }`}
               >
                 <span className={`absolute left-1.5 top-1 text-[10px] font-semibold ${d.marked ? "opacity-70" : ""}`}>{d.day}</span>
-                {d.marked ? (
+                {d.masked ? (
+                  <span className="text-xs font-semibold" aria-label="Marked by a colleague">Marked</span>
+                ) : d.marked ? (
                   <span className="text-base font-bold tabular-nums">{d.count}</span>
                 ) : !d.isFuture ? (
                   <span className="text-lg font-light text-gray-300">+</span>

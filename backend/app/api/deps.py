@@ -7,10 +7,11 @@ declare the permission(s) they need via Depends(require_permission(...)).
 import uuid
 from collections.abc import Callable
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core import audit_context
 from app.core.security import InvalidTokenError, TokenClaims, TokenType, decode_claims
 from app.db.session import get_db
 from app.models.user import User, UserStatus
@@ -57,10 +58,13 @@ def _authenticate(token: str | None, db: Session) -> tuple[User, TokenClaims]:
 
 
 def get_current_user_allow_pending(
-    token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ) -> User:
-    """Authenticated user, even if they still owe a password change (used by the auth/account routes)."""
-    return _authenticate(token, db)[0]
+    """Authenticated user, even if they still owe a password change (used by the auth/account routes). The verified identity is also
+    attached to the database session, so ownership and the audit trail of any entry written in this request name this user."""
+    user = _authenticate(token, db)[0]
+    audit_context.bind_request(db, user, request)
+    return user
 
 
 def get_current_family(

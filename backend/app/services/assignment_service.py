@@ -111,7 +111,9 @@ def all_live_stores(db: Session, user: User) -> list[Store]:
     return _load(db, list(rows))
 
 
-def visible_stores(db: Session, employee: User) -> list[Store]:
+def visible_stores(db: Session, employee: User, *, include_closed: bool = False) -> list[Store]:
+    """The stores in this employee's scope. Live ones only, unless include_closed: month-based views (cards) also need the stores that have
+    since closed, because what was supplied in a month stays true after the store closes."""
     partner_id = employee.platform_organization_id
     if partner_id is None:
         return []
@@ -121,7 +123,7 @@ def visible_stores(db: Session, employee: User) -> list[Store]:
             select(Store).where(
                 Store.organization_id == employee.organization_id,
                 Store.partner_organization_id == partner_id,
-                Store.status == StoreStatus.LIVE.value,
+                *([] if include_closed else [Store.status == StoreStatus.LIVE.value]),
             )
         ).scalars().all()
         return _load(db, list(rows))
@@ -136,7 +138,7 @@ def visible_stores(db: Session, employee: User) -> list[Store]:
     live = select(Store).where(
         Store.organization_id == employee.organization_id,
         Store.partner_organization_id == partner_id,
-        Store.status == StoreStatus.LIVE.value,
+        *([] if include_closed else [Store.status == StoreStatus.LIVE.value]),
     )
 
     ex_states, ex_cities = employee_exclusions(db, employee.id)

@@ -152,6 +152,21 @@ def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def plant_entry(db, store, day, count, *, creator=None, source="employee", cash_adjustment=0, marked_by=None):
+    """Insert an order entry straight into the database the way the app would have written it: as `creator` (a user id), so the database trigger
+    stamps it as that person's verified entry. With no creator it is what a legacy row looks like (written with no known actor: unverified)."""
+    from sqlalchemy import text
+    from app.models.order_entry import OrderEntry
+
+    if creator is not None:
+        db.execute(text("SELECT set_config('app.actor_id', :i, true)"), {"i": str(creator)})
+    e = OrderEntry(organization_id=store.organization_id, store_id=store.id, order_date=day, bottle_count=count + cash_adjustment,
+                   cash_adjustment=cash_adjustment, source=source, marked_by_user_id=marked_by if marked_by is not None else creator)
+    db.add(e)
+    db.commit()
+    return e
+
+
 @pytest.fixture()
 def admin(client):
     r = login(client, "ADMIN001")

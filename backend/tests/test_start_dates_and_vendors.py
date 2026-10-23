@@ -154,6 +154,8 @@ def test_scheduled_runs_can_skip_the_sheets_but_sync_now_cannot(monkeypatch):
     monkeypatch.setattr("app.services.reminder_service.send_bill_reminders", lambda db: {"reminders": 0})
     monkeypatch.setattr(activity_service, "record", lambda *a, **k: None)
 
+    monkeypatch.setattr("app.core.audit_context.bind", lambda *a, **k: None)    # no real session here to carry the actor
+
     class _Db:
         def commit(self): ...
         def rollback(self): ...

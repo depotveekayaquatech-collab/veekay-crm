@@ -9,7 +9,7 @@ from app.api.deps import (
     get_current_permissions,
     get_current_user_allow_pending,
 )
-from app.core import mailer
+from app.core import entry_access, mailer
 from app.core.config import settings
 from app.core.middleware import rate_windows
 from app.core.ratelimit import client_ip, login_failures
@@ -182,6 +182,8 @@ def get_me(
         roles=roles,
         is_admin=ADMIN_ROLE_CODE in roles,
         must_change_password=user.must_change_password,
+        can_correct_own_entries=settings.EMPLOYEE_CAN_CORRECT_OWN,
+        entry_level=entry_access.level_of(db, user, permissions).value,
     )
 
 

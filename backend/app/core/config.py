@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     PASSWORD_VAULT_KEY: str = Field(default="")
     # Activity-log rows older than this many days are deleted every night (0 = keep everything). Keeps the table small and fast.
     AUDIT_KEEP_DAYS: int = Field(default=60, ge=0)
+    # The time zone the audit screens and date/time filters use (stored times are always UTC).
+    DISPLAY_TIMEZONE: str = Field(default="Asia/Kolkata")
+    # Entry Contributors may NOT edit or delete a submitted entry (corrections go to a Team Lead / administrator). Set true only to bring back the old
+    # "employee corrects their own entry" behaviour; every such change is still written to the entry history.
+    EMPLOYEE_CAN_CORRECT_OWN: bool = Field(default=False)
 
     # "Forgot password" by emailed one-time code. Free with a Gmail account + App Password (smtp.gmail.com:587). Empty SMTP_HOST = feature off.
     SMTP_HOST: str = Field(default="")

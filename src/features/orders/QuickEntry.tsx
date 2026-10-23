@@ -4,6 +4,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { IconCheckCircle, IconMapPin } from "@/components/ui/icons";
 import { FilterChip, ProgressBar, ProgressRing, SearchBox, SegmentedControl } from "@/features/orders/ui";
 import { useCorrectOwnEntry, useMarkOrder } from "@/features/orders/useOrders";
+import { useAuth } from "@/features/auth/useAuth";
 import type { MyStore } from "@/types/order";
 
 type Day = "today" | "yesterday";
@@ -22,6 +23,7 @@ function shiftDate(iso: string, days: number): string {
 function Row({
   store,
   existing,
+  lockedByOther,
   saving,
   suggestion,
   canEdit,
@@ -30,6 +32,8 @@ function Row({
 }: {
   store: MyStore;
   existing: number | null;
+  /** Somebody else marked this day: it counts as marked, but their number is never shown to you. */
+  lockedByOther: boolean;
   saving: boolean;
   /** Yesterday's count, offered as a one-tap fill for today. */
   suggestion: number | null;
@@ -50,11 +54,11 @@ function Row({
     <li className={`flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3.5 transition-colors sm:px-5 ${existing !== null ? "bg-status-success-soft/30" : "hover:bg-surface-subtle/70"}`}>
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-          existing !== null ? "bg-status-success text-white" : live ? "bg-surface-muted text-gray-500" : "bg-surface-muted text-gray-400"
+          existing !== null ? "bg-status-success text-white" : lockedByOther ? "bg-surface-muted text-status-success" : live ? "bg-surface-muted text-gray-500" : "bg-surface-muted text-gray-400"
         }`}
         aria-hidden="true"
       >
-        {existing !== null ? <IconCheckCircle className="h-5 w-5" /> : <IconMapPin className="h-5 w-5" />}
+        {existing !== null || lockedByOther ? <IconCheckCircle className="h-5 w-5" /> : <IconMapPin className="h-5 w-5" />}
       </span>
 
       <div className="min-w-0 flex-1 basis-52">
@@ -90,6 +94,10 @@ function Row({
             </Button>
           )}
         </div>
+      ) : lockedByOther ? (
+        <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-gray-600" title="A colleague already marked this day. You cannot see or change their number; ask your Team Lead if it looks wrong.">
+          Already marked by a colleague
+        </span>
       ) : !live ? (
         <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-gray-500">Not live</span>
       ) : (
@@ -156,6 +164,8 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
   const mark = useMarkOrder();
   const correctOwn = useCorrectOwnEntry();
   const canCorrect = usePermission("orders.correct");
+  const { user } = useAuth();
+  const canEditOwn = Boolean(user?.canCorrectOwnEntries); // off by default: a submitted entry is changed by a Team Lead or an admin, not by its author
   const [day, setDay] = useState<Day>("today");
   const [query, setQuery] = useState("");
   const [show, setShow] = useState<Show>("todo");
@@ -169,21 +179,22 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
   const activeDay: Day = day === "yesterday" && yesterdayAllowed ? "yesterday" : "today";
   const date = activeDay === "today" ? today : yesterday;
 
-  const countOf = (s: MyStore) => (activeDay === "today" ? s.todayCount : s.yesterdayCount);
+  const countOf = (s: MyStore) => (activeDay === "today" ? s.todayCount : s.yesterdayCount); // YOUR number only
+  const markedOf = (s: MyStore) => (activeDay === "today" ? s.todayMarked : s.yesterdayMarked); // marked by anyone
 
   const liveStores = useMemo(() => stores.filter((s) => s.status === "LIVE"), [stores]);
-  const done = liveStores.filter((s) => countOf(s) !== null).length;
+  const done = liveStores.filter((s) => markedOf(s)).length;
   const todo = liveStores.length - done;
   const bottles = liveStores.reduce((sum, s) => sum + (countOf(s) ?? 0), 0);
   const percent = liveStores.length ? Math.round((done / liveStores.length) * 100) : 0;
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const isOpen = (s: MyStore) => s.status === "LIVE" && countOf(s) === null;
+    const isOpen = (s: MyStore) => s.status === "LIVE" && !markedOf(s);
     return stores
       .filter((s) => !q || [s.name, s.externalCode, s.city, s.state].some((f) => (f ?? "").toLowerCase().includes(q)))
-      .filter((s) => (show === "todo" ? isOpen(s) : show === "done" ? countOf(s) !== null : true))
-      .sort((a, b) => Number(!(a.status === "LIVE" && countOf(a) === null)) - Number(!(b.status === "LIVE" && countOf(b) === null)) || a.name.localeCompare(b.name));
+      .filter((s) => (show === "todo" ? isOpen(s) : show === "done" ? markedOf(s) : true))
+      .sort((a, b) => Number(!isOpen(a)) - Number(!isOpen(b)) || a.name.localeCompare(b.name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stores, query, show, activeDay]);
 
@@ -195,11 +206,11 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
   async function save(store: MyStore, count: number) {
     setSavingId(store.id);
     try {
-      // an entry that already exists is corrected: an admin sets it, an employee changes the one they marked
+      // an entry that already exists is corrected only by an admin (or, if the server allows it, by its own author)
       if (countOf(store) !== null && !canCorrect) await correctOwn.mutateAsync({ storeId: store.id, date, count });
       else await mark.mutateAsync({ storeId: store.id, date, count });
       // Jump to the next store that still needs a number.
-      const next = rows.find((r) => r.id !== store.id && r.status === "LIVE" && countOf(r) === null);
+      const next = rows.find((r) => r.id !== store.id && r.status === "LIVE" && !markedOf(r));
       if (next) setTimeout(() => inputs.current.get(next.id)?.focus(), 50);
     } finally {
       setSavingId(null);
@@ -253,7 +264,7 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
             <FilterChip active={show === "all"} onClick={() => setShow("all")} count={stores.length}>All</FilterChip>
           </div>
           <p className="ml-auto hidden text-xs text-gray-400 lg:block">
-            <kbd className="rounded border border-surface-border px-1 font-semibold">Enter</kbd> saves &amp; jumps to the next store · {canCorrect ? "you can edit saved entries" : "saved entries need an admin to change"}
+            <kbd className="rounded border border-surface-border px-1 font-semibold">Enter</kbd> saves &amp; jumps to the next store · {canCorrect || canEditOwn ? "you can edit saved entries" : "saved entries are changed by your Team Lead or an admin"}
           </p>
         </div>
 
@@ -276,9 +287,10 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
                 key={`${s.id}-${date}`}
                 store={s}
                 existing={countOf(s)}
+                lockedByOther={markedOf(s) && countOf(s) === null}
                 saving={savingId === s.id}
                 suggestion={activeDay === "today" ? s.yesterdayCount : null}
-                canEdit
+                canEdit={canCorrect || canEditOwn}
                 onSave={(c) => void save(s, c)}
                 inputRef={(el) => {
                   inputs.current.set(s.id, el);

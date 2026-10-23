@@ -27,6 +27,7 @@ import {
   IconClipboard,
   IconGrid,
   IconMapPin,
+  IconShield,
   IconStore,
   IconUsers,
 } from "@/components/ui/icons";
@@ -393,6 +394,7 @@ function AdminDashboard() {
   const testReports = useTestReports("zepto");
 
   const quickActions = [
+    { to: "/audit", label: "Store Audit", icon: IconShield, perm: "entries.audit" },
     { to: "/orders/overview", label: "Daily overview", icon: IconChart, perm: "orders.overview" },
     { to: "/orders/correct", label: "Correct entries", icon: IconGrid, perm: "orders.correct" },
     { to: "/team", label: "Team & access", icon: IconUsers, perm: "employees.view" },
@@ -695,7 +697,7 @@ function EmployeeDashboard() {
   const { data: stores = [], isLoading } = useMyStores();
 
   // my-stores already says, per store, whether today is marked and how many bottles: one request, not one per store.
-  const rows = stores.map((s) => ({ store: s, marked: s.todayCount !== null, count: s.todayCount ?? 0, loading: false }));
+  const rows = stores.map((s) => ({ store: s, marked: s.todayMarked, count: s.todayCount ?? 0, loading: false }));
   const markedToday = rows.filter((r) => r.marked).length;
   const bottlesToday = rows.reduce((sum, r) => sum + (r.marked ? r.count : 0), 0);
   const pct = stores.length ? Math.round((markedToday / stores.length) * 100) : 0;
@@ -783,11 +785,30 @@ export function DashboardPage() {
     month: "long",
   });
 
+  const canAudit = usePermission("entries.audit");
+  const isLead = usePermission("entries.team");
+
   if (isAccountant && !canOrders && !isAdmin) return <Navigate to="/accounts" replace />;
+  // An Entry Reviewer works from Store Audit: it is their home page.
+  if (canAudit && !isAdmin && !canOrders) return <Navigate to="/audit" replace />;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={`Welcome back, ${firstName}`} subtitle={dateLabel} />
+      <PageHeader
+        title={`Welcome back, ${firstName}`}
+        subtitle={dateLabel}
+        action={
+          canAudit ? (
+            <Link to="/audit" className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600">
+              <IconShield className="h-4 w-4" aria-hidden="true" /> Store Audit
+            </Link>
+          ) : isLead ? (
+            <Link to="/team-entries" className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600">
+              <IconClipboard className="h-4 w-4" aria-hidden="true" /> Team entries
+            </Link>
+          ) : undefined
+        }
+      />
       <CappingAlertBanner />
       {isAdmin ? <AdminDashboard /> : <EmployeeDashboard />}
     </div>

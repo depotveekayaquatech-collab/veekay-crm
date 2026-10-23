@@ -12,6 +12,8 @@ const HomePage = lazy(() => import("@/app/HomePage").then((m) => ({ default: m.H
 const DashboardPage = lazy(() => import("@/features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const LoginPage = lazy(() => import("@/features/auth/LoginPage").then((m) => ({ default: m.LoginPage })));
 const ForgotPasswordPage = lazy(() => import("@/features/auth/ForgotPasswordPage").then((m) => ({ default: m.ForgotPasswordPage })));
+const StoreAuditPage = lazy(() => import("@/features/entries/StoreAuditPage").then((m) => ({ default: m.StoreAuditPage })));
+const TeamEntriesPage = lazy(() => import("@/features/entries/TeamEntriesPage").then((m) => ({ default: m.TeamEntriesPage })));
 const MarkOrdersPage = lazy(() => import("@/features/orders/MarkOrdersPage").then((m) => ({ default: m.MarkOrdersPage })));
 const DailyOverviewPage = lazy(() => import("@/features/orders/DailyOverviewPage").then((m) => ({ default: m.DailyOverviewPage })));
 const CorrectEntriesPage = lazy(() => import("@/features/orders/CorrectEntriesPage").then((m) => ({ default: m.CorrectEntriesPage })));
@@ -119,6 +121,8 @@ export function AppRoutes() {
         <Route path="/pending" element={<Navigate to="/orders/pending" replace />} />
         <Route path="/reports" element={<Require permission="orders.overview"><ReportsPage /></Require>} />
         <Route path="/team" element={<Require permission="employees.view"><TeamPage /></Require>} />
+        <Route path="/audit" element={<Require permission="entries.audit"><StoreAuditPage /></Require>} />
+        <Route path="/team-entries" element={<Require permission="entries.team"><TeamEntriesPage /></Require>} />
         <Route path="/stores" element={<Require permission="stores.view"><StoresPage /></Require>} />
         <Route path="/regions" element={<Navigate to="/stores" replace />} />
         <Route path="/activity" element={<Require permission="activity.view"><ActivityPage /></Require>} />

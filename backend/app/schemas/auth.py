@@ -77,5 +77,9 @@ class CurrentUserResponse(BaseModel):
     roles: list[str]
     is_admin: bool = False
     must_change_password: bool = False
+    # Entry Contributors may change an entry they already submitted only if the server allows it (it does not, by default).
+    can_correct_own_entries: bool = False
+    # The caller's level in the entry hierarchy: entry_contributor | team_lead | entry_reviewer | administrator
+    entry_level: str = "entry_contributor"
 
     model_config = {"from_attributes": True}

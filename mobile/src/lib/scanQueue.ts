@@ -4,16 +4,23 @@
  * Every scan gets a unique scan_id the moment the camera reads it. The API treats a repeated scan_id as "already
  * recorded", so re-sending after a dropped connection, an app restart or a double tap can never count a bottle twice.
  * A scan that can't be sent right now stays in this queue (kept on the phone) and is sent when the network is back.
+ *
+ * Whose scan is it? Every queued scan carries the id of the account that scanned it, and is only ever sent while THAT account is signed in.
+ * Two people sharing a phone therefore never see or send each other's scans, and a scan can never be saved under the wrong name.
+ * (Before this, the queue was one list for the whole phone: a scan left unsent by one person was sent with the next person's login.)
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { randomUUID } from "expo-crypto";
 import { ApiError } from "@/api/client";
 import { staffApi, type Direction, type ScanResult } from "@/api/staff";
+import { adoptLegacy, sendableBy, stillSameAccount, visibleTo } from "@/lib/scanOwnership";
 
 const KEY = "veekay.scanQueue.v1";
 
 export interface QueuedScan {
+  /** The account that scanned it. A scan from an older app version has none: it is kept but never sent or shown (its owner is unknown). */
+  owner_id?: string;
   scan_id: string;
   serial: string;
   direction: Direction;
@@ -31,12 +38,21 @@ interface State {
 }
 
 let state: State = { pending: [], rejected: [] };
+let owner: string | null = null;                  // the signed-in employee; null = nobody, so nothing is sent
+let view: State = { pending: [], rejected: [] }; // what the signed-in employee may see (stable between changes)
 let loaded = false;
 let flushing: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
+  view = { pending: visibleTo(state.pending, owner), rejected: visibleTo(state.rejected, owner) };
   listeners.forEach((l) => l());
+}
+
+/** Tell the queue who is signed in. Called BEFORE the next person's login is used and as soon as a session ends, so a flush can never run under the wrong account. */
+export function setQueueOwner(id: string | null): void {
+  owner = id;
+  emit();
 }
 
 async function persist() {
@@ -47,7 +63,12 @@ export async function loadQueue(): Promise<void> {
   if (loaded) return;
   try {
     const raw = await AsyncStorage.getItem(KEY);
-    if (raw) state = { pending: [], rejected: [], ...(JSON.parse(raw) as Partial<State>) };
+    if (raw) {
+      state = { pending: [], rejected: [], ...(JSON.parse(raw) as Partial<State>) };
+      // Scans queued by an older version of the app have no owner. They are kept (nothing is deleted) but marked unassigned, so they are
+      // never sent under whoever happens to sign in next.
+      state = { pending: adoptLegacy(state.pending), rejected: adoptLegacy(state.rejected) };
+    }
   } catch {
     state = { pending: [], rejected: [] };
   }
@@ -60,10 +81,10 @@ export function subscribeQueue(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-export const getQueue = (): State => state;
+export const getQueue = (): State => view;
 
 export async function clearRejected(): Promise<void> {
-  state = { ...state, rejected: [] };
+  state = { ...state, rejected: state.rejected.filter((r) => r.owner_id !== owner) };
   emit();
   await persist();
 }
@@ -82,7 +103,8 @@ function retryable(e: unknown): boolean {
 /** Records one scan: sent now when online, otherwise kept for later. Never loses a scan. */
 export async function submitScan(serial: string, direction: Direction, storeId: string | null): Promise<Outcome> {
   await loadQueue();
-  const item: QueuedScan = { scan_id: randomUUID(), serial: serial.trim(), direction, store_id: storeId, scanned_at: new Date().toISOString() };
+  if (!owner) return { kind: "rejected", scanId: "", reason: "Sign in again before scanning." };
+  const item: QueuedScan = { owner_id: owner, scan_id: randomUUID(), serial: serial.trim(), direction, store_id: storeId, scanned_at: new Date().toISOString() };
   // Written first: if the app dies mid-request the scan is still on the phone and its scan_id makes the resend safe.
   state = { ...state, pending: [...state.pending, item] };
   emit();
@@ -119,7 +141,10 @@ export function flushQueue(): Promise<{ sent: number; left: number }> {
     flushing = (async () => {
       await loadQueue();
       let sent = 0;
-      for (const item of [...state.pending]) {
+      const mine = owner;
+      if (!mine) return;
+      for (const item of sendableBy(state.pending, mine)) {
+        if (!stillSameAccount(mine, owner)) break;                  // somebody else signed in meanwhile: stop, never send under another account
         try {
           await staffApi.scan(toBody(item));
           await drop(item.scan_id);
@@ -129,7 +154,7 @@ export function flushQueue(): Promise<{ sent: number; left: number }> {
           await reject(item, e instanceof Error ? e.message : "Refused by the server.");
         }
       }
-      lastFlush = { sent, left: state.pending.length };
+      lastFlush = { sent, left: sendableBy(state.pending, mine).length };
     })().finally(() => {
       flushing = null;
     });

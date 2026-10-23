@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import literal_column, case, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -46,7 +47,9 @@ from app.schemas.order import (
     SubmissionRow,
     TrendPoint,
 )
-from app.services import activity_service, assignment_service, vendor_history_service
+from app.core import audit_context
+from app.core.entry_access import EntryScope, owned_clause, owns_value
+from app.services import activity_service, assignment_service, order_journal_service, vendor_history_service
 
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
            "August", "September", "October", "November", "December"]
@@ -70,7 +73,7 @@ def _store_meta(store: Store) -> dict:
 # employee: my stores + calendar + mark
 # --------------------------------------------------------------------------
 
-def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool) -> dict[uuid.UUID, tuple[int, int, int]]:
+def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool, owner: uuid.UUID | None = None) -> dict[uuid.UUID, tuple[int, int, int]]:
     """{store_id: (bottles marked this month so far, bottles marked in the whole of last month, days of last month with an entry)}. `net` leaves out a developer's cash
     adjustment, which an employee never sees (what they entered is what they are shown)."""
     if not ids:
@@ -78,6 +81,8 @@ def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool) 
     this_start = today.replace(day=1)
     last_start = (this_start - timedelta(days=1)).replace(day=1)
     amount = (OrderEntry.bottle_count - OrderEntry.cash_adjustment) if net else OrderEntry.bottle_count
+    if owner:
+        amount = case((owned_clause({owner}), amount), else_=0)      # an Entry Contributor's bottle totals are THEIR numbers only; the day count below stays everyone's
     rows = db.execute(
         select(
             OrderEntry.store_id,
@@ -164,7 +169,8 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
                 state=r[3], city=r[4], region_name=r[5], vendor_name=r[6],
                 vendor_number=r[7], poc_name=r[8], poc_number=r[9], status=r[10], today=today, partner_slug=r[11],
                 partner_name=r[12], region_id=r[13], today_count=counts.get((r[0], today)),
-                yesterday_count=counts.get((r[0], yesterday)), pending_days=_pending(stats, r[0], today, r[14]),
+                yesterday_count=counts.get((r[0], yesterday)),
+                today_marked=(r[0], today) in counts, yesterday_marked=(r[0], yesterday) in counts, pending_days=_pending(stats, r[0], today, r[14]),
                 month_bottles=totals.get(r[0], (0, 0, 0))[0], last_month_bottles=totals.get(r[0], (0, 0, 0))[1],
                 last_month_missing=_last_missing(totals, r[0], r[14]), last_month_open_until=window,
             )
@@ -172,17 +178,22 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
         ]
 
     stores = assignment_service.visible_stores(db, employee)
-    counts: dict[tuple[uuid.UUID, date], int] = {}
+    counts: dict[tuple[uuid.UUID, date], int] = {}         # YOUR numbers only
+    marked_days: set[tuple[uuid.UUID, date]] = set()       # days anybody marked (a state, not a number)
     if stores:
         rows = db.execute(
-            select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count).where(
+            select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count, OrderEntry.cash_adjustment, OrderEntry.created_by_user_id,
+                   OrderEntry.source, OrderEntry.marked_by_user_id, OrderEntry.last_modified_by_user_id).where(
                 OrderEntry.store_id.in_([s.id for s in stores]),
                 OrderEntry.order_date.in_([today, yesterday]),
             )
         )
-        counts = {(r[0], r[1]): int(r[2]) for r in rows}
+        for r in rows:
+            marked_days.add((r[0], r[1]))
+            if r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id):
+                counts[(r[0], r[1])] = int(r[2]) - int(r[3])
     stats = _month_stats([s.id for s in stores], today)
-    totals = _month_totals(db, [s.id for s in stores], today, net=True)
+    totals = _month_totals(db, [s.id for s in stores], today, net=True, owner=employee.id)
     return [
         MyStore(
             id=s.id, name=s.name, external_code=s.external_code, crm_code=s.crm_code,
@@ -196,6 +207,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             partner_name=s.partner_organization.name if s.partner_organization else None,
             region_id=s.region_id,
             today_count=counts.get((s.id, today)), yesterday_count=counts.get((s.id, yesterday)),
+            today_marked=(s.id, today) in marked_days, yesterday_marked=(s.id, yesterday) in marked_days,
             pending_days=_pending(stats, s.id, today, s.start_date),
             month_bottles=totals.get(s.id, (0, 0, 0))[0], last_month_bottles=totals.get(s.id, (0, 0, 0))[1],
             last_month_missing=_last_missing(totals, s.id, s.start_date), last_month_open_until=window,
@@ -205,7 +217,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
 
 
 def get_calendar(
-    db: Session, user: User, store_id: uuid.UUID, year: int, month: int, *, is_admin: bool
+    db: Session, user: User, store_id: uuid.UUID, year: int, month: int, *, is_admin: bool, scope: "EntryScope | None" = None
 ) -> OrderCalendar:
     store = _resolve_store(db, user, store_id, is_admin=is_admin)
     repo = OrderEntryRepository(db)
@@ -222,17 +234,30 @@ def get_calendar(
     for d in range(1, days_in_month + 1):
         the_date = date(year, month, d)
         entry = entries.get(d)
+        # An Entry Contributor sees only the numbers THEY entered. A day somebody else marked still shows as marked (so it cannot be marked
+        # twice) but carries no count, name or time. Administrators see everything, with who created it and its version.
+        mine = entry is not None and (
+            entry.created_by_user_id == user.id
+            or (entry.source == EntrySource.EMPLOYEE.value and entry.marked_by_user_id == user.id and entry.last_modified_by_user_id == user.id)
+        )
+        # `scope` widens what is shown beyond the caller's own numbers: a Team Lead sees their team's, a reviewer everyone's (the same rule as the audit pages).
+        in_scope = scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids)) if entry is not None else False
+        shown = entry is not None and (is_admin or mine or in_scope)
         days.append(
             CalendarDay(
                 day=d,
                 date=the_date,
                 marked=entry is not None,
-                count=entry.bottle_count if entry else None,
-                source=entry.source if entry else None,
-                entered_by=who.get(entry.marked_by_user_id) if entry else None,
-                entered_at=(entry.updated_at or entry.created_at) if entry else None,
+                count=(entry.bottle_count if is_admin else entry.bottle_count - entry.cash_adjustment) if shown else None,
+                source=(entry.source if shown else "other") if entry else None,
+                entered_by=who.get(entry.marked_by_user_id) if shown else None,
+                entered_at=(entry.updated_at or entry.created_at) if shown else None,
                 is_today=(the_date == today),
                 is_future=(the_date > today),
+                mine=mine, masked=entry is not None and not shown,
+                entry_id=entry.id if (entry and is_admin) else None, version=entry.version if (entry and is_admin) else None,
+                creator_name=(entry.created_by_name if entry.creator_verified else None) if (entry and is_admin) else None,
+                creator_verified=entry.creator_verified if (entry and is_admin) else None,
             )
         )
 
@@ -251,38 +276,71 @@ def get_calendar(
     )
 
 
-def mark(db: Session, employee: User, payload: MarkRequest, *, is_admin: bool = False) -> OrderCalendar:
+def _journal(db: Session, employee: User, store_id: uuid.UUID, rows: list[tuple[date, int | None, str, str | None, str | None]], *, action: str = "mark") -> None:
+    """Write the attempts to the immutable mark journal (own connection, never raises). rows = (date, count, outcome, reason, request_key)."""
+    order_journal_service.record_many([
+        (employee.organization_id, employee.id, store_id, d, c, outcome, reason, action, key, audit_context.current_client(db))
+        for (d, c, outcome, reason, key) in rows
+    ])
+
+
+def _entry_key(key: str | None, day: date) -> str | None:
+    """The idempotency key of ONE entry: the submission's key plus its date, so a retried batch lines up entry by entry."""
+    return f"{key.strip()[:100]}:{day.isoformat()}" if key and key.strip() else None
+
+
+def mark(db: Session, employee: User, payload: MarkRequest, *, is_admin: bool = False, request_key: str | None = None, client_time: str | None = None) -> OrderCalendar:
     if is_admin:
         # An admin needs nobody's sign-off: any store, any (non-future) date, and saved days can be changed.
         return admin_set_entry(
             db, employee, AdminEntryRequest(store_id=payload.store_id, order_date=payload.order_date, bottle_count=payload.bottle_count)
         )
     count = payload.bottle_count
-    if not (settings.MIN_BOTTLE_COUNT <= count <= settings.MAX_BOTTLE_COUNT):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Bottle count must be a whole number from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.",
-        )
-
-    visible = {s.id: s for s in assignment_service.visible_stores(db, employee)}
-    store = visible.get(payload.store_id)
-    if store is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
-    if store.status != StoreStatus.LIVE.value:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
-
-    _check_order_date(payload.order_date)
-    _write_employee_entry(db, employee, store, payload.order_date, count)
-    db.commit()
+    key = _entry_key(request_key, payload.order_date)
+    try:
+        if not (settings.MIN_BOTTLE_COUNT <= count <= settings.MAX_BOTTLE_COUNT):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Bottle count must be a whole number from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.",
+            )
+        visible = {s.id: s for s in assignment_service.visible_stores(db, employee)}
+        store = visible.get(payload.store_id)
+        if store is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
+        if store.status != StoreStatus.LIVE.value:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
+        _check_order_date(payload.order_date)
+        audit_context.bind(db, client_time=client_time)
+        try:
+            outcome = _write_employee_entry(db, employee, store, payload.order_date, count, key)
+            db.commit()
+        except IntegrityError:                       # two requests for the same store and day at once: the other won, so answer from its row
+            db.rollback()
+            audit_context.bind(db, client_time=client_time)
+            outcome = _write_employee_entry(db, employee, store, payload.order_date, count, key)
+            db.commit()
+    except HTTPException as exc:
+        db.rollback()
+        _journal(db, employee, payload.store_id, [(payload.order_date, count, "rejected", str(exc.detail), key)])
+        raise
+    _journal(db, employee, store.id, [(payload.order_date, count, "saved" if outcome == "created" else "duplicate", None if outcome == "created" else "same number sent again", key)])
     return get_calendar(db, employee, store.id, payload.order_date.year, payload.order_date.month, is_admin=False)
 
 
-def _write_employee_entry(db: Session, employee: User, store: Store, order_date: date, count: int) -> None:
-    """One employee entry for one store and date (does not commit). 409 if the date is already marked."""
+def _write_employee_entry(db: Session, employee: User, store: Store, order_date: date, count: int, request_key: str | None = None) -> str:
+    """One employee entry for one store and date (does not commit). Returns "created", or "replayed" when this same person already saved this same number
+    (a lost response, a double tap, a retry after a timeout): nothing is written twice. 409 if the date is already marked by anyone else."""
     repo = OrderEntryRepository(db)
     existing = repo.get(store.id, order_date)
+    if existing is not None:
+        mine = existing.created_by_user_id == employee.id or (existing.marked_by_user_id == employee.id and existing.last_modified_by_user_id == employee.id)
+        same_key = bool(request_key) and existing.request_id == request_key
+        same_number = existing.source == EntrySource.EMPLOYEE.value and existing.bottle_count - existing.cash_adjustment == count
+        if mine and (same_key or same_number):
+            return "replayed"
     if existing is not None and existing.cash_adjustment != existing.bottle_count:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This date is already marked and cannot be changed. Ask an admin to correct it.")
+        raise HTTPException(status.HTTP_409_CONFLICT, "This date is already marked and cannot be changed. Ask your Team Lead or an admin to correct it.")
+    audit_context.bind(db, request_key=request_key)
     if existing is not None:
         # The day only holds a developer adjustment so far (no real employee entry): the employee's count goes
         # underneath it and the adjustment stays on top.
@@ -303,11 +361,18 @@ def _write_employee_entry(db: Session, employee: User, store: Store, order_date:
         db, actor=employee, action="order.marked", entity_type="order_entry", entity_id=store.id,
         metadata={**_store_meta(store), "order_date": order_date.isoformat(), "bottle_count": count},
     )
+    return "created"
 
 
 def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -> OrderCalendar:
     """An employee changes (or clears, with no count) an entry THEY marked themselves, in the dates they can still mark. Anyone else's entry,
     and a day that holds only a developer adjustment, stays an admin's job. Every change is logged with what was there before."""
+    if not settings.EMPLOYEE_CAN_CORRECT_OWN:
+        _journal(db, employee, payload.store_id, [(payload.order_date, payload.bottle_count, "rejected", "employees cannot change a submitted entry", None)], action="correct")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "A submitted entry can't be changed by the person who entered it. Ask your Team Lead or an admin to correct it.",
+        )
     store = {s.id: s for s in assignment_service.visible_stores(db, employee)}.get(payload.store_id)
     if store is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
@@ -318,7 +383,7 @@ def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -
     existing = repo.get(store.id, payload.order_date)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no entry on this date to correct. Mark it instead.")
-    if existing.cash_adjustment == existing.bottle_count or existing.marked_by_user_id != employee.id:
+    if existing.cash_adjustment == existing.bottle_count or existing.created_by_user_id != employee.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only correct entries you marked yourself. Ask an admin to correct this one.")
     mine = existing.bottle_count - existing.cash_adjustment            # the employee's own part (a developer adjustment may sit on top)
     new = payload.bottle_count
@@ -344,9 +409,12 @@ def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -
     return get_calendar(db, employee, store.id, payload.order_date.year, payload.order_date.month, is_admin=False)
 
 
-def mark_many(db: Session, employee: User, payload: MarkManyRequest, *, is_admin: bool = False) -> MarkManyResult:
+def mark_many(
+    db: Session, employee: User, payload: MarkManyRequest, *, is_admin: bool = False, request_key: str | None = None, client_time: str | None = None,
+) -> MarkManyResult:
     """Marks several dates of one store. The store is checked once (a wrong store fails the whole request); every date
-    is then checked and saved on its own, so one bad date (already marked, future, other month) never blocks the rest."""
+    is then checked and saved on its own, so one bad date (already marked, future, other month) never blocks the rest.
+    Each saved date comes back with the entry id, version and server time: that is the server's confirmation, the only thing the app may call "saved"."""
     days = [e.order_date for e in payload.entries]
     if len(set(days)) != len(days):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A date appears more than once.")
@@ -355,17 +423,25 @@ def mark_many(db: Session, employee: User, payload: MarkManyRequest, *, is_admin
         for e in payload.entries:
             try:
                 admin_set_entry(db, employee, AdminEntryRequest(store_id=payload.store_id, order_date=e.order_date, bottle_count=e.bottle_count))
-                results.append(MarkResultItem(order_date=e.order_date, ok=True))
+                results.append(MarkResultItem(order_date=e.order_date, ok=True, status="saved"))
             except HTTPException as exc:
                 db.rollback()
                 results.append(MarkResultItem(order_date=e.order_date, ok=False, error=str(exc.detail)))
     else:
-        store = {s.id: s for s in assignment_service.visible_stores(db, employee)}.get(payload.store_id)
-        if store is None:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
-        if store.status != StoreStatus.LIVE.value:
-            raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
+        try:
+            store = {s.id: s for s in assignment_service.visible_stores(db, employee)}.get(payload.store_id)
+            if store is None:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "This store is not assigned to you.")
+            if store.status != StoreStatus.LIVE.value:
+                raise HTTPException(status.HTTP_409_CONFLICT, "This store is not currently live and cannot accept orders.")
+        except HTTPException as exc:
+            _journal(db, employee, payload.store_id, [(e.order_date, e.bottle_count, "rejected", str(exc.detail), _entry_key(request_key, e.order_date)) for e in payload.entries])
+            raise
+        audit_context.bind(db, client_time=client_time)
+        outcomes: dict[date, str] = {}
+        journal_rows: list[tuple[date, int | None, str, str | None, str | None]] = []
         for e in sorted(payload.entries, key=lambda x: x.order_date):
+            key = _entry_key(request_key, e.order_date)
             try:
                 if not (settings.MIN_BOTTLE_COUNT <= e.bottle_count <= settings.MAX_BOTTLE_COUNT):
                     raise HTTPException(
@@ -373,12 +449,31 @@ def mark_many(db: Session, employee: User, payload: MarkManyRequest, *, is_admin
                         f"Bottle count must be a whole number from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.",
                     )
                 _check_order_date(e.order_date)
-                with db.begin_nested():
-                    _write_employee_entry(db, employee, store, e.order_date, e.bottle_count)
+                try:
+                    with db.begin_nested():
+                        outcomes[e.order_date] = _write_employee_entry(db, employee, store, e.order_date, e.bottle_count, key)
+                except IntegrityError:
+                    # two requests for the same store and day at once: the other one won. The retry sees its row and answers properly.
+                    with db.begin_nested():
+                        outcomes[e.order_date] = _write_employee_entry(db, employee, store, e.order_date, e.bottle_count, key)
                 results.append(MarkResultItem(order_date=e.order_date, ok=True))
             except HTTPException as exc:
                 results.append(MarkResultItem(order_date=e.order_date, ok=False, error=str(exc.detail)))
+                journal_rows.append((e.order_date, e.bottle_count, "rejected", str(exc.detail), key))
         db.commit()
+        # The server's confirmation for each saved day: read back from the committed rows.
+        if outcomes:
+            rows = {r.order_date: r for r in db.execute(
+                select(OrderEntry).where(OrderEntry.store_id == store.id, OrderEntry.order_date.in_(list(outcomes)))).scalars()}
+            for r in results:
+                row = rows.get(r.order_date)
+                if r.ok and row is not None:
+                    r.status = "saved" if outcomes[r.order_date] == "created" else "already_saved"
+                    r.entry_id, r.saved_at, r.version = row.id, row.created_at, row.version
+        counts = {e.order_date: e.bottle_count for e in payload.entries}
+        journal_rows += [(d, counts[d], "saved" if o == "created" else "duplicate", None if o == "created" else "same number sent again", _entry_key(request_key, d))
+                         for d, o in outcomes.items()]
+        _journal(db, employee, store.id, journal_rows)
     saved = sum(1 for r in results if r.ok)
     return MarkManyResult(saved=saved, failed=len(results) - saved, results=results)
 

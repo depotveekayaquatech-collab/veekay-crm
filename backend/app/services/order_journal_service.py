@@ -114,6 +114,9 @@ def apply_number(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found.")
     entry = db.query(OrderEntry).filter_by(store_id=store.id, order_date=order_date).one_or_none()
     was = None
+    from app.core import audit_context
+
+    audit_context.bind(db, actor, reason=f"Applied from the mark journal: the number {emp.employee_code if emp else 'an employee'} entered but that was not saved")
     if entry is None:
         db.add(OrderEntry(organization_id=actor.organization_id, store_id=store.id, order_date=order_date, bottle_count=count,
                           source=EntrySource.EMPLOYEE.value, marked_by_user_id=emp.id if emp else None))

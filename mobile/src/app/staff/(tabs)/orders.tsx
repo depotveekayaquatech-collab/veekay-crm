@@ -39,13 +39,19 @@ export default function Orders() {
   const lastMissing = lastOpenUntil ? stores.filter((s) => (s.last_month_missing ?? 0) > 0) : [];
   const dayIso = serverToday ? (day === "today" ? serverToday : shift(serverToday, -1)) : undefined;
   const countOf = useCallback((s: { today_count: number | null; yesterday_count?: number | null }) => (day === "today" ? s.today_count : s.yesterday_count ?? null), [day]);
-  const done = stores.filter((s) => countOf(s) !== null).length;
+  // Marked by anyone (a colleague's number is never shown to you, but the day is still done).
+  const markedOf = useCallback(
+    (s: { today_count: number | null; yesterday_count?: number | null; today_marked?: boolean; yesterday_marked?: boolean }) =>
+      day === "today" ? s.today_marked ?? s.today_count !== null : s.yesterday_marked ?? (s.yesterday_count ?? null) !== null,
+    [day],
+  );
+  const done = stores.filter((s) => markedOf(s)).length;
   const percent = stores.length ? Math.round((done / stores.length) * 100) : 0;
 
   // Vendor filter: pick a vendor to see all of its stores; the chips below then count that vendor's stores only
   const vendors = useMemo(() => vendorsOf(stores), [stores]);
   const scope = useMemo(() => (vendor ? stores.filter((s) => vendorKey(s.vendor_name) === vendor) : stores), [stores, vendor]);
-  const scopeDone = scope.filter((s) => countOf(s) !== null).length;
+  const scopeDone = scope.filter((s) => markedOf(s)).length;
   const pickVendor = (key: string) => { setVendor(key); if (key) setFilter("all"); };   // "all" so none of its stores are hidden
 
   const shown = useMemo(() => {
@@ -57,11 +63,11 @@ export default function Orders() {
         .sort((a, b) => (b.last_month_missing ?? 0) - (a.last_month_missing ?? 0) || a.name.localeCompare(b.name));
     }
     const list = scope
-      .filter((s) => (filter === "all" ? true : filter === "done" ? countOf(s) !== null : countOf(s) === null))
+      .filter((s) => (filter === "all" ? true : filter === "done" ? markedOf(s) : !markedOf(s)))
       .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""} ${s.vendor_name ?? ""}`.toLowerCase().includes(n));
     // the pending list starts with the stores that have waited longest
     return filter === "pending" ? [...list].sort((a, b) => (b.pending_days ?? 0) - (a.pending_days ?? 0) || a.name.localeCompare(b.name)) : list;
-  }, [scope, filter, needle, countOf, lastMissing, vendor]);
+  }, [scope, filter, needle, markedOf, lastMissing, vendor]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSubtle }}>
@@ -120,27 +126,29 @@ export default function Orders() {
           <Pressable
             onPress={() => router.push(filter === "lastmonth" ? `/staff/mark/${s.id}?month=last` : dayIso ? `/staff/mark/${s.id}?day=${dayIso}` : `/staff/mark/${s.id}`)}
             accessibilityRole="button"
-            accessibilityLabel={`${s.name}, ${countOf(s) === null ? `not marked ${day}` : `marked ${countOf(s)} ${day}`}`}
+            accessibilityLabel={`${s.name}, ${!markedOf(s) ? `not marked ${day}` : countOf(s) === null ? `marked by a colleague ${day}` : `marked ${countOf(s)} ${day}`}`}
             android_ripple={{ color: colors.brand100 }}
             style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
           >
-            <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: countOf(s) === null ? colors.warningSoft : colors.successSoft }}>
-              <Ionicons name={countOf(s) === null ? "time-outline" : "checkmark"} size={22} color={countOf(s) === null ? colors.warning : colors.success} />
+            <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: !markedOf(s) ? colors.warningSoft : colors.successSoft }}>
+              <Ionicons name={!markedOf(s) ? "time-outline" : "checkmark"} size={22} color={!markedOf(s) ? colors.warning : colors.success} />
             </View>
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
               <Text numberOfLines={1} style={font.small}>{s.external_code}{s.crm_code ? ` · ${s.crm_code}` : ""}{s.city ? ` · ${s.city}` : ""}{!vendor && s.vendor_name ? ` · ${s.vendor_name}` : ""}</Text>
               {s.duplicate_name ? <Text numberOfLines={1} style={{ color: colors.danger, fontSize: 12, fontWeight: "800" }}>Listed twice in the CRM: tell your admin</Text> : null}
-              <Text numberOfLines={1} style={font.tiny}>This month {fmtNumber(s.month_bottles ?? 0)} · Last month {fmtNumber(s.last_month_bottles ?? 0)} bottles</Text>
+              <Text numberOfLines={1} style={font.tiny}>You marked: this month {fmtNumber(s.month_bottles ?? 0)} · last month {fmtNumber(s.last_month_bottles ?? 0)} bottles</Text>
               {filter === "lastmonth" ? (
                 <View style={{ marginTop: 6, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.warning }} />
                   <Text style={{ fontSize: 12, fontWeight: "800", color: colors.warning }}>{s.last_month_missing} day{s.last_month_missing === 1 ? "" : "s"} of last month missing</Text>
                 </View>
-              ) : countOf(s) === null ? <View style={{ marginTop: 6 }}><PendingPill days={s.pending_days ?? 0} /></View> : null}
+              ) : !markedOf(s) ? <View style={{ marginTop: 6 }}><PendingPill days={s.pending_days ?? 0} /></View> : null}
             </View>
             {countOf(s) !== null ? (
               <View style={{ alignItems: "flex-end" }}><Text style={{ fontSize: 18, fontWeight: "800", color: colors.text }}>{countOf(s)}</Text><Text style={font.tiny}>{day}</Text></View>
+            ) : markedOf(s) ? (
+              <View style={{ alignItems: "flex-end" }}><Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>Marked</Text><Text style={font.tiny}>by a colleague</Text></View>
             ) : (
               <Text style={{ fontSize: 13, fontWeight: "700", color: colors.brand600 }}>Mark</Text>
             )}

@@ -77,6 +77,7 @@ class EmployeeOut(BaseModel):
     category_label: str = ""
     admin_level: Literal["full", "custom"] | None = None   # set for admin-category accounts
     direct_permissions: list[str] = []
+    reports_to_id: uuid.UUID | None = None      # the Team Lead this person reports to (their entries are in that lead's team)
 
     model_config = {"from_attributes": True}
 

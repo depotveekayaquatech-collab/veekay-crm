@@ -26,27 +26,49 @@ export async function getCalendar(storeId: string, year?: number, month?: number
   return toCalendar(await apiRequest(`/orders/calendar?${qs}`));
 }
 
+/**
+ * One idempotency key per logical submission. It stays the same while the person retries the SAME numbers (a timeout, a double tap, a lost
+ * response), so the server answers from the entry it already saved instead of creating a second one or refusing it as "already marked";
+ * it is forgotten once the server has confirmed the save.
+ */
+const submissionKeys = new Map<string, string>();
+
+function keyFor(signature: string): string {
+  let key = submissionKeys.get(signature);
+  if (!key) {
+    key = crypto.randomUUID();
+    submissionKeys.set(signature, key);
+  }
+  return key;
+}
+
 export async function markOrder(
   storeId: string,
   orderDate: string,
   bottleCount: number,
 ): Promise<OrderCalendar> {
-  return toCalendar(
+  const signature = `${storeId}|${orderDate}|${bottleCount}`;
+  const calendar = toCalendar(
     await apiRequest("/orders/mark", {
       method: "POST",
       body: { store_id: storeId, order_date: orderDate, bottle_count: bottleCount },
+      idempotencyKey: keyFor(signature),
+      sendClientTime: true,
     }),
   );
+  submissionKeys.delete(signature);
+  return calendar;
 }
 
 export async function markManyOrders(
   storeId: string,
   entries: MarkManyEntry[],
 ): Promise<MarkManyResult> {
+  const signature = `${storeId}|${entries.map((e) => `${e.orderDate}=${e.bottleCount}`).sort().join(",")}`;
   const wire = await apiRequest<{
     saved: number;
     failed: number;
-    results: { order_date: string; ok: boolean; error: string | null }[];
+    results: { order_date: string; ok: boolean; error: string | null; status?: string | null; entry_id?: string | null; saved_at?: string | null; version?: number | null }[];
   }>("/orders/mark-many", {
     method: "POST",
     body: {
@@ -56,7 +78,10 @@ export async function markManyOrders(
         bottle_count: e.bottleCount,
       })),
     },
+    idempotencyKey: keyFor(signature),
+    sendClientTime: true,
   });
+  submissionKeys.delete(signature);
   return {
     saved: wire.saved,
     failed: wire.failed,
@@ -64,6 +89,10 @@ export async function markManyOrders(
       orderDate: r.order_date,
       ok: r.ok,
       error: r.error,
+      status: r.status ?? null,
+      entryId: r.entry_id ?? null,
+      savedAt: r.saved_at ?? null,
+      version: r.version ?? null,
     })),
   };
 }
