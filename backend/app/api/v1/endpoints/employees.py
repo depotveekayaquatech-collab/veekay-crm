@@ -18,7 +18,10 @@ from app.schemas.employee import (
     PasswordRow,
     PermissionSet,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.core.middleware import rate_windows
+from app.core.security import match_password
 
 from app.services import employee_import_service, employee_service
 from app.services.store_sync_service import SyncError
@@ -44,17 +47,28 @@ def list_employees(
     )
 
 
-@router.get(
+class UnlockPasswords(BaseModel):
+    password: str = Field(..., max_length=128)      # the developer's OWN password: the section stays locked until it is given
+
+
+@router.post(
     "/passwords", response_model=list[PasswordRow],
     dependencies=[Depends(require_permission_hidden("employees.view_password"))],   # 404 for everyone but the developer
 )
 def list_passwords(
+    payload: UnlockPasswords,
     response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[PasswordRow]:
-    """Developer only: every account's current password and how many days ago it changed."""
+    """Developer only, and only after re-entering their own password: every other account's current password and how many days ago
+    it changed. Developer accounts are never listed."""
     response.headers["Cache-Control"] = "no-store"
+    wait = rate_windows.take(f"pwview:{user.id}", 8, 600.0)
+    if wait:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Try again in a few minutes.", headers={"Retry-After": str(wait)})
+    if match_password(payload.password, user.password_hash) is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Incorrect password.")
     return [PasswordRow(**r) for r in employee_service.password_overview(db, user)]
 
 

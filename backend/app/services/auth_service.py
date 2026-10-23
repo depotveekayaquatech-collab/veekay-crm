@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.roles import DEVELOPER
 from app.core.security import (
     TokenType,
     burn_password_check,
@@ -40,6 +41,9 @@ class AuthService:
     def __init__(self, db: Session):
         self.db = db
         self.users = UserRepository(db)
+
+    def _is_developer(self, user: User) -> bool:
+        return DEVELOPER in self.users.get_role_codes(user.id)
 
     # ---------------------------------------------------------------- login
 
@@ -82,7 +86,9 @@ class AuthService:
             # (typing it with or without the space both keep working). Not a password change, so the change date stays.
             matched = matched.strip()
             user.password_hash = hash_password(matched)
-        if unseal_password(user.password_enc) != matched:
+        if self._is_developer(user):
+            user.password_enc = None                    # a developer's password is never kept in readable form
+        elif unseal_password(user.password_enc) != matched:
             user.password_enc = seal_password(matched)
         pair = session_service.start_session(self.db, user, user_agent=user_agent, ip=ip)
         activity_service.record(
@@ -116,6 +122,8 @@ class AuthService:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
 
         set_password(user, new_password, must_change=False)
+        if self._is_developer(user):
+            user.password_enc = None
         user.failed_login_attempts = 0
         # Every other device is signed out; this one gets a fresh session straight away.
         pair = session_service.start_session(self.db, user, user_agent=user_agent, ip=ip)

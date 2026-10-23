@@ -447,11 +447,13 @@ def password_overview(db: Session, actor: User) -> list[dict]:
     out = []
     for u in rows:
         roles = roles_by_user.get(u.id, [])
-        category = DEVELOPER if DEVELOPER in roles else staff_category(roles, u.platform_organization.slug if u.platform_organization else None)
+        if DEVELOPER in roles:
+            continue                                   # a developer's own login is never listed
+        category = staff_category(roles, u.platform_organization.slug if u.platform_organization else None)
         changed = u.password_changed_at or u.created_at   # never changed through the app: the password is still the one it was created with
         out.append({
             "id": u.id, "employee_code": u.employee_code, "full_name": u.full_name,
-            "category": category, "category_label": "Developer" if category == DEVELOPER else CATEGORY_LABELS.get(category, category),
+            "category": category, "category_label": CATEGORY_LABELS.get(category, category),
             "is_active": u.is_active and u.status == UserStatus.ACTIVE.value, "status": u.status,
             "password": unseal_password(u.password_enc),
             "must_change_password": u.must_change_password,

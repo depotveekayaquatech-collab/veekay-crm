@@ -5,6 +5,11 @@ from app.models.user import User
 from .conftest import API, auth, login
 
 PASSWORDS = f"{API}/employees/passwords"
+DEV_PW = "Dev-Pass-2026x"        # the `dev` fixture's own password: the section stays locked until it is given
+
+
+def _open(client, who, password=DEV_PW):
+    return client.post(PASSWORDS, headers=who, json={"password": password})
 
 
 def _create(client, admin, code, password):
@@ -14,16 +19,16 @@ def _create(client, admin, code, password):
 
 
 def _row(client, dev, code):
-    r = client.get(PASSWORDS, headers=dev)
+    r = _open(client, dev)
     assert r.status_code == 200, r.text
     assert r.headers["cache-control"] == "no-store"
     return next(x for x in r.json() if x["employee_code"] == code)
 
 
 def test_only_the_developer_can_open_the_password_list(client, admin, emp, dev):
-    assert client.get(PASSWORDS, headers=dev).status_code == 200
+    assert _open(client, dev).status_code == 200
     for who in (admin, emp):                                           # not even a full admin: the route looks like it does not exist
-        r = client.get(PASSWORDS, headers=who)
+        r = _open(client, who, "Pass@123")
         assert r.status_code == 404 and r.json() == {"detail": "Not Found"}
 
 
@@ -105,6 +110,27 @@ def test_opening_the_list_writes_nothing_to_the_audit_log(client, dev, db):
     from app.models.audit_log import AuditLog
 
     before = db.query(AuditLog).count()
-    client.get(PASSWORDS, headers=dev)
+    _open(client, dev)
     db.expire_all()
     assert db.query(AuditLog).count() == before
+
+
+def test_the_section_stays_locked_without_the_developers_own_password(client, dev):
+    assert client.post(PASSWORDS, headers=dev, json={}).status_code == 422
+    for wrong in ("", "nope-nope-nope", "Pass@123"):
+        r = _open(client, dev, wrong)
+        assert r.status_code == 403 and r.json()["detail"] == "Incorrect password."
+    assert _open(client, dev).status_code == 200
+    assert client.get(PASSWORDS, headers=dev).status_code in (405, 422)             # a plain GET returns nothing: only the unlock call does
+
+
+def test_too_many_wrong_unlock_attempts_are_slowed_down(client, dev):
+    codes = {_open(client, dev, f"wrong-{i}").status_code for i in range(12)}
+    assert codes == {403, 429}
+
+
+def test_a_developers_own_login_is_never_listed_or_kept(client, dev, db):
+    rows = _open(client, dev).json()
+    assert not any(r["category"] == "developer" or r["employee_code"].startswith("TD") for r in rows)
+    mine = db.query(User).filter(User.employee_code.like("TD%")).all()
+    assert mine and all(u.password_enc is None for u in mine)                       # signing in did not store a readable copy
