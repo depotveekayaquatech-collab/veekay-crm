@@ -48,7 +48,7 @@ from app.schemas.order import (
     TrendPoint,
 )
 from app.core import audit_context
-from app.core.entry_access import EntryScope, owned_clause, owns_value
+from app.core.entry_access import ROLE_RANK, EntryScope, owned_clause, owns_value, set_by_someone_above, viewer_rank, visible_clause
 from app.services import activity_service, assignment_service, order_journal_service, vendor_history_service
 
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
@@ -73,7 +73,7 @@ def _store_meta(store: Store) -> dict:
 # employee: my stores + calendar + mark
 # --------------------------------------------------------------------------
 
-def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool, owner: uuid.UUID | None = None) -> dict[uuid.UUID, tuple[int, int, int]]:
+def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool, owner: uuid.UUID | None = None, rank: int = 1) -> dict[uuid.UUID, tuple[int, int, int]]:
     """{store_id: (bottles marked this month so far, bottles marked in the whole of last month, days of last month with an entry)}. `net` leaves out a developer's cash
     adjustment, which an employee never sees (what they entered is what they are shown)."""
     if not ids:
@@ -82,7 +82,7 @@ def _month_totals(db: Session, ids: list[uuid.UUID], today: date, *, net: bool, 
     last_start = (this_start - timedelta(days=1)).replace(day=1)
     amount = (OrderEntry.bottle_count - OrderEntry.cash_adjustment) if net else OrderEntry.bottle_count
     if owner:
-        amount = case((owned_clause({owner}), amount), else_=0)      # an Entry Contributor's bottle totals are THEIR numbers only; the day count below stays everyone's
+        amount = case((visible_clause({owner}, rank), amount), else_=0)      # bottle totals: your own numbers plus those set by someone more senior; never a peer's. The day count below stays everyone's
     rows = db.execute(
         select(
             OrderEntry.store_id,
@@ -178,22 +178,28 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
         ]
 
     stores = assignment_service.visible_stores(db, employee)
-    counts: dict[tuple[uuid.UUID, date], int] = {}         # YOUR numbers only
+    my_rank = viewer_rank(db, employee)
+    counts: dict[tuple[uuid.UUID, date], int] = {}         # the numbers you may see: yours, and those set by someone more senior
     marked_days: set[tuple[uuid.UUID, date]] = set()       # days anybody marked (a state, not a number)
     if stores:
         rows = db.execute(
             select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count, OrderEntry.cash_adjustment, OrderEntry.created_by_user_id,
-                   OrderEntry.source, OrderEntry.marked_by_user_id, OrderEntry.last_modified_by_user_id).where(
+                   OrderEntry.source, OrderEntry.marked_by_user_id, OrderEntry.last_modified_by_user_id, OrderEntry.last_modified_at,
+                   OrderEntry.last_modified_by_role, OrderEntry.created_by_role, OrderEntry.creator_verified).where(
                 OrderEntry.store_id.in_([s.id for s in stores]),
                 OrderEntry.order_date.in_([today, yesterday]),
             )
         )
         for r in rows:
             marked_days.add((r[0], r[1]))
-            if r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id):
+            above = int(r[3]) == 0 and (
+                (ROLE_RANK.get((r[9] if r[8] is not None else r[10]) or "", 0) > my_rank)
+                or (my_rank < 4 and not r[11] and r[8] is None and r[5] == "admin")
+            )
+            if r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id) or above:
                 counts[(r[0], r[1])] = int(r[2]) - int(r[3])
     stats = _month_stats([s.id for s in stores], today)
-    totals = _month_totals(db, [s.id for s in stores], today, net=True, owner=employee.id)
+    totals = _month_totals(db, [s.id for s in stores], today, net=True, owner=employee.id, rank=my_rank)
     return [
         MyStore(
             id=s.id, name=s.name, external_code=s.external_code, crm_code=s.crm_code,
@@ -220,6 +226,7 @@ def get_calendar(
     db: Session, user: User, store_id: uuid.UUID, year: int, month: int, *, is_admin: bool, scope: "EntryScope | None" = None
 ) -> OrderCalendar:
     store = _resolve_store(db, user, store_id, is_admin=is_admin)
+    rank = viewer_rank(db, user)
     repo = OrderEntryRepository(db)
     entries = repo.month_map(store.id, year, month)
     who = {
@@ -242,7 +249,8 @@ def get_calendar(
         )
         # `scope` widens what is shown beyond the caller's own numbers: a Team Lead sees their team's, a reviewer everyone's (the same rule as the audit pages).
         in_scope = scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids)) if entry is not None else False
-        shown = entry is not None and (is_admin or mine or in_scope)
+        above = entry is not None and not is_admin and set_by_someone_above(entry, rank)       # a more senior person set it: visible, read-only
+        shown = entry is not None and (is_admin or mine or in_scope or above)
         days.append(
             CalendarDay(
                 day=d,
@@ -254,7 +262,7 @@ def get_calendar(
                 entered_at=(entry.updated_at or entry.created_at) if shown else None,
                 is_today=(the_date == today),
                 is_future=(the_date > today),
-                mine=mine, masked=entry is not None and not shown,
+                mine=mine, masked=entry is not None and not shown, by_higher=bool(above and not mine and not in_scope),
                 entry_id=entry.id if (entry and is_admin) else None, version=entry.version if (entry and is_admin) else None,
                 creator_name=(entry.created_by_name if entry.creator_verified else None) if (entry and is_admin) else None,
                 creator_verified=entry.creator_verified if (entry and is_admin) else None,

@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.roles import ADMIN, DEVELOPER
@@ -40,6 +40,58 @@ class Level(StrEnum):
     TEAM_LEAD = "team_lead"
     REVIEWER = "entry_reviewer"
     ADMINISTRATOR = "administrator"
+
+
+# How senior the person who SET a number was (their role at that time, stamped on the entry). Someone sees their own numbers, and the numbers set
+# by anyone strictly more senior than themselves (read-only): a contributor sees what a Team Lead, reviewer, administrator or the developer entered.
+# People at the same level never see each other's numbers.
+ROLE_RANK = {
+    "entry_contributor": 1, "accountant": 1, "partner": 1, "unknown": 0,
+    "team_lead": 2,
+    "entry_reviewer": 3, "custom_admin": 3,
+    "administrator": 4, "developer": 4,
+}
+LEVEL_RANK = {Level.CONTRIBUTOR: 1, Level.TEAM_LEAD: 2, Level.REVIEWER: 3, Level.ADMINISTRATOR: 4}
+
+
+def roles_above(rank: int) -> list[str]:
+    return [r for r, k in ROLE_RANK.items() if k > rank]
+
+
+def viewer_rank(db, user) -> int:
+    """How senior the viewer is, from their roles (the same ladder as the four levels)."""
+    codes = _roles(db, user)
+    if codes & {ADMIN, DEVELOPER}:
+        return 4
+    if codes & {REVIEWER_ROLE, "manager"}:
+        return 3
+    if TEAM_LEAD_ROLE in codes:
+        return 2
+    return 1
+
+
+def higher_clause(rank: int):
+    """SQL for "the current number was set by someone more senior than `rank`, and is a plain number" (never a row carrying a developer's cash adjustment,
+    which stays the developer's business). Author = the last person who changed the number, else its creator; an old entry whose creator is unknown
+    but whose number was last set by an administrator counts as the administrator's."""
+    author = case((OrderEntry.last_modified_at.is_not(None), OrderEntry.last_modified_by_role), else_=OrderEntry.created_by_role)
+    legacy_admin = and_(OrderEntry.creator_verified.is_(False), OrderEntry.last_modified_at.is_(None), OrderEntry.source == "admin")
+    return and_(OrderEntry.cash_adjustment == 0, or_(author.in_(roles_above(rank)), legacy_admin if rank < 4 else False))
+
+
+def visible_clause(ids, rank: int):
+    """SQL for "this person may see the number": it is theirs, or it was set by someone more senior."""
+    return or_(owned_clause(ids), higher_clause(rank))
+
+
+def set_by_someone_above(entry: OrderEntry, rank: int) -> bool:
+    """The Python twin of higher_clause."""
+    if entry.cash_adjustment:
+        return False
+    author = entry.last_modified_by_role if entry.last_modified_at is not None else entry.created_by_role
+    if ROLE_RANK.get(author or "", 0) > rank:
+        return True
+    return rank < 4 and not entry.creator_verified and entry.last_modified_at is None and entry.source == "admin"
 
 
 def owned_clause(ids):

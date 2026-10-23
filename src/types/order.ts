@@ -40,8 +40,10 @@ export interface CalendarDay {
   isFuture: boolean;
   /** You entered this day's number. */
   mine: boolean;
-  /** Marked by somebody else: shown as marked, with no number, name or time. */
+  /** Marked by somebody at your own level: shown as marked, with no number, name or time. */
   masked: boolean;
+  /** Entered by someone more senior (Team Lead, administrator, the developer): visible, read-only. */
+  byHigher: boolean;
   /** Administrators only. */
   entryId: string | null;
   version: number | null;
@@ -297,6 +299,7 @@ interface CalendarWire {
     is_future: boolean;
     mine?: boolean;
     masked?: boolean;
+    by_higher?: boolean;
     entry_id?: string | null;
     version?: number | null;
     creator_name?: string | null;
@@ -325,6 +328,7 @@ export function toCalendar(w: CalendarWire): OrderCalendar {
       isFuture: d.is_future,
       mine: Boolean(d.mine),
       masked: Boolean(d.masked),
+      byHigher: Boolean(d.by_higher),
       entryId: d.entry_id ?? null,
       version: d.version ?? null,
       creatorName: d.creator_name ?? null,

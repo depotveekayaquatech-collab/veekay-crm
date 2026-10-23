@@ -119,6 +119,70 @@ def test_the_calendar_follows_the_same_scope_as_the_audit_pages(client, db, cast
     assert b["marked"] is True and b["masked"] is True and b["count"] is None           # a colleague outside the team sees only "marked"
 
 
+def _day(client, who, store, day=None):
+    days = client.get(f"{API}/orders/calendar", headers=who, params={"store_id": str(store.id)}).json()["days"]
+    return next(d for d in days if d["date"] == (day or TODAY).isoformat())
+
+
+def test_a_contributor_sees_what_someone_more_senior_entered_but_cannot_touch_it(client, db, cast, dev):
+    # the administrator and the developer each enter a number; the Team Lead marks too
+    assert client.patch(f"{API}/orders/entry", headers=cast["ADM"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 15}).status_code == 200
+    csv = "\n".join([f"Outlet ID,Outlet Name,{TODAY}", f"HX-2,{cast['s2'].name},33", ""]).encode()
+    assert client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"}, files={"file": ("o.csv", csv, "text/csv")}).status_code == 200
+
+    for who in ("A", "B"):                                                          # any contributor, on either store
+        adm_day, dev_day = _day(client, cast[who], cast["s1"]), _day(client, cast[who], cast["s2"])
+        assert adm_day["count"] == 15 and adm_day["by_higher"] is True and adm_day["masked"] is False and adm_day["mine"] is False
+        assert dev_day["count"] == 33 and dev_day["by_higher"] is True and dev_day["masked"] is False
+        assert adm_day["entry_id"] is None and adm_day["version"] is None            # the audit details stay with the supervising levels
+        stores = {s["external_code"]: s for s in client.get(f"{API}/orders/my-stores", headers=cast[who]).json()}
+        assert stores["HX-1"]["today_count"] == 15 and stores["HX-2"]["today_count"] == 33
+        assert stores["HX-1"]["month_bottles"] == 15 and stores["HX-2"]["month_bottles"] == 33
+        inv = {i["external_code"]: i for i in client.get(f"{API}/orders/inventory", headers=cast[who]).json()["items"]}
+        assert inv["HX-1"]["month_bottles"] == 15 and inv["HX-2"]["month_bottles"] == 33
+        # ...but they are read-only
+        assert _mark(client, cast[who], cast["s1"], 99).status_code == 409
+        assert client.patch(f"{API}/orders/my-entry", headers=cast[who], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
+        assert client.patch(f"{API}/orders/entry", headers=cast[who], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
+        assert client.patch(f"{API}/entries/{adm_day.get('entry_id') or _entry(db, cast['s1']).id}", headers=cast[who], json={"bottle_count": 1, "reason": "no right", "expected_version": 2}).status_code == 403
+    assert _entry(db, cast["s1"]).bottle_count == 15 and _entry(db, cast["s2"]).bottle_count == 33
+    assert not client.get(f"{API}/orders/my-entries", headers=cast["A"]).json()["items"]      # "My entries" stays the things YOU entered
+
+
+def test_a_peer_stays_hidden_but_a_team_leads_number_is_visible_to_contributors(client, db, cast):
+    _mark(client, cast["A"], cast["s1"], 11)                      # a contributor
+    _mark(client, cast["L"], cast["s2"], 30)                      # the Team Lead
+    b_sees_a, b_sees_lead = _day(client, cast["B"], cast["s1"]), _day(client, cast["B"], cast["s2"])
+    assert b_sees_a["masked"] is True and b_sees_a["count"] is None and b_sees_a["by_higher"] is False        # same level: hidden
+    assert b_sees_lead["count"] == 30 and b_sees_lead["by_higher"] is True and b_sees_lead["masked"] is False  # more senior: visible
+    assert _day(client, cast["A"], cast["s2"])["count"] == 30
+    # a Team Lead does not see a more senior person's number hidden from them either
+    assert client.patch(f"{API}/orders/entry", headers=cast["ADM"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 12}).status_code == 200
+    assert _day(client, cast["L"], cast["s1"])["count"] == 12
+    # once a more senior person corrects a number, it is theirs to the others: B can now see the corrected 12
+    assert _day(client, cast["B"], cast["s1"])["count"] == 12 and _day(client, cast["B"], cast["s1"])["by_higher"] is True
+
+
+def test_a_days_cash_adjustment_stays_hidden_from_everyone_below_the_developer(client, db, cast, dev):
+    plant_entry(db, cast["s1"], TODAY, 8, creator=cast["ids"]["A"], cash_adjustment=5)         # A's 8, with a developer's 5 on top
+    plant_entry(db, cast["s2"], TODAY, 0, creator=None, source="admin", cash_adjustment=7)      # a day holding only an adjustment
+    b1, b2 = _day(client, cast["B"], cast["s1"]), _day(client, cast["B"], cast["s2"])
+    assert b1["marked"] and b1["masked"] and b1["count"] is None                               # A's number is still A's
+    assert b2["marked"] and b2["masked"] and b2["count"] is None                               # never shows the adjustment
+
+
+def test_old_entries_last_set_by_an_administrator_are_visible_old_employee_ones_are_not(client, db, cast):
+    from datetime import timedelta
+    yesterday = TODAY - timedelta(days=1)
+    if yesterday.month != TODAY.month:
+        pytest.skip("needs two days in the month")
+    plant_entry(db, cast["s1"], TODAY, 40, creator=None, source="admin", marked_by=cast["ids"]["L"])        # legacy: an admin's number
+    plant_entry(db, cast["s1"], yesterday, 41, creator=None, source="employee", marked_by=cast["ids"]["A"])  # legacy: an employee's number
+    assert _day(client, cast["B"], cast["s1"])["count"] == 40 and _day(client, cast["B"], cast["s1"])["by_higher"] is True
+    old = _day(client, cast["B"], cast["s1"], yesterday)
+    assert old["masked"] is True and old["count"] is None
+
+
 def test_the_vendors_page_never_totals_a_colleagues_numbers_for_an_employee(client, db, cast):
     _mark(client, cast["A"], cast["s1"], 11)
     inv_b = {i["external_code"]: i for i in client.get(f"{API}/orders/inventory", headers=cast["B"]).json()["items"]}

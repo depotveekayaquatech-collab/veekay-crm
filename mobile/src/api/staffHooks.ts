@@ -22,8 +22,10 @@ export const useMyStores = (enabled = true) => useQuery({ queryKey: ["s-stores"]
 export interface CalendarDay { day: number; date: string; marked: boolean; count: number | null; source: string | null; entered_by?: string | null; entered_at?: string | null; is_today: boolean; is_future: boolean;
   /** You entered this day. */
   mine?: boolean;
-  /** A colleague marked it: shown as marked, with no number, name or time. */
-  masked?: boolean }
+  /** A colleague at your own level marked it: shown as marked, with no number, name or time. */
+  masked?: boolean;
+  /** Someone more senior (Team Lead, administrator, the developer) entered it: you can see it, you cannot change it. */
+  by_higher?: boolean }
 export interface Calendar {
   store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[];
   /** False when this month cannot be marked by the caller (view only). */

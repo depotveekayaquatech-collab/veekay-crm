@@ -23,6 +23,9 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | undefined>(undefined);
 
+/** How long the splash may wait for the stored sign-in to be checked. */
+const RESTORE_WAIT_MS = 8_000;
+
 export function useAuth(): AuthValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
@@ -44,6 +47,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     // Restore the previous sign-in. No network on launch is not a sign-out: the person just sees the sign-in screen
     // with their session intact, and the next launch with a connection restores it.
+    // The splash screen must never be the thing that waits for a slow phone or a bad connection: after RESTORE_WAIT_MS the app opens
+    // anyway (on the sign-in screen), and if the restore finishes a moment later the person is taken in automatically.
+    const giveUp = setTimeout(() => setLoading(false), RESTORE_WAIT_MS);
     (async () => {
       try {
         const kind = await storedSessionKind();
@@ -58,9 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) await clearSession();
       } finally {
+        clearTimeout(giveUp);
         setLoading(false);
       }
     })();
+    return () => clearTimeout(giveUp);
   }, [queryClient]);
 
   const signIn = useCallback(async (identifier: string, password: string) => {

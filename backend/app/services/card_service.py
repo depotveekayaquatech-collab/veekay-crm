@@ -265,6 +265,33 @@ def _stores(
     return sorted(rows, key=lambda s: s.name.lower())
 
 
+def _stores_any_status(
+    db: Session, user: User, *, is_admin: bool, partner: str | None, region: uuid.UUID | None = None, store_id: uuid.UUID | None = None,
+) -> list[Store]:
+    """Every store in the user's scope whatever its status (live, pending or closed). Used to FIND a store and for an explicit request for one
+    store: a closed store can always be looked up and its card downloaded, for any month, with or without bottles that month."""
+    if is_admin:
+        stmt = (
+            select(Store).where(Store.organization_id == user.organization_id)
+            .options(joinedload(Store.region), joinedload(Store.partner_organization)).order_by(Store.name)
+        )
+        if store_id:
+            stmt = stmt.where(Store.id == store_id)
+        if partner:
+            stmt = stmt.join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == partner)
+        if region:
+            stmt = stmt.where(Store.region_id == region)
+        return list(db.execute(stmt).unique().scalars().all())
+    rows = assignment_service.visible_stores(db, user, include_closed=True)
+    if store_id:
+        rows = [s for s in rows if s.id == store_id]
+    if partner:
+        rows = [s for s in rows if s.partner_organization and s.partner_organization.slug == partner]
+    if region:
+        rows = [s for s in rows if s.region_id == region]
+    return sorted(rows, key=lambda s: s.name.lower())
+
+
 def _vendor_key(s: Store) -> str:
     return (s.vendor_name or "").strip() or NO_VENDOR
 
@@ -316,18 +343,30 @@ def list_vendors(
     groups: dict[str, list[Store]] = {}
     for s in _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region, month=month), month):
         groups.setdefault(_vendor_key(s), []).append(s)
+
+    def is_match(s: Store) -> bool:
+        return _store_text(s).find(needle) >= 0 or (len(digits) >= 3 and digits in _store_digits(s))
+
+    # When searching, look through EVERY store (closed ones too, with or without bottles that month): a closed store is still found, and its
+    # card can still be downloaded on its own. The vendor's card COUNT stays "stores supplied that month".
+    found: dict[str, list[Store]] = {}
+    if needle:
+        for s in _stores_any_status(db, user, is_admin=is_admin, partner=partner, region=region):
+            if is_match(s):
+                found.setdefault(_vendor_key(s), []).append(s)
     out = []
-    for v, ss in groups.items():
-        matches: list[Store] = []
+    for v in set(groups) | set(found):
+        ss = groups.get(v, [])
+        matches: list[Store] = found.get(v, [])
         if needle:
-            matches = [s for s in ss if _store_text(s).find(needle) >= 0 or (len(digits) >= 3 and digits in _store_digits(s))]
-            vendor_hit = needle in v.lower() or (len(digits) >= 3 and digits in re.sub(r"\D", "", ss[0].vendor_number or ""))
+            first_no = (ss or matches)[0].vendor_number or ""
+            vendor_hit = needle in v.lower() or (len(digits) >= 3 and digits in re.sub(r"\D", "", first_no))
             if not vendor_hit and not matches:
                 continue
         out.append({
             "vendor": v, "stores": len(ss),
-            "number": next((s.vendor_number for s in ss if s.vendor_number), None),
-            "matches": [{"id": s.id, "name": s.name, "code": s.external_code} for s in matches[:MAX_MATCHES]],
+            "number": next((s.vendor_number for s in (ss or matches) if s.vendor_number), None),
+            "matches": [{"id": s.id, "name": s.name, "code": s.external_code, "status": s.status} for s in matches[:MAX_MATCHES]],
             "match_total": len(matches),
         })
     return sorted(out, key=lambda x: x["vendor"].lower())
@@ -659,12 +698,15 @@ def build_pdf(
     month: date | None, store_id: uuid.UUID | None = None, region: uuid.UUID | None = None,
 ) -> tuple[bytes, int, str]:
     """One PDF: a card per store of the vendor (or a single store) that qualifies (see _in_month). month=None -> blank cards."""
-    stores = _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region, month=month), month)
     if store_id is not None:
-        stores = [s for s in stores if s.id == store_id]
+        # One chosen store: always allowed, whatever its status and whether or not it was supplied that month (a closed store's card for a
+        # month it was open, or even a blank one, can be downloaded).
+        stores = _stores_any_status(db, user, is_admin=is_admin, partner=partner, region=region, store_id=store_id)
         vendor = vendor or (_vendor_key(stores[0]) if stores else "")
-    elif vendor:
-        stores = [s for s in stores if _vendor_key(s).lower() == vendor.strip().lower()]
+    else:
+        stores = _in_month(db, _stores(db, user, is_admin=is_admin, partner=partner, region=region, month=month), month)
+        if vendor:
+            stores = [s for s in stores if _vendor_key(s).lower() == vendor.strip().lower()]
     if not stores:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No stores found for that selection.")
     if len(stores) > MAX_STORES_PER_PDF:

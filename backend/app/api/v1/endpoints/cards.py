@@ -20,6 +20,7 @@ class StoreMatch(BaseModel):
     id: uuid.UUID
     name: str
     code: str
+    status: str = "LIVE"     # a store that has closed is still found and can still have its card downloaded
 
 
 class VendorOut(BaseModel):

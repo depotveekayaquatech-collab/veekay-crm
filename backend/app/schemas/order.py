@@ -19,6 +19,8 @@ class CalendarDay(BaseModel):
     # (so it can't be marked twice) with no count, no name and no time.
     mine: bool = False
     masked: bool = False
+    # Set by someone more senior (Team Lead, administrator, the developer): you can see it, you cannot change it.
+    by_higher: bool = False
     # Administrators only:
     entry_id: uuid.UUID | None = None
     version: int | None = None

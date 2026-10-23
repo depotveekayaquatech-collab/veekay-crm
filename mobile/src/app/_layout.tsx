@@ -52,6 +52,12 @@ function Navigator() {
     if (!loading) SplashScreen.hideAsync().catch(() => undefined);
   }, [loading]);
 
+  // Last resort: whatever else goes wrong while starting, the logo never stays up for more than 12 seconds.
+  useEffect(() => {
+    const t = setTimeout(() => SplashScreen.hideAsync().catch(() => undefined), 12_000);
+    return () => clearTimeout(t);
+  }, []);
+
   // Ask for the notification permission and register for push right after sign-in.
   useEffect(() => {
     if (account) void registerPush("partner");

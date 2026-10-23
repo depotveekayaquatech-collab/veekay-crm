@@ -17,7 +17,7 @@ interface Vendor {
   vendor: string;
   stores: number;
   number: string | null;
-  matches?: { id: string; name: string; code: string }[];
+  matches?: { id: string; name: string; code: string; status?: string }[];
   matchTotal?: number;
 }
 interface VendorsResponse {
@@ -270,7 +270,7 @@ export function CardsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-gray-900">{v.vendor}</p>
                   <p className="text-xs text-gray-500">
-                    {v.stores} live store{v.stores === 1 ? "" : "s"}
+                    {v.stores} store{v.stores === 1 ? "" : "s"}{month ? ` supplied in ${monthLabel ?? "that month"}` : " live"}
                     {v.number ? ` · ${v.number}` : ""}
                   </p>
                   {v.matches && v.matches.length > 0 && (
@@ -284,7 +284,7 @@ export function CardsPage() {
                           title="Open this store's card"
                           className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-gray-700 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
                         >
-                          {m.name}
+                          {m.name}{m.status && m.status !== "LIVE" ? ` (${m.status === "CLOSE" ? "closed" : m.status.toLowerCase()})` : ""}
                         </button>
                       ))}
                       {(v.matchTotal ?? 0) > v.matches.length && <span>+{(v.matchTotal ?? 0) - v.matches.length} more</span>}

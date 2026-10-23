@@ -54,8 +54,23 @@ export function setOnSessionExpired(fn: () => void) {
   onExpired = fn;
 }
 
+/**
+ * The phone's secure storage (the Android Keystore) can be slow, or on some phones never answer. Opening the app must never wait on it
+ * for ever: after a few seconds it counts as "nothing stored", and the person simply signs in again.
+ */
+const STORAGE_WAIT_MS = 4_000;
+function readSecure(key: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), STORAGE_WAIT_MS);
+    SecureStore.getItemAsync(key).then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      () => { clearTimeout(timer); resolve(null); },
+    );
+  });
+}
+
 export async function storedSessionKind(): Promise<SessionKind | null> {
-  const [token, kind] = await Promise.all([SecureStore.getItemAsync(REFRESH_KEY), SecureStore.getItemAsync(KIND_KEY)]);
+  const [token, kind] = await Promise.all([readSecure(REFRESH_KEY), readSecure(KIND_KEY)]);
   return token && (kind === "partner" || kind === "staff") ? kind : null;
 }
 
@@ -109,7 +124,7 @@ let refreshing: Promise<boolean> | null = null;
 export function refreshSession(): Promise<boolean> {
   if (!refreshing) {
     refreshing = (async () => {
-      const token = await SecureStore.getItemAsync(REFRESH_KEY);
+      const token = await readSecure(REFRESH_KEY);
       const kind = await storedSessionKind();
       if (!token || !kind) return false;
       try {

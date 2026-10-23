@@ -264,3 +264,29 @@ def test_a_store_with_bottles_in_the_month_is_on_that_months_cards_even_if_its_s
     # June had no bottles and the store had not started: still not offered
     june = {v["vendor"] for v in client.get(f"{API}/cards/vendors", headers=admin, params={"month": "2026-06"}).json()["vendors"]}
     assert "ZZ Supplied Vendor" not in june
+
+
+def test_a_closed_store_can_always_be_found_and_its_card_downloaded(client, db, admin, emp, make_store):
+    """CPC Sonipat is closed and had no bottles in the month asked for: it must still show in the search and its card must still download."""
+    closed = make_store(vendor="ZZ Gone Vendor", status="CLOSE", name="CPC Sonipat Gone")
+    entry(db, closed, date(2026, 7, 9), 12)                                           # supplied in July only
+
+    for who in (admin, emp):                                                           # the admin, and an employee whose region it is in
+        for month in ("2026-07", "2026-06", None):                                     # a month it was supplied, one it was not, and blank cards
+            params = {"q": "sonipat gone", **({"month": month} if month else {})}
+            rows = client.get(f"{API}/cards/vendors", headers=who, params=params).json()["vendors"]
+            row = next(v for v in rows if v["vendor"] == "ZZ Gone Vendor")
+            assert [m["name"] for m in row["matches"]] == ["CPC Sonipat Gone"] and row["matches"][0]["status"] == "CLOSE"
+            assert row["stores"] == (1 if month == "2026-07" else 0)                   # the vendor's card COUNT stays "supplied that month"
+            pdf = client.get(f"{API}/cards/pdf", headers=who, params={"store_id": str(closed.id), **({"month": month} if month else {})})
+            assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-" and pdf.headers["x-card-count"] == "1", (who is admin, month)
+    # the bulk vendor PDF for a month it was not supplied in still has nothing to print
+    assert client.get(f"{API}/cards/pdf", headers=admin, params={"vendor": "ZZ Gone Vendor", "month": "2026-06"}).status_code == 404
+
+
+def test_a_store_outside_the_users_scope_is_still_not_downloadable(client, db, emp, make_store):
+    elsewhere = make_store(vendor="ZZ Far Vendor", status="CLOSE", name="Far Closed Store", region="WEST")     # not in the employee's region
+    entry(db, elsewhere, date(2026, 7, 9), 5)
+    assert client.get(f"{API}/cards/pdf", headers=emp, params={"store_id": str(elsewhere.id), "month": "2026-07"}).status_code == 404
+    rows = client.get(f"{API}/cards/vendors", headers=emp, params={"q": "far closed", "month": "2026-07"}).json()["vendors"]
+    assert not any(v["vendor"] == "ZZ Far Vendor" for v in rows)

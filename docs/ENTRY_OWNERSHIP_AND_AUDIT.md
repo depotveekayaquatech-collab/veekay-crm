@@ -10,7 +10,7 @@ The names are generic. The rules live in one place: `backend/app/core/entry_acce
 |---|---|---|---|---|
 | Who | role `employee` (everyone by default) | role `team_lead` (permission `entries.team`) | role `entry_reviewer` (`entries.audit` + `entries.review`) | role `admin`, and the developer |
 | Create entries | yes, for their stores | yes (recorded as the Team Lead) | only if they also hold the employee role | yes |
-| See entries | **only their own** | own + people who report to them | everything in scope (whole company, or one platform if the account has one) | everything |
+| See entries | **their own, plus numbers set by someone more senior (read-only)** | own + people who report to them, plus numbers set by someone more senior | everything in scope (whole company, or one platform if the account has one) | everything |
 | Change a submitted entry | **no** | yes, inside the team, with a reason | **no** (flags only) | yes, with a reason (`PATCH /entries/{id}`) or the existing correct-entries page |
 | Delete an entry | no | no | no | yes (kept in history and `deleted_rows`) |
 | History of an entry | no | yes, inside the team | yes | yes |
@@ -18,8 +18,13 @@ The names are generic. The rules live in one place: `backend/app/core/entry_acce
 | Review marks (reviewed / flagged / needs correction) | no | no | yes | yes |
 | Assign roles / reporting line | no | no | no | yes (never their own) |
 
-* A contributor still sees that a day was marked by someone else (so it cannot be marked twice) but never the number, the name or the time.
-  The same goes for the store's monthly totals, the vendors page and "My entries": they count the person's own numbers only.
+* **Who sees whose number.** Seniority order: contributor < Team Lead < reviewer < administrator / developer. A person sees their own numbers and
+  the numbers whose *current value was set by someone strictly more senior* (judged by the role stamped on the entry when it was set): a contributor
+  sees what a Team Lead, an administrator or the developer entered, and cannot change it (marked `by_higher` in the calendar). People at the same
+  level never see each other's numbers: a day a colleague marked shows as marked, with no number, name or time. A number a more senior person has
+  corrected counts as theirs from then on. A day carrying a developer's cash adjustment stays hidden from everyone below the developer.
+  Store totals, the vendors page and the Orders list follow the same rule; "My entries" lists only what the person entered themselves.
+  An old entry with no known creator is shown if an administrator last set its number, and hidden otherwise.
 * Permissions are re-read from the database on every request; the sign-in token carries identity only. A role change therefore applies on
   the person's very next request. There is no cached role anywhere.
 * Nobody is promoted automatically. Existing accounts keep exactly the access they had; Team Lead and Reviewer are given by an administrator in
