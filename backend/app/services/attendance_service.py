@@ -343,6 +343,12 @@ def _record_status(r: AttendanceRecord, now: datetime) -> str:
 
 
 def _entry(r: AttendanceRecord, now: datetime) -> dict:
+    if r.source == "sheet":
+        # Filled from an uploaded attendance sheet: it only says the person was present. No times were recorded, so none are shown.
+        return {
+            "status": "PRESENT", "check_in_at": None, "check_out_at": None, "minutes": 0, "late": False, "half_day": False,
+            "location": {"status": "unknown", "label": "Attendance sheet"}, "check_out_location": None, "source": "sheet",
+        }
     return {
         "status": _record_status(r, now), "check_in_at": r.check_in_at, "check_out_at": r.check_out_at,
         "minutes": _minutes(r, now), "late": r.late, "half_day": r.half_day, "location": _in_loc(r), "check_out_location": _out_loc(r),
@@ -383,10 +389,10 @@ def day_overview(db: Session, admin: User, day: date) -> dict:
                 "location": {"status": "unknown", "label": "—"}, "check_out_location": None, "source": None,
                 "leave_type": lv["leave_type"] if lv else None,
             })
-    order = {"CHECKED_IN": 0, "CHECKED_OUT": 1, "NO_CHECKOUT": 1, "ON_LEAVE": 2, "OFF": 3, "ABSENT": 4}
+    order = {"CHECKED_IN": 0, "CHECKED_OUT": 1, "NO_CHECKOUT": 1, "PRESENT": 1, "ON_LEAVE": 2, "OFF": 3, "ABSENT": 4}
     rows.sort(key=lambda r: (_CAT_ORDER.get(r["category"], 9), order[r["status"]], r["check_in_at"] or now, r["full_name"].lower()))
 
-    present = [r for r in rows if r["status"] in ("CHECKED_IN", "CHECKED_OUT", "NO_CHECKOUT")]
+    present = [r for r in rows if r["status"] in ("CHECKED_IN", "CHECKED_OUT", "NO_CHECKOUT", "PRESENT")]
     expected = [r for r in rows if r["status"] not in ("OFF",)]
     return {
         "date": day,

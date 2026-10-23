@@ -5,6 +5,7 @@ const STATUS: Record<DayStatus, { label: string; tone: "success" | "info" | "war
   CHECKED_IN: { label: "Checked in", tone: "success" },
   CHECKED_OUT: { label: "Checked out", tone: "info" },
   NO_CHECKOUT: { label: "No check-out", tone: "warning" },
+  PRESENT: { label: "Present (sheet)", tone: "neutral" },
   ON_LEAVE: { label: "On leave", tone: "info" },
   OFF: { label: "Weekly off", tone: "neutral" },
   ABSENT: { label: "Absent", tone: "danger" },

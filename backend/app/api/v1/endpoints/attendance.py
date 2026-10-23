@@ -3,14 +3,15 @@ import uuid
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_permission
 from app.db.session import get_db
 from app.models.user import User
-from app.services import attendance_service, leave_service
+from app.services import attendance_import_service, attendance_service, leave_service
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -102,6 +103,24 @@ def day(
 def month(month: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Month grid: per person, per day — check in, check out, hours, location, leave."""
     return attendance_service.month_summary(db, user, attendance_service.parse_month(month))
+
+
+@router.post("/import", dependencies=[Depends(require_permission("attendance.edit"))])
+async def import_sheet(
+    month: str = Form(..., description="YYYY-MM"),
+    apply: bool = Form(False, description="false = preview only (changes nothing); true = write it"),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Developer only. Fill a month's attendance from a sheet: one row per employee (Employee ID), one column per day, 'P' = present.
+    Days that already have a record are overwritten (the old values are kept in the activity log). Not passed to payroll."""
+    content = await file.read(attendance_import_service.MAX_BYTES + 1)
+    if len(content) > attendance_import_service.MAX_BYTES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That file is too large (limit is 10 MB).")
+    return await run_in_threadpool(
+        attendance_import_service.run, db, user, attendance_service.parse_month(month), file.filename or "", content, apply=apply,
+    )
 
 
 @router.patch("/record", dependencies=[Depends(require_permission("attendance.edit"))])

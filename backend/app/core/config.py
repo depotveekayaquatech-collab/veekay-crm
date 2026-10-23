@@ -190,7 +190,8 @@ class Settings(BaseSettings):
     BOTTLE_LOST_AFTER_DAYS: int = Field(default=30)
 
     ATTENDANCE_WORK_START: str = Field(default="10:00")
-    ATTENDANCE_GRACE_MINUTES: int = Field(default=15)
+    # Work starts at 10:00 and nobody is marked late until after 10:30 (10:00 + 30 minutes). Checking in at or before 10:30 marks nothing.
+    ATTENDANCE_GRACE_MINUTES: int = Field(default=30)
 
     # Vendor cards
     COMPANY_NAME: str = Field(default="VEE KAY AQUATECH PVT. LTD.")

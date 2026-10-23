@@ -110,13 +110,16 @@ def test_check_out_needs_a_check_in_first(client, make_user):
     assert r.status_code == 409 and "Check in first" in r.json()["detail"]
 
 
-def test_late_after_the_grace_period(client, make_user, clock):
-    h1, _ = _fresh_employee(client, make_user)
-    clock(10, 15)                                                  # exactly at start + grace: still on time
-    assert client.post(f"{API}/attendance/check-in", headers=h1, json=_at(OFFICE)).json()["late"] is False
-    h2, _ = _fresh_employee(client, make_user)
-    clock(10, 16)
-    assert client.post(f"{API}/attendance/check-in", headers=h2, json=_at(OFFICE)).json()["late"] is True
+def test_nobody_is_marked_late_until_after_10_30(client, make_user, clock):
+    """Work starts at 10:00; checking in up to and including 10:30 marks nothing. Late begins after 10:30."""
+    for hh, mm in ((9, 0), (10, 0), (10, 16), (10, 29), (10, 30)):          # all on time, including the old 10:15 cutoff and 10:30 itself
+        h, _ = _fresh_employee(client, make_user)
+        clock(hh, mm)
+        got = client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).json()
+        assert got["late"] is False, (hh, mm)
+    h, _ = _fresh_employee(client, make_user)
+    clock(10, 31)
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).json()["late"] is True
 
 
 # ---------------------------------------------------------------- location is read at check in / out, nowhere else
@@ -341,11 +344,11 @@ def test_developer_sets_the_check_in_time_and_office_or_away(client, dev, office
     assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(_north(5000))).json()["check_in_location"]["status"] == "outside"
     day = datetime.now(IST).date().isoformat()
 
-    r = client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": day, "check_in_time": "10:30", "presence": "office"})
+    r = client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": day, "check_in_time": "10:31", "presence": "office"})
     assert r.status_code == 200, r.text
     e = r.json()
     assert e["late"] is True and e["location"]["status"] == "office" and e["location"]["label"] == "Head Office" and e["source"] == "edited"
-    assert datetime.fromisoformat(e["check_in_at"]).astimezone(IST).strftime("%H:%M") == "10:30"
+    assert datetime.fromisoformat(e["check_in_at"]).astimezone(IST).strftime("%H:%M") == "10:31"
 
     # on time again, and back to away: no office position is kept
     r = client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": day, "check_in_time": "09:45", "presence": "away"})

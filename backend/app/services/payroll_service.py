@@ -168,6 +168,8 @@ def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[
     for i in range(1, _dim(month) + 1):
         d = date(month.year, month.month, i)
         entry = entries.get(d.isoformat())
+        if entry is not None and entry.get("source") == "sheet":
+            entry = None            # a day filled from an uploaded attendance sheet is not passed to salary: it counts only if the admin marks it
         kind = _kind(entry, d, joined)
         mark = marks.get(d)
         counted = MARK_VALUE[mark] if mark else _default_value(kind, entry)

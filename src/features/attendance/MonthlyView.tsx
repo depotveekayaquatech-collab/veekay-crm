@@ -6,6 +6,8 @@ import { IconDownload, IconSearch } from "@/components/ui/icons";
 import { fmtMinutes, fmtTime } from "@/features/attendance/format";
 import { CategoryChips, GroupRow } from "@/features/attendance/parts";
 import { useMonthAttendance } from "@/features/attendance/api";
+import { ImportSheetModal } from "@/features/attendance/ImportSheetModal";
+import { usePermission } from "@/hooks/usePermission";
 import { downloadCsv } from "@/lib/csv";
 
 const field = "h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
@@ -19,6 +21,8 @@ export function MonthlyView() {
   const [month, setMonth] = useState(thisMonth());
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
+  const canImport = usePermission("attendance.edit"); // developer only
+  const [importing, setImporting] = useState(false);
   const { data, isLoading, isError, refetch } = useMonthAttendance(month);
 
   const rows = useMemo(() => {
@@ -35,7 +39,7 @@ export function MonthlyView() {
       ["Employee ID", "Name", "Platform", "Days present", "Hours", "Late", "Leave", "Absent", "Days outside office", ...data.dates.map((d) => d.slice(8))],
       rows.map((r) => [
         r.employeeCode, r.fullName, r.platform, r.daysPresent, (r.totalMinutes / 60).toFixed(1), r.lateDays, r.leaveDays, r.absentDays, r.outsideDays,
-        ...data.dates.map((d) => (r.days[d] ? (r.days[d].status === "ON_LEAVE" ? "L" : (r.days[d].minutes / 60).toFixed(1)) : "")),
+        ...data.dates.map((d) => (r.days[d] ? (r.days[d].status === "ON_LEAVE" ? "L" : r.days[d].status === "PRESENT" ? "P" : (r.days[d].minutes / 60).toFixed(1)) : "")),
       ]),
     );
   }
@@ -51,6 +55,9 @@ export function MonthlyView() {
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input className={`${field} w-full pl-9`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, ID, platform…" aria-label="Search" />
         </div>
+        {canImport && (
+          <Button variant="secondary" onClick={() => setImporting(true)}>Import attendance sheet</Button>
+        )}
         <Button variant="secondary" onClick={exportCsv} disabled={!rows.length}>
           <IconDownload className="h-4 w-4" />
           Export CSV
@@ -64,6 +71,7 @@ export function MonthlyView() {
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-warning-soft ring-1 ring-status-warning/30" /> checked in from elsewhere</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-surface-muted ring-1 ring-gray-300" /> location not shared</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-status-info-soft ring-1 ring-status-info/30" /> L = on leave</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-surface-muted ring-1 ring-surface-border" /> P = present from an attendance sheet</span>
         <span>Numbers are hours worked · underlined = late · hover a day for the times</span>
       </div>
 
@@ -117,6 +125,13 @@ export function MonthlyView() {
                         </td>
                       );
                     }
+                    if (e.status === "PRESENT") {
+                      return (
+                        <td key={d} className="border-b border-surface-border/60 px-0.5 py-1.5 text-center" title="Present (from the attendance sheet; no times were recorded)">
+                          <span className="inline-block min-w-[1.9rem] rounded bg-surface-muted px-1 py-0.5 text-[11px] font-bold text-gray-700">P</span>
+                        </td>
+                      );
+                    }
                     const tone = e.location.status === "office" ? "bg-status-success-soft text-status-success" : e.location.status === "outside" ? "bg-status-warning-soft text-status-warning" : "bg-surface-muted text-gray-600";
                     const tip = `${fmtTime(e.checkInAt)}${e.late ? " (late)" : ""} → ${e.checkOutAt ? fmtTime(e.checkOutAt) : "no check-out"} · ${fmtMinutes(e.minutes)} · ${e.location.status === "office" ? e.location.label : e.location.status === "outside" ? `outside office (${e.location.label})` : "location not shared"}`;
                     return (
@@ -138,6 +153,7 @@ export function MonthlyView() {
           </table>
         </div>
       )}
+      {importing && <ImportSheetModal month={month} onClose={() => setImporting(false)} />}
     </div>
   );
 }

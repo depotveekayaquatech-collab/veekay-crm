@@ -13,7 +13,8 @@ export interface LocationInfo {
   mapUrl?: string;
 }
 
-export type DayStatus = "CHECKED_IN" | "CHECKED_OUT" | "NO_CHECKOUT" | "ON_LEAVE" | "OFF" | "ABSENT";
+/** PRESENT = marked present from an uploaded attendance sheet (no times were recorded). */
+export type DayStatus = "CHECKED_IN" | "CHECKED_OUT" | "NO_CHECKOUT" | "PRESENT" | "ON_LEAVE" | "OFF" | "ABSENT";
 
 export type StaffCategory = "admin" | "accounts" | "blinkit" | "zepto" | "other";
 

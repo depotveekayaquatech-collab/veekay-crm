@@ -37,6 +37,7 @@ const STATUS_OPTIONS = [
   { value: "CHECKED_IN", label: "Checked in" },
   { value: "CHECKED_OUT", label: "Checked out" },
   { value: "NO_CHECKOUT", label: "No check-out" },
+  { value: "PRESENT", label: "Present (sheet)" },
   { value: "ON_LEAVE", label: "On leave" },
   { value: "ABSENT", label: "Absent" },
 ];
@@ -258,7 +259,7 @@ export function DailyView() {
               )}
               {rows.map((r, i) => {
                 const newGroup = i === 0 || rows[i - 1].category !== r.category;
-                const present = r.status === "CHECKED_IN" || r.status === "CHECKED_OUT" || r.status === "NO_CHECKOUT";
+                const present = r.status === "CHECKED_IN" || r.status === "CHECKED_OUT" || r.status === "NO_CHECKOUT" || r.status === "PRESENT";
                 return (
                   <Fragment key={r.userId}>
                     {newGroup && <GroupRow colSpan={6} label={r.categoryLabel} count={rows.filter((x) => x.category === r.category).length} />}
