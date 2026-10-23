@@ -75,7 +75,7 @@ export function PasswordsPanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl bg-status-warning-soft px-4 py-3 text-sm text-status-warning">
-        Developer only. Every time this list is opened it is written to the activity log (never the passwords themselves). Don&apos;t share a screenshot of it.
+        Only you can see this page. Don&apos;t share a screenshot of it.
         {missing > 0 && (
           <span className="mt-1 block text-xs">
             {missing} account{missing === 1 ? "" : "s"} show &ldquo;Not recorded yet&rdquo;: the password was set before this view existed. It fills in by

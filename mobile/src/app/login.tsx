@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/auth/AuthProvider";
@@ -15,6 +16,7 @@ const loginOk = (v: string) => (v.includes("@") ? EMAIL_OK.test(v.trim()) : /^[A
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState("");
@@ -123,6 +125,7 @@ export default function LoginScreen() {
           ) : null}
 
           <Button title="Sign in" onPress={submit} loading={busy} style={{ marginTop: 22, minHeight: 54 }} />
+          <Button title="Forgot your password?" variant="ghost" onPress={() => router.push("/forgot-password" as never)} style={{ marginTop: 8 }} />
 
           <View style={{ marginTop: 28, padding: 14, borderRadius: radius.md, backgroundColor: colors.surfaceSubtle, gap: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>Forgot your password or can't sign in?</Text>

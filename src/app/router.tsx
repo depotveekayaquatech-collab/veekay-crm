@@ -11,6 +11,7 @@ import { usePermission } from "@/hooks/usePermission";
 const HomePage = lazy(() => import("@/app/HomePage").then((m) => ({ default: m.HomePage })));
 const DashboardPage = lazy(() => import("@/features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const LoginPage = lazy(() => import("@/features/auth/LoginPage").then((m) => ({ default: m.LoginPage })));
+const ForgotPasswordPage = lazy(() => import("@/features/auth/ForgotPasswordPage").then((m) => ({ default: m.ForgotPasswordPage })));
 const MarkOrdersPage = lazy(() => import("@/features/orders/MarkOrdersPage").then((m) => ({ default: m.MarkOrdersPage })));
 const DailyOverviewPage = lazy(() => import("@/features/orders/DailyOverviewPage").then((m) => ({ default: m.DailyOverviewPage })));
 const CorrectEntriesPage = lazy(() => import("@/features/orders/CorrectEntriesPage").then((m) => ({ default: m.CorrectEntriesPage })));
@@ -83,6 +84,7 @@ export function AppRoutes() {
     <Suspense fallback={<FullPageLoader />}>
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/count" element={<CountPage />} />
       <Route path="/vendor/*" element={<VendorRoutes />} />
       <Route

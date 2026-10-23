@@ -121,6 +121,7 @@ function Navigator() {
       </Stack.Protected>
       <Stack.Protected guard={!account && !staff}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="forgot-password" options={{ title: "Forgot password" }} />
       </Stack.Protected>
     </Stack>
   );

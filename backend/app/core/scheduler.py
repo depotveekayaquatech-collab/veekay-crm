@@ -155,6 +155,12 @@ def start() -> None:
         misfire_grace_time=3600,
         coalesce=True,
     )
+    from app.services.audit_retention import run_audit_purge
+
+    _scheduler.add_job(
+        run_audit_purge, CronTrigger(hour=3, minute=30, timezone=tz), id="audit_purge",
+        replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
     _scheduler.start()
     log.info(
         "store sync scheduled daily at %02d:%02d %s",

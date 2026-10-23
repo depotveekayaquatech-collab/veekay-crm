@@ -429,7 +429,7 @@ def reset_password(db: Session, actor: User, employee_id: uuid.UUID) -> str:
 def password_overview(db: Session, actor: User) -> list[dict]:
     """Developer only (`employees.view_password`): every sign-in account with its current password and how long ago it changed.
     The readable copy is decrypted here; a password that predates the copy shows as None until that person next signs in or has it reset.
-    The audit log records that the list was opened and how many passwords it held, never the passwords."""
+    Nothing is written to the audit log for viewing (by request)."""
     from datetime import datetime, timezone
 
     rows = db.execute(
@@ -459,9 +459,4 @@ def password_overview(db: Session, actor: User) -> list[dict]:
             "changed_date_exact": u.password_changed_at is not None,
             "days_since_change": max(0, (now - changed).days) if changed else None,
         })
-    activity_service.record(
-        db, actor=actor, action="employee.passwords_viewed", entity_type="employee", entity_id=actor.id,
-        metadata={"accounts": len(out), "with_password": sum(1 for r in out if r["password"])},
-    )
-    db.commit()
     return out

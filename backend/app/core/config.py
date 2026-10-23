@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     PASSWORD_MIN_LENGTH: int = 10
     # Key for the encrypted copy of staff passwords the developer can read. Empty = derived from JWT_SECRET_KEY.
     PASSWORD_VAULT_KEY: str = Field(default="")
+    # Activity-log rows older than this many days are deleted every night (0 = keep everything). Keeps the table small and fast.
+    AUDIT_KEEP_DAYS: int = Field(default=60, ge=0)
+
+    # "Forgot password" by emailed one-time code. Free with a Gmail account + App Password (smtp.gmail.com:587). Empty SMTP_HOST = feature off.
+    SMTP_HOST: str = Field(default="")
+    SMTP_PORT: int = Field(default=587)
+    SMTP_USER: str = Field(default="")
+    SMTP_PASSWORD: str = Field(default="")
+    SMTP_FROM: str = Field(default="")             # defaults to SMTP_USER
+    RESET_CODE_MINUTES: int = Field(default=10, ge=1, le=60)
+    RESET_CODE_MAX_ATTEMPTS: int = Field(default=5, ge=1, le=10)
+    RESET_CODE_MAX_PER_HOUR: int = Field(default=3, ge=1, le=20)
     REFRESH_REUSE_GRACE_SECONDS: int = 15
     LOGIN_IP_MAX_FAILURES: int = 20
     LOGIN_IP_WINDOW_MINUTES: int = 10

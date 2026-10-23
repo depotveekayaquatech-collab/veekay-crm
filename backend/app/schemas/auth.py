@@ -36,6 +36,23 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., max_length=128)
 
 
+class ForgotPasswordRequest(BaseModel):
+    organization_slug: str = Field(default="veekay")
+    employee_code: str = Field(..., min_length=1, max_length=32)
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    available: bool = True      # False when the server has no email set up: the person must ask for a reset instead
+
+
+class ResetWithCodeRequest(BaseModel):
+    organization_slug: str = Field(default="veekay")
+    employee_code: str = Field(..., min_length=1, max_length=32)
+    code: str = Field(..., min_length=4, max_length=12)
+    new_password: str = Field(..., max_length=128)
+
+
 class SessionOut(BaseModel):
     id: uuid.UUID            # the session family id
     current: bool

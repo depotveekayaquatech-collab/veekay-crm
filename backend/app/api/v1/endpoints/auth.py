@@ -1,7 +1,7 @@
 """Auth routes — thin wrappers over AuthService / session_service."""
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -9,7 +9,9 @@ from app.api.deps import (
     get_current_permissions,
     get_current_user_allow_pending,
 )
+from app.core import mailer
 from app.core.config import settings
+from app.core.middleware import rate_windows
 from app.core.ratelimit import client_ip, login_failures
 from app.db.session import get_db
 from app.models.user import User
@@ -17,14 +19,17 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
     ChangePasswordRequest,
     CurrentUserResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
     LogoutRequest,
     RefreshRequest,
+    ResetWithCodeRequest,
     SessionOut,
     TokenPair,
 )
-from app.services import activity_service, session_service
+from app.services import activity_service, password_reset_service, session_service
 from app.services.auth_service import AuthService, GENERIC_LOGIN_ERROR
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,6 +90,48 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         if exc.status_code == status.HTTP_401_UNAUTHORIZED and exc.detail == GENERIC_LOGIN_ERROR:
             login_failures.record_failure(meta["ip"])
         raise
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    payload: ForgotPasswordRequest, request: Request, tasks: BackgroundTasks, db: Session = Depends(get_db),
+) -> ForgotPasswordResponse:
+    """Email a one-time code. The answer is identical whether or not the ID exists or has an email on file."""
+    if not mailer.mail_enabled():
+        return ForgotPasswordResponse(
+            available=False,
+            message="Resetting by code isn't switched on yet. Ask your Veekay contact to reset your password.",
+        )
+    wait = rate_windows.take(f"forgot:{client_ip(request)}", 10, 3600.0)
+    if wait:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests. Try again later.", headers={"Retry-After": str(wait)})
+    issued = password_reset_service.issue_code(db, payload.organization_slug, payload.employee_code)
+    if issued:
+        tasks.add_task(password_reset_service.send_code_email, *issued)
+    return ForgotPasswordResponse(
+        message="If this Employee ID has an email address on file, a 6-digit code has been sent to it. "
+                "No email? Ask your Veekay contact to reset your password.",
+    )
+
+
+@router.post("/reset-with-code", status_code=204)
+def reset_with_code(payload: ResetWithCodeRequest, request: Request, db: Session = Depends(get_db)) -> Response:
+    ip = client_ip(request)
+    wait = login_failures.blocked_for(ip)
+    if wait:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts from this network. Try again in a few minutes.",
+            headers={"Retry-After": str(wait)},
+        )
+    try:
+        password_reset_service.reset_with_code(
+            db, payload.organization_slug, payload.employee_code, payload.code, payload.new_password, ip=ip,
+        )
+    except HTTPException as exc:
+        if exc.detail == password_reset_service.BAD_CODE:
+            login_failures.record_failure(ip)
+        raise
+    return Response(status_code=204)
 
 
 @router.post("/refresh", response_model=TokenPair)

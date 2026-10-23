@@ -114,6 +114,21 @@ def require_permission(*required: str) -> Callable[..., User]:
     return checker
 
 
+def require_permission_hidden(*required: str) -> Callable[..., User]:
+    """Like require_permission, but anyone without the permission gets a plain 404 — the route looks like it does not exist,
+    so nobody else (not even an admin) can tell that it is there."""
+
+    def checker(
+        user: User = Depends(get_current_user),
+        permissions: set[str] = Depends(get_current_permissions),
+    ) -> User:
+        if not set(required).issubset(permissions):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+        return user
+
+    return checker
+
+
 def require_same_organization(target_organization_id: uuid.UUID, user: User) -> None:
     """Explicit organization-isolation guard for endpoints that take an
     organization_id or resolve one from a related entity (store, order,

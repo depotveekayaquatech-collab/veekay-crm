@@ -20,6 +20,11 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("users", sa.Column("password_enc", sa.Text(), nullable=True))
+    op.add_column("users", sa.Column("reset_code_hash", sa.String(64), nullable=True))
+    op.add_column("users", sa.Column("reset_code_expires_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("users", sa.Column("reset_code_attempts", sa.Integer(), nullable=False, server_default="0"))
+    op.add_column("users", sa.Column("reset_window_start", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("users", sa.Column("reset_window_count", sa.Integer(), nullable=False, server_default="0"))
     bind = op.get_bind()
     if not bind.execute(sa.text("SELECT id FROM permissions WHERE code = 'employees.view_password'")).first():
         bind.execute(
@@ -34,4 +39,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.get_bind().execute(sa.text("DELETE FROM permissions WHERE code = 'employees.view_password'"))
-    op.drop_column("users", "password_enc")
+    for col in ("reset_window_count", "reset_window_start", "reset_code_attempts", "reset_code_expires_at", "reset_code_hash", "password_enc"):
+        op.drop_column("users", col)

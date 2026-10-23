@@ -57,6 +57,13 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default=UserStatus.ACTIVE.value)
 
+    # "Forgot password": one emailed 6-digit code at a time, stored only as a keyed hash, with an expiry and a wrong-guess counter.
+    reset_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reset_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    reset_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # codes sent per hour
+    reset_window_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[str | None] = mapped_column(String, nullable=True)  # ISO timestamp, set on lockout
 

@@ -5,7 +5,7 @@ from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_page_params, require_permission
+from app.api.deps import get_current_user, get_page_params, require_permission, require_permission_hidden
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import Page, PageParams
@@ -46,7 +46,7 @@ def list_employees(
 
 @router.get(
     "/passwords", response_model=list[PasswordRow],
-    dependencies=[Depends(require_permission("employees.view_password"))],
+    dependencies=[Depends(require_permission_hidden("employees.view_password"))],   # 404 for everyone but the developer
 )
 def list_passwords(
     response: Response,

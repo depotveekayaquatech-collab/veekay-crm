@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { IconAlertTriangle } from "@/components/ui/icons";
@@ -136,6 +136,9 @@ export function LoginPage() {
               />
               Remember my Employee ID
             </label>
+            <Link to="/forgot-password" className="-mt-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
+              Forgot your password?
+            </Link>
 
             {error && (
               <div
