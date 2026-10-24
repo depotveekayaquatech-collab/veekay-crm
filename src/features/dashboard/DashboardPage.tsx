@@ -394,7 +394,7 @@ function AdminDashboard() {
   const testReports = useTestReports("zepto");
 
   const quickActions = [
-    { to: "/audit", label: "Store Audit", icon: IconShield, perm: "entries.audit" },
+    { to: "/audit", label: "Entry Review", icon: IconShield, perm: "entries.audit" },
     { to: "/orders/overview", label: "Daily overview", icon: IconChart, perm: "orders.overview" },
     { to: "/orders/correct", label: "Correct entries", icon: IconGrid, perm: "orders.correct" },
     { to: "/team", label: "Team & access", icon: IconUsers, perm: "employees.view" },
@@ -789,7 +789,7 @@ export function DashboardPage() {
   const isLead = usePermission("entries.team");
 
   if (isAccountant && !canOrders && !isAdmin) return <Navigate to="/accounts" replace />;
-  // An Entry Reviewer works from Store Audit: it is their home page.
+  // A Reviewer works from Entry Review: it is their home page.
   if (canAudit && !isAdmin && !canOrders) return <Navigate to="/audit" replace />;
 
   return (
@@ -800,11 +800,11 @@ export function DashboardPage() {
         action={
           canAudit ? (
             <Link to="/audit" className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600">
-              <IconShield className="h-4 w-4" aria-hidden="true" /> Store Audit
+              <IconShield className="h-4 w-4" aria-hidden="true" /> Entry Review
             </Link>
           ) : isLead ? (
             <Link to="/team-entries" className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600">
-              <IconClipboard className="h-4 w-4" aria-hidden="true" /> Team entries
+              <IconClipboard className="h-4 w-4" aria-hidden="true" /> Entries to Verify
             </Link>
           ) : undefined
         }

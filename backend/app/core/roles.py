@@ -24,6 +24,11 @@ CATEGORY_ORDER = ["admin", "accounts", "partner", "blinkit", "zepto", "other"]
 # granted per person, and the permission catalogue doesn't list them.
 RESERVED_PERMISSIONS = frozenset({"sheets.sync", "cash.adjust", "bottles.delete", "cards.sheet", "attendance.edit", "employees.delete", "employees.view_password"})
 
+# Two of the reserved permissions are also given to Level 3 (the Entry Reviewer role, when it is not limited to one platform) and Level 4 (administrators), computed
+# per request in UserRepository.get_permission_codes: the cash-purchase tools (sheet import + manual add) and the random card PDF (still behind its access code).
+# They stay reserved: nobody can be granted them per person or through a custom role, and Level 1 / Level 2 never hold them, so those routes answer 403.
+LEVEL3_TOOL_PERMISSIONS = frozenset({"cash.adjust", "cards.sheet"})
+
 # The only permissions a partner account may ever hold — enforced server-side whatever the UI sends.
 PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create", "reports.delivery"]
 

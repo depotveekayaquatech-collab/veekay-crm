@@ -65,6 +65,16 @@ class OrderEntry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     review_status: Mapped[str] = mapped_column(String(24), default="none", server_default="none")
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ---- verification workflow (migration 0053): submitted (L1) -> verified_l2 (Team Lead) -> reviewed_l3 (Reviewer). bottle_count is always the FINAL
+    # number of this state: the L1 value until a senior changes it, then theirs. Earlier values stay only in order_entry_events. Moved by DB triggers.
+    verification_status: Mapped[str] = mapped_column(String(16), default="submitted", server_default="submitted")
+    verified_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    l3_reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    l3_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    check_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_request_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)       # the client's idempotency key for this entry
     source_app: Mapped[str | None] = mapped_column(Text, nullable=True)

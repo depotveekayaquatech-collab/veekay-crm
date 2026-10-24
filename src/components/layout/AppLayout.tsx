@@ -96,18 +96,22 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Reports", to: "/reports", icon: IconReport, permission: "orders.overview" },
       { label: "Delivery reports", to: "/delivery-reports", icon: IconReport, permission: "reports.delivery", requireRole: "partner" },
-      { label: "Store Audit", to: "/audit", icon: IconShield, permission: "entries.audit" },
-      { label: "Team entries", to: "/team-entries", icon: IconClipboard, permission: "entries.team", excludeRole: ["admin", "developer"] },
+      { label: "Entry Review", to: "/audit", icon: IconShield, permission: "entries.audit" },
+      { label: "Entries to Verify", to: "/team-entries", icon: IconClipboard, permission: "entries.team", excludeRole: ["admin", "developer"] },
       { label: "Audit log", to: "/activity", icon: IconActivity, permission: "activity.view" },
     ],
   },
   {
-    title: "Developer",
+    // Level 3 (Reviewer) and Level 4 (administrator) only; the API refuses everybody else. The page paths keep their old /developer/ names on purpose.
+    title: "Reviewer tools",
     items: [
-      { label: "Data sync", to: "/data-sync", icon: IconRefresh, permission: "sheets.sync" },
-      { label: "Cash purchase", to: "/developer/cash", icon: IconWallet, permission: "cash.adjust" },
-      { label: "Random Count PDF", to: "/developer/card-sheet", icon: IconCard, permission: "cards.sheet" },
+      { label: "Cash Purchase Import", to: "/developer/cash", icon: IconWallet, permission: "cash.adjust" },
+      { label: "Random Card PDF", to: "/developer/card-sheet", icon: IconCard, permission: "cards.sheet" },
     ],
+  },
+  {
+    title: "Developer",
+    items: [{ label: "Data sync", to: "/data-sync", icon: IconRefresh, permission: "sheets.sync" }],
   },
   {
     title: "People & access",
@@ -131,6 +135,10 @@ const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[], 
 };
 
 const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+
+/** A person who only enters data (Level 1: can mark orders, cannot see the overview) sees "Data Entry" where the rest of the team sees "Orders". */
+const navLabel = (item: NavItem, has: (p: string) => boolean) =>
+  item.to === "/orders" && has("orders.mark") && !has("orders.overview") && !has("orders.correct") ? "Data Entry" : item.label;
 
 function formatRoleLabel(role: string): string {
   return role
@@ -211,7 +219,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                           isActive ? "text-brand-300" : "text-white/40 group-hover:text-white/80"
                         }`}
                       />
-                      <span>{item.label}</span>
+                      <span>{navLabel(item, hasPermission)}</span>
                     </>
                   )}
                 </NavLink>
@@ -330,10 +338,8 @@ export function AppLayout() {
     };
   }, [mobileOpen]);
 
-  const currentTitle =
-    [...NAV_ITEMS]
-      .filter((item) => location.pathname.startsWith(item.to))
-      .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? (location.pathname.startsWith("/account") ? "My account" : "Veekay CRM");
+  const currentItem = [...NAV_ITEMS].filter((item) => location.pathname.startsWith(item.to)).sort((a, b) => b.to.length - a.to.length)[0];
+  const currentTitle = currentItem ? navLabel(currentItem, hasPermission) : location.pathname.startsWith("/account") ? "My account" : "Veekay CRM";
 
   return (
     <div className="min-h-screen bg-surface-subtle lg:pl-[17rem]">
@@ -420,7 +426,7 @@ export function AppLayout() {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        pages={pages.map((p) => ({ label: p.label, to: p.to }))}
+        pages={pages.map((p) => ({ label: navLabel(p, hasPermission), to: p.to }))}
         canSearchStores={hasPermission("stores.view")}
       />
 

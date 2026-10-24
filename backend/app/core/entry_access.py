@@ -7,9 +7,14 @@ Four levels (the names are generic on purpose):
                               own entries + the entries created by people who report to them; may correct those (with a reason), see their history.
   Level 3  Entry Reviewer     (role `entry_reviewer`, permissions entries.audit + entries.review)
                               every entry in their scope (the whole organisation, or one platform if the account has one); reads full history;
-                              marks reviewed / flagged; can NOT change a value, the creator or the history.
+                              edits and finalises entries (an edit is final), reviews an entry directly without waiting for the Team Lead,
+                              asks the Team Lead to check one, flags entries; can NOT change the creator or the history.
   Level 4  Administrator      (role `admin`, and the developer)
-                              everything, including Store Audit and corrections; still cannot rewrite history (the database refuses).
+                              everything, including Store Audit and corrections, and everything Level 3 can do; still cannot rewrite history
+                              (the database refuses).
+
+Verification state of an entry (order_entries.verification_status, moved by the database triggers of migration 0053):
+  submitted (L1) -> verified_l2 (Team Lead) -> reviewed_l3 (Reviewer). A Team Lead acts only on `submitted` entries; a Reviewer / administrator acts on any.
 
 Scope is derived from the authenticated user and the permissions re-read from the database on every request, so a role change applies on the very
 next call. Creator ids, roles and scopes are never read from a request body.
@@ -29,6 +34,10 @@ from app.models.user import User
 
 TEAM_LEAD_ROLE = "team_lead"
 REVIEWER_ROLE = "entry_reviewer"
+
+STATUS_SUBMITTED = "submitted"
+STATUS_VERIFIED = "verified_l2"
+STATUS_REVIEWED = "reviewed_l3"
 
 PERM_TEAM = "entries.team"
 PERM_AUDIT = "entries.audit"
@@ -122,6 +131,8 @@ class EntryScope:
     can_edit_values: bool
     can_review: bool
     can_store_audit: bool
+    can_verify: bool = False              # Level 2: verify the `submitted` entries of the team
+    can_request_check: bool = False       # Level 3 / 4: ask the Team Lead to check a `submitted` entry
 
     def conditions(self) -> list:
         """SQL conditions on OrderEntry that keep only what this user may see. Add them to EVERY query that returns entries."""
@@ -138,10 +149,23 @@ class EntryScope:
         return self.creator_ids is None or owns_value(entry, self.creator_ids)
 
     def can_edit(self, entry: OrderEntry, store_platform_id: uuid.UUID | None = None) -> bool:
-        """Values may be corrected only where the creator is known (a legacy / unverified entry is the administrators' to investigate)."""
+        """Values may be corrected where the creator is known; a legacy / unverified entry (no creator on record) is left to a reviewer or an
+        administrator, who may use their own knowledge. A Team Lead only changes an entry that is still `submitted`."""
         if not self.can_edit_values or not self.allows(entry, store_platform_id):
             return False
-        return self.level is Level.ADMINISTRATOR or entry.creator_verified
+        if self.level is Level.TEAM_LEAD:
+            return entry.creator_verified and entry.verification_status == STATUS_SUBMITTED
+        return True
+
+    def can_verify_entry(self, entry: OrderEntry, store_platform_id: uuid.UUID | None = None) -> bool:
+        return self.can_verify and self.allows(entry, store_platform_id) and entry.verification_status == STATUS_SUBMITTED
+
+    def can_finalise(self, entry: OrderEntry, store_platform_id: uuid.UUID | None = None) -> bool:
+        """Reviewer / administrator: mark the entry Reviewed directly (the Team Lead is no longer needed)."""
+        return self.can_review and self.allows(entry, store_platform_id) and entry.verification_status != STATUS_REVIEWED
+
+    def can_request_check_of(self, entry: OrderEntry, store_platform_id: uuid.UUID | None = None) -> bool:
+        return self.can_request_check and self.allows(entry, store_platform_id) and entry.verification_status == STATUS_SUBMITTED
 
 
 def _roles(db: Session, user: User) -> set[str]:
@@ -161,12 +185,13 @@ def scope_for(db: Session, user: User, perms: set[str]) -> EntryScope:
     """The user's entry scope. Highest level wins; permissions are the permissions of THIS request (re-derived from the database)."""
     roles = _roles(db, user)
     if roles & {ADMIN, DEVELOPER}:
-        return EntryScope(Level.ADMINISTRATOR, user.organization_id, user.id, None, None, True, True, True, True)
+        return EntryScope(Level.ADMINISTRATOR, user.organization_id, user.id, None, None, True, True, True, True, can_request_check=True)
     if PERM_AUDIT in perms:
+        can_review = PERM_REVIEW in perms
         return EntryScope(Level.REVIEWER, user.organization_id, user.id, None, user.platform_organization_id,
-                          True, False, PERM_REVIEW in perms, True)
+                          True, can_review, can_review, True, can_request_check=can_review)
     if PERM_TEAM in perms:
-        return EntryScope(Level.TEAM_LEAD, user.organization_id, user.id, team_ids(db, user), None, True, True, False, False)
+        return EntryScope(Level.TEAM_LEAD, user.organization_id, user.id, team_ids(db, user), None, True, True, False, False, can_verify=True)
     return EntryScope(Level.CONTRIBUTOR, user.organization_id, user.id, frozenset({user.id}), None, False, False, False, False)
 
 

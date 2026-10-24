@@ -22,6 +22,9 @@ export interface MyStore {
   /** YOUR number for the day; null when you have not marked it, or somebody else did (their number is never shown to you). */
   todayCount: number | null;
   yesterdayCount: number | null;
+  /** What happened to YOUR number after you entered it (who changed it, in which role, when, old -> new), or null. */
+  todayChanged: DayChange | null;
+  yesterdayChanged: DayChange | null;
   /** Somebody (you or a colleague) marked the day. */
   todayMarked: boolean;
   yesterdayMarked: boolean;
@@ -49,6 +52,27 @@ export interface CalendarDay {
   version: number | null;
   creatorName: string | null;
   creatorVerified: boolean | null;
+  /** Where the entry stands: Submitted / Verified by Team Lead / Reviewed by Reviewer (a developer's hidden adjustment never names anyone). */
+  verification: DayVerification | null;
+  /** The latest change somebody made to the number after it was entered: who (name and role), when, and old -> new. */
+  changed: DayChange | null;
+}
+
+export interface DayVerification {
+  status: "submitted" | "verified_l2" | "reviewed_l3";
+  label: string;
+  byName: string | null;
+  at: string | null;
+}
+
+export interface DayChange {
+  byName: string | null;
+  byRole: string | null;
+  byRoleLabel: string;
+  at: string;
+  oldCount: number;
+  newCount: number;
+  reason: string | null;
 }
 
 export interface OrderCalendar {
@@ -304,6 +328,8 @@ interface CalendarWire {
     version?: number | null;
     creator_name?: string | null;
     creator_verified?: boolean | null;
+    verification?: { status: DayVerification["status"]; label: string; by_name: string | null; at: string | null } | null;
+    changed?: DayChangeWire | null;
   }[];
 }
 
@@ -333,6 +359,8 @@ export function toCalendar(w: CalendarWire): OrderCalendar {
       version: d.version ?? null,
       creatorName: d.creator_name ?? null,
       creatorVerified: d.creator_verified ?? null,
+      verification: d.verification ? { status: d.verification.status, label: d.verification.label, byName: d.verification.by_name, at: d.verification.at } : null,
+      changed: toDayChange(d.changed),
     })),
   };
 }
@@ -357,9 +385,16 @@ interface MyStoreWire {
   today: string;
   today_count: number | null;
   yesterday_count: number | null;
+  today_changed?: DayChangeWire | null;
+  yesterday_changed?: DayChangeWire | null;
   today_marked?: boolean;
   yesterday_marked?: boolean;
 }
+
+type DayChangeWire = { by_name: string | null; by_role: string | null; by_role_label: string; at: string; old_count: number; new_count: number; reason: string | null };
+
+const toDayChange = (c: DayChangeWire | null | undefined): DayChange | null =>
+  c ? { byName: c.by_name, byRole: c.by_role, byRoleLabel: c.by_role_label, at: c.at, oldCount: c.old_count, newCount: c.new_count, reason: c.reason } : null;
 
 export function toMyStore(w: MyStoreWire): MyStore {
   return {
@@ -382,6 +417,8 @@ export function toMyStore(w: MyStoreWire): MyStore {
     today: w.today,
     todayCount: w.today_count,
     yesterdayCount: w.yesterday_count,
+    todayChanged: toDayChange(w.today_changed),
+    yesterdayChanged: toDayChange(w.yesterday_changed),
     todayMarked: w.today_marked ?? w.today_count !== null,
     yesterdayMarked: w.yesterday_marked ?? w.yesterday_count !== null,
   };

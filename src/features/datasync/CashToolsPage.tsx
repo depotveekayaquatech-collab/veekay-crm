@@ -135,12 +135,12 @@ function AnalysisTab() {
   );
 }
 
-/** Developer tools: cash-purchase adjustments to the order sheet. Reached only with the reserved `cash.adjust` permission. */
+/** Cash purchase import and manual add: cash-purchase adjustments to the order sheet. Level 3 (Reviewer) and above only: the API needs the reserved `cash.adjust` permission, which only they hold. */
 export function CashToolsPage() {
   const [tab, setTab] = useState<"adjust" | "sync" | "history" | "analysis">("sync");
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Cash purchase" subtitle="Add cash-bought bottles on top of the employees' order entries. Developer only." />
+      <PageHeader title="Cash Purchase Import" subtitle="Import a cash-purchase sheet, or add one by hand, to put cash-bought bottles on top of the employees' order entries. Reviewers and administrators only." />
       <SegmentedControl
         label="Section"
         value={tab}

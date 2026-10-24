@@ -5,7 +5,8 @@ import { IconCheckCircle, IconMapPin } from "@/components/ui/icons";
 import { FilterChip, ProgressBar, ProgressRing, SearchBox, SegmentedControl } from "@/features/orders/ui";
 import { useCorrectOwnEntry, useMarkOrder } from "@/features/orders/useOrders";
 import { useAuth } from "@/features/auth/useAuth";
-import type { MyStore } from "@/types/order";
+import { fmtMomentShort } from "@/features/entries/format";
+import type { DayChange, MyStore } from "@/types/order";
 
 type Day = "today" | "yesterday";
 type Show = "todo" | "done" | "all";
@@ -27,10 +28,13 @@ function Row({
   saving,
   suggestion,
   canEdit,
+  changed,
   onSave,
   inputRef,
 }: {
   store: MyStore;
+  /** What a Team Lead / Reviewer did to this number after it was saved: who (name and role), when, old -> new. */
+  changed: DayChange | null;
   existing: number | null;
   /** Somebody else marked this day: it counts as marked, but their number is never shown to you. */
   lockedByOther: boolean;
@@ -63,6 +67,12 @@ function Row({
 
       <div className="min-w-0 flex-1 basis-52">
         <p className="truncate text-sm font-bold text-gray-900">{store.name}</p>
+        {changed && existing !== null && (
+          <p className="mt-0.5 text-xs font-medium text-status-warning">
+            Changed by {changed.byName ?? "a senior colleague"} – {changed.byRoleLabel}, {fmtMomentShort(changed.at)}: {changed.oldCount} → {changed.newCount}
+            {changed.reason ? ` ("${changed.reason}")` : ""}
+          </p>
+        )}
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-gray-500">
           <span className="font-medium text-gray-600">{store.externalCode}</span>
           {place && <span>{place}</span>}
@@ -291,6 +301,7 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
                 saving={savingId === s.id}
                 suggestion={activeDay === "today" ? s.yesterdayCount : null}
                 canEdit={canCorrect || canEditOwn}
+                changed={activeDay === "today" ? s.todayChanged : s.yesterdayChanged}
                 onSave={(c) => void save(s, c)}
                 inputRef={(el) => {
                   inputs.current.set(s.id, el);

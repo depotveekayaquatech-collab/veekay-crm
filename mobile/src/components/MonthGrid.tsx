@@ -9,7 +9,7 @@ export interface CellState {
   /** Small text under the day number, for example a saved count. */
   badge?: string | number | null;
   /** Colour of the badge: done (green) by default. */
-  badgeTone?: "done" | "muted";
+  badgeTone?: "done" | "muted" | "changed";
   today?: boolean;
 }
 
@@ -56,7 +56,7 @@ export function MonthGrid({
               >
                 <Text style={{ fontSize: 15, fontWeight: s.selected || s.today ? "800" : "600", color: fg }}>{d}</Text>
                 {s.badge != null ? (
-                  <Text style={{ fontSize: 10, fontWeight: "700", marginTop: 1, color: s.selected ? colors.white : s.badgeTone === "muted" ? colors.textFaint : colors.success }}>{s.badge}</Text>
+                  <Text style={{ fontSize: 10, fontWeight: "700", marginTop: 1, color: s.selected ? colors.white : s.badgeTone === "muted" ? colors.textFaint : s.badgeTone === "changed" ? colors.warning : colors.success }}>{s.badge}</Text>
                 ) : null}
               </Pressable>
             </View>

@@ -55,17 +55,17 @@ def test_quantity_is_always_rounded_up():
         assert calc_quantity(Decimal(amount), Decimal(price)) == qty
 
 
-def test_only_the_developer_can_reach_any_of_it(client, admin, emp, dev, make_store):
+def test_only_the_developer_and_levels_3_and_4_can_reach_any_of_it(client, admin, emp, dev, make_store):
     s = make_store(code="CA-X1")
     calls = [("get", f"{BASE}/stores", None), ("post", f"{BASE}/preview", _body([s])), ("post", f"{BASE}/apply", _body([s])),
              ("get", f"{BASE}/history", None), ("get", f"{BASE}/history/export", None), ("get", f"{BASE}/purchase-sheet", None),
              ("post", f"{BASE}/sync", None), ("post", f"{BASE}/sync/standard-rate", {"price_per_item": "30"}), ("get", f"{BASE}/sync/records", None), ("get", f"{BASE}/sync/runs", None),
              ("post", f"{BASE}/sync/preview", {"record_ids": [str(s.id)]}), ("post", f"{BASE}/sync/apply", {"record_ids": [str(s.id)]})]
     for method, url, body in calls:
-        for who in (admin, emp):
-            r = client.request(method, url, headers=who, **({"json": body} if body else {}))
-            assert r.status_code == 403, (method, url)
-        assert client.request(method, url, headers=dev, **({"json": body} if body else {})).status_code != 403, url
+        r = client.request(method, url, headers=emp, **({"json": body} if body else {}))
+        assert r.status_code == 403, (method, url)
+        for who in (dev, admin):
+            assert client.request(method, url, headers=who, **({"json": body} if body else {})).status_code != 403, url
 
 
 def test_cash_is_added_to_the_employees_entry_for_several_stores(client, dev, db, make_store):
@@ -349,9 +349,9 @@ def test_vendor_analysis_ranks_flags_and_lists_store_names(client, admin, dev, d
     assert {"Alpha Store One", "Beta Store One"} <= {row[3] for row in stores[1:]}
     assert client.get(f"{BASE}/analysis?start={TODAY.isoformat()}&end={TODAY.isoformat()}", headers=dev).json()["total_purchases"] == 10
     assert client.get(f"{BASE}/analysis?end=2000-01-01", headers=dev).json()["vendors_count"] == 0
-    for who in (admin,):
-        assert client.get(f"{BASE}/analysis", headers=who).status_code == 403
-        assert client.get(f"{BASE}/analysis/export", headers=who).status_code == 403
+    for who in (admin,):                                                # Level 4 reaches it too
+        assert client.get(f"{BASE}/analysis", headers=who).status_code == 200
+        assert client.get(f"{BASE}/analysis/export", headers=who).status_code == 200
 
 
 def test_a_cash_adjustment_on_an_earlier_day_pulls_the_stores_start_date_back(client, dev, db, make_store):

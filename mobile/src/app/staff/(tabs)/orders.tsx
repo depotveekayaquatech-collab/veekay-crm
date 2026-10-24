@@ -6,7 +6,7 @@ import { useMyStores } from "@/api/staffHooks";
 import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
 import { PendingPill } from "@/components/PendingPill";
 import { VendorPicker, vendorKey, vendorsOf } from "@/components/VendorPicker";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { changedByLine, fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
 type Filter = "all" | "pending" | "done" | "lastmonth";
@@ -137,6 +137,11 @@ export default function Orders() {
               <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{s.name}</Text>
               <Text numberOfLines={1} style={font.small}>{s.external_code}{s.crm_code ? ` · ${s.crm_code}` : ""}{s.city ? ` · ${s.city}` : ""}{!vendor && s.vendor_name ? ` · ${s.vendor_name}` : ""}</Text>
               {s.duplicate_name ? <Text numberOfLines={1} style={{ color: colors.danger, fontSize: 12, fontWeight: "800" }}>Listed twice in the CRM: tell your admin</Text> : null}
+              {(day === "today" ? s.today_changed : s.yesterday_changed) && countOf(s) !== null ? (
+                <Text numberOfLines={2} style={{ color: colors.warning, fontSize: 12, fontWeight: "700" }}>
+                  {changedByLine((day === "today" ? s.today_changed : s.yesterday_changed)!)}: {(day === "today" ? s.today_changed : s.yesterday_changed)!.old_count} → {(day === "today" ? s.today_changed : s.yesterday_changed)!.new_count}
+                </Text>
+              ) : null}
               <Text numberOfLines={1} style={font.tiny}>You marked: this month {fmtNumber(s.month_bottles ?? 0)} · last month {fmtNumber(s.last_month_bottles ?? 0)} bottles</Text>
               {filter === "lastmonth" ? (
                 <View style={{ marginTop: 6, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>

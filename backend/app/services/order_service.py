@@ -50,6 +50,7 @@ from app.schemas.order import (
 from app.core import audit_context
 from app.core.entry_access import ROLE_RANK, EntryScope, owned_clause, owns_value, set_by_someone_above, viewer_rank, visible_clause
 from app.services import activity_service, assignment_service, order_journal_service, vendor_history_service
+from app.services.entry_changes import last_changes, last_changes_for, status_for_contributor
 
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
            "August", "September", "October", "November", "December"]
@@ -181,11 +182,12 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
     my_rank = viewer_rank(db, employee)
     counts: dict[tuple[uuid.UUID, date], int] = {}         # the numbers you may see: yours, and those set by someone more senior
     marked_days: set[tuple[uuid.UUID, date]] = set()       # days anybody marked (a state, not a number)
+    edited: dict[tuple[uuid.UUID, date], tuple[uuid.UUID, int]] = {}   # the numbers you may see that somebody changed after they were entered: (entry id, cash adjustment)
     if stores:
         rows = db.execute(
             select(OrderEntry.store_id, OrderEntry.order_date, OrderEntry.bottle_count, OrderEntry.cash_adjustment, OrderEntry.created_by_user_id,
                    OrderEntry.source, OrderEntry.marked_by_user_id, OrderEntry.last_modified_by_user_id, OrderEntry.last_modified_at,
-                   OrderEntry.last_modified_by_role, OrderEntry.created_by_role, OrderEntry.creator_verified).where(
+                   OrderEntry.last_modified_by_role, OrderEntry.created_by_role, OrderEntry.creator_verified, OrderEntry.id, OrderEntry.version).where(
                 OrderEntry.store_id.in_([s.id for s in stores]),
                 OrderEntry.order_date.in_([today, yesterday]),
             )
@@ -198,6 +200,9 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             )
             if r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id) or above:
                 counts[(r[0], r[1])] = int(r[2]) - int(r[3])
+                if r[13] and r[13] > 1:
+                    edited[(r[0], r[1])] = (r[12], int(r[3]))
+    changes = last_changes_for(db, {eid: adj for eid, adj in edited.values()})
     stats = _month_stats([s.id for s in stores], today)
     totals = _month_totals(db, [s.id for s in stores], today, net=True, owner=employee.id, rank=my_rank)
     return [
@@ -213,6 +218,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
             partner_name=s.partner_organization.name if s.partner_organization else None,
             region_id=s.region_id,
             today_count=counts.get((s.id, today)), yesterday_count=counts.get((s.id, yesterday)),
+            today_changed=changes.get(edited.get((s.id, today), (None, 0))[0]), yesterday_changed=changes.get(edited.get((s.id, yesterday), (None, 0))[0]),
             today_marked=(s.id, today) in marked_days, yesterday_marked=(s.id, yesterday) in marked_days,
             pending_days=_pending(stats, s.id, today, s.start_date),
             month_bottles=totals.get(s.id, (0, 0, 0))[0], last_month_bottles=totals.get(s.id, (0, 0, 0))[1],
@@ -237,20 +243,30 @@ def get_calendar(
     today = _today()
     days_in_month = _calendar.monthrange(year, month)[1]
 
+    # Who may see which day (An Entry Contributor sees only the numbers THEY entered; `scope` widens it for a Team Lead / reviewer).
+    seen: dict[int, tuple[bool, bool, bool, bool]] = {}
+    for d, entry in entries.items():
+        mine = entry.created_by_user_id == user.id or (
+            entry.source == EntrySource.EMPLOYEE.value and entry.marked_by_user_id == user.id and entry.last_modified_by_user_id == user.id)
+        in_scope = scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids))
+        above = not is_admin and set_by_someone_above(entry, rank)       # a more senior person set it: visible, read-only
+        seen[d] = (mine, in_scope, above, is_admin or mine or in_scope or above)
+    # What happened to the numbers the caller can see after they were entered: who changed it (name + role), when, old -> new, and the verification state.
+    visible_entries = [entries[d] for d, v in seen.items() if v[3]]
+    changes = last_changes(db, visible_entries)
+    state_names = {
+        r[0]: r[1] for r in db.execute(select(User.id, User.full_name).where(User.id.in_(
+            {i for e in visible_entries for i in (e.verified_by_user_id, e.l3_reviewed_by_user_id) if i}))
+        )
+    } if visible_entries else {}
+
     days: list[CalendarDay] = []
     for d in range(1, days_in_month + 1):
         the_date = date(year, month, d)
         entry = entries.get(d)
-        # An Entry Contributor sees only the numbers THEY entered. A day somebody else marked still shows as marked (so it cannot be marked
-        # twice) but carries no count, name or time. Administrators see everything, with who created it and its version.
-        mine = entry is not None and (
-            entry.created_by_user_id == user.id
-            or (entry.source == EntrySource.EMPLOYEE.value and entry.marked_by_user_id == user.id and entry.last_modified_by_user_id == user.id)
-        )
-        # `scope` widens what is shown beyond the caller's own numbers: a Team Lead sees their team's, a reviewer everyone's (the same rule as the audit pages).
-        in_scope = scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids)) if entry is not None else False
-        above = entry is not None and not is_admin and set_by_someone_above(entry, rank)       # a more senior person set it: visible, read-only
-        shown = entry is not None and (is_admin or mine or in_scope or above)
+        # A day somebody else marked still shows as marked (so it cannot be marked twice) but carries no count, name or time.
+        # Administrators see everything, with who created it and its version.
+        mine, in_scope, above, shown = seen[d] if entry is not None else (False, False, False, False)
         days.append(
             CalendarDay(
                 day=d,
@@ -266,6 +282,8 @@ def get_calendar(
                 entry_id=entry.id if (entry and is_admin) else None, version=entry.version if (entry and is_admin) else None,
                 creator_name=(entry.created_by_name if entry.creator_verified else None) if (entry and is_admin) else None,
                 creator_verified=entry.creator_verified if (entry and is_admin) else None,
+                verification=status_for_contributor(entry, state_names) if (entry and shown) else None,
+                changed=changes.get(entry.id) if (entry and shown) else None,
             )
         )
 

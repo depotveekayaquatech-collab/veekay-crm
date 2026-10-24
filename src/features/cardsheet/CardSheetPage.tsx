@@ -51,7 +51,7 @@ function LockScreen({ onUnlocked }: { onUnlocked: (token: string, expiresIn: num
   );
 }
 
-/** Developer tool: the Random Count PDF Generator (many outlets from a sheet, or one store). */
+/** Random Card PDF (many outlets from a sheet, or one store). Level 3 (Reviewer) and above, and still behind the access code. */
 export function CardSheetPage() {
   const [session, setSession] = useState(loadToken);
   const [mode, setMode] = useState<"sheet" | "one">("sheet");
@@ -89,7 +89,7 @@ export function CardSheetPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Random Count PDF Generator"
+        title="Random Card PDF"
         subtitle="Upload a sheet of outlets and totals, or pick one store, and print the store cards with the total shared out across the dates you choose."
         action={session && <Button variant="secondary" onClick={lock}>Lock</Button>}
       />

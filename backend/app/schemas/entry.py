@@ -20,6 +20,18 @@ class EntryReview(_Strict):
     comment: str | None = Field(default=None, max_length=1000)
 
 
+class EntryVerify(_Strict):
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class EntryCheckRequest(_Strict):
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class EntryComment(_Strict):
+    text: str = Field(..., min_length=1, max_length=1000)
+
+
 class EntryRoleSet(_Strict):
     level: Literal["entry_contributor", "team_lead", "entry_reviewer"] | None = None
     reports_to_id: uuid.UUID | None = None         # send null to clear; omit to leave unchanged

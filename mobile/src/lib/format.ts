@@ -17,6 +17,23 @@ export const fmtMonth = (iso: string) => new Date(`${iso.slice(0, 7)}-01T00:00:0
 export const fmtMoney = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 export const fmtNumber = (n: number) => n.toLocaleString("en-IN");
 
+/** What was done to an entry after it was saved: the person (name and role), the time, and from what to what. */
+export interface EntryChange { by_name: string | null; by_role_label: string; at: string; old_count: number; new_count: number; reason: string | null }
+export interface EntryStatus { status: "submitted" | "verified_l2" | "reviewed_l3"; label: string; by_name: string | null; at: string | null }
+
+/** "Changed by Rahul – Team Lead, 24 Oct 2026, 4:10 PM". */
+export function changedByLine(c: EntryChange): string {
+  const d = new Date(c.at);
+  const date = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const time = d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }).toUpperCase();
+  return `Changed by ${c.by_name ?? "a senior colleague"} – ${c.by_role_label}, ${date}, ${time}`;
+}
+
+/** The same, with the old and new number and the reason: for the alert that opens when a changed day is tapped. */
+export function changedDetail(c: EntryChange): string {
+  return `${changedByLine(c)}.\nWas ${c.old_count}, now ${c.new_count} bottles${c.reason ? `.\nReason: ${c.reason}` : ""}`;
+}
+
 export function fmtSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

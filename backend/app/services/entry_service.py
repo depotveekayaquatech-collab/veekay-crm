@@ -1,5 +1,5 @@
-"""Entries as the supervising levels see them: search (Store Audit / team view), one entry's full timeline, a Team Lead / administrator correction,
-a reviewer's mark, and the assignment of the Team Lead / Entry Reviewer roles. Who may do what is decided by core.entry_access; the history itself is
+"""Entries as the supervising levels see them: search (Entry Review / team view), one entry's full timeline, the verification workflow (a Team Lead's verify,
+a Reviewer's request-for-check and direct review, corrections by any of them, comments), and the assignment of the Team Lead / Entry Reviewer roles. Who may do what is decided by core.entry_access; the history itself is
 written by database triggers (migration 0052), so this module never builds or edits an audit event by hand.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, aliased
 from app.core import audit_context
 from app.core.config import settings
 from app.core.entry_access import (
-    PERM_REVIEW, REVIEWER_ROLE, TEAM_LEAD_ROLE, EntryScope, Level, scope_for,
+    PERM_REVIEW, REVIEWER_ROLE, STATUS_REVIEWED, STATUS_SUBMITTED, STATUS_VERIFIED, TEAM_LEAD_ROLE, EntryScope, Level, scope_for,
 )
 from app.core.roles import ADMIN, DEVELOPER, PARTNER
 from app.models.order_entry import EntrySource, OrderEntry
@@ -25,12 +25,15 @@ from app.models.role import Role
 from app.models.store import Store
 from app.models.user import User, UserRole
 from app.repositories.user_repository import UserRepository
-from app.services import activity_service, security_event_service
+from app.services import activity_service, security_event_service, staff_notify
+from app.services.entry_changes import STATUS_LABEL
 
 _JOURNAL = table("order_mark_journal", column("store_id"), column("order_date"), column("outcome"), column("organization_id"))
 
 MAX_PAGE = 100
 REVIEW_ACTIONS = {"reviewed": "reviewed", "flagged": "flagged", "needs_correction": "needs_correction", "clear": "none"}
+VERIFICATION_FILTERS = ("pending_l2", "verified_l2", "reviewed_l3", "requested")
+MAX_COMMENT = 1000
 MIN_REASON = 5
 
 
@@ -85,12 +88,32 @@ def _flags(e: OrderEntry, store_avg: float | None) -> list[str]:
     return out
 
 
+def _names(db: Session, entries: list[OrderEntry]) -> dict[uuid.UUID, str]:
+    """{user id: full name} for everybody named by the verification state of these entries (one query for the whole page)."""
+    ids = {i for e in entries for i in (e.verified_by_user_id, e.l3_reviewed_by_user_id, e.check_requested_by_user_id) if i}
+    if not ids:
+        return {}
+    return {r[0]: r[1] for r in db.execute(select(User.id, User.full_name).where(User.id.in_(ids)))}
+
+
+def _verification(e: OrderEntry, names: dict[uuid.UUID, str]) -> dict:
+    return {
+        "status": e.verification_status, "label": STATUS_LABEL.get(e.verification_status, e.verification_status),
+        "verified_by": None if e.verified_by_user_id is None else {"id": e.verified_by_user_id, "name": names.get(e.verified_by_user_id), "at": e.verified_at},
+        "reviewed_by": None if e.l3_reviewed_by_user_id is None else {"id": e.l3_reviewed_by_user_id, "name": names.get(e.l3_reviewed_by_user_id), "at": e.l3_reviewed_at},
+        "check_requested": None if e.check_requested_at is None else {
+            "by_id": e.check_requested_by_user_id, "by_name": names.get(e.check_requested_by_user_id), "at": e.check_requested_at, "note": e.check_request_note},
+    }
+
+
 def _row(e: OrderEntry, s: Store, platform: Organization | None, modifier_name: str | None, legacy_marker: str | None,
-         scope: EntryScope, store_avg: float | None) -> dict:
+         scope: EntryScope, store_avg: float | None, names: dict[uuid.UUID, str] | None = None) -> dict:
     admin_view = scope.level in (Level.ADMINISTRATOR, Level.REVIEWER)
+    names = names or {}
+    pid = s.partner_organization_id
     return {
         "entry_id": e.id, "version": e.version,
-        "store": {"id": s.id, "name": s.name, "crm_code": s.crm_code, "outlet_id": s.external_code, "status": s.status,
+        "store": {"id": s.id, "name": s.name, "crm_code": s.crm_code, "outlet_id": s.external_code, "status": s.status, "entity": s.entity,
                   "platform": platform.name if platform else None, "platform_slug": platform.slug if platform else None},
         "order_date": e.order_date,
         "employee_count": e.bottle_count - e.cash_adjustment,
@@ -107,7 +130,14 @@ def _row(e: OrderEntry, s: Store, platform: Organization | None, modifier_name: 
         "source_app": e.source_app,
         "request_id": e.request_id if admin_view else None,
         "flags": _flags(e, store_avg),
-        "can_edit": scope.can_edit(e, s.partner_organization_id),
+        "can_edit": scope.can_edit(e, pid),
+        "verification": _verification(e, names),
+        # What THIS caller may do with the entry right now, decided by the same rules the server enforces on every action.
+        "actions": {
+            "edit": scope.can_edit(e, pid), "verify": scope.can_verify_entry(e, pid), "review": scope.can_finalise(e, pid),
+            "request_check": scope.can_request_check_of(e, pid) and e.check_requested_at is None,
+            "flag": scope.can_review and scope.allows(e, pid), "comment": scope.can_view_history,
+        },
     }
 
 
@@ -192,6 +222,15 @@ def search(db: Session, user: User, perms: set[str], f: dict, page: int, page_si
         stmt = stmt.where(OrderEntry.created_at < t_to)
     if f.get("review_status"):
         stmt = stmt.where(OrderEntry.review_status == f["review_status"])
+    verification = f.get("verification")
+    if verification == "pending_l2":
+        stmt = stmt.where(OrderEntry.verification_status == STATUS_SUBMITTED)
+    elif verification == "verified_l2":
+        stmt = stmt.where(OrderEntry.verification_status == STATUS_VERIFIED)
+    elif verification == "reviewed_l3":
+        stmt = stmt.where(OrderEntry.verification_status == STATUS_REVIEWED)
+    elif verification == "requested":
+        stmt = stmt.where(OrderEntry.verification_status == STATUS_SUBMITTED, OrderEntry.check_requested_at.is_not(None))
     if f.get("edited") is True:
         stmt = stmt.where(OrderEntry.version > 1)
     if f.get("edited") is False:
@@ -209,11 +248,11 @@ def search(db: Session, user: User, perms: set[str], f: dict, page: int, page_si
                 _JOURNAL.c.store_id == OrderEntry.store_id, _JOURNAL.c.order_date == OrderEntry.order_date, _JOURNAL.c.outcome == outcome)))
 
     total = db.execute(select(func.count()).select_from(stmt.with_only_columns(OrderEntry.id).order_by(None).subquery())).scalar_one()
-    rows = db.execute(
-        stmt.order_by(OrderEntry.order_date.desc(), OrderEntry.created_at.desc(), OrderEntry.id.desc()).offset((page - 1) * page_size).limit(page_size)
-    ).all()
+    order = (OrderEntry.check_requested_at.desc(), OrderEntry.id.desc()) if verification == "requested" else         (OrderEntry.order_date.desc(), OrderEntry.created_at.desc(), OrderEntry.id.desc())
+    rows = db.execute(stmt.order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     avgs = _store_averages(db, scope, [r[1].id for r in rows])
-    items = [_row(e, s, p, modifier, marker, scope, avgs.get(s.id)) for e, s, p, modifier, marker in rows]
+    names = _names(db, [r[0] for r in rows])
+    items = [_row(e, s, p, modifier, marker, scope, avgs.get(s.id), names) for e, s, p, modifier, marker in rows]
     return {"total": int(total), "page": page, "page_size": page_size, "level": scope.level.value, "items": items}
 
 
@@ -315,7 +354,7 @@ def timeline(db: Session, user: User, perms: set[str], entry_id: uuid.UUID) -> d
                 {"s": store.id, "d": day, "o": scope.organization_id}).mappings()]
     out = {
         "entry_id": entry_id, "removed": entry is None, "chain_ok": chain_ok, "level": scope.level.value,
-        "store": None if store is None else {"id": store.id, "name": store.name, "crm_code": store.crm_code, "outlet_id": store.external_code},
+        "store": None if store is None else {"id": store.id, "name": store.name, "crm_code": store.crm_code, "outlet_id": store.external_code, "entity": store.entity},
         "events": [_event_out(e) for e in events], "attempts": attempts,
         "display_timezone": settings.DISPLAY_TIMEZONE,
     }
@@ -324,7 +363,7 @@ def timeline(db: Session, user: User, perms: set[str], entry_id: uuid.UUID) -> d
         modifier = db.get(User, entry.last_modified_by_user_id) if entry.last_modified_by_user_id else None
         avg = _store_averages(db, scope, [store.id]).get(store.id)
         out["entry"] = _row(entry, store, db.get(Organization, store.partner_organization_id), modifier.full_name if modifier else None,
-                            marker.full_name if marker else None, scope, avg)
+                            marker.full_name if marker else None, scope, avg, _names(db, [entry]))
     return out
 
 
@@ -332,9 +371,23 @@ def timeline(db: Session, user: User, perms: set[str], entry_id: uuid.UUID) -> d
 # changes
 # --------------------------------------------------------------------------
 
+def _invalidate_reads() -> None:
+    from app.core.cache import read_cache
+
+    read_cache.invalidate()
+
+
+def _locked(db: Session, user: User, scope: EntryScope, entry_id: uuid.UUID, removed_message: str) -> tuple[OrderEntry, Store]:
+    entry, store = _authorize(db, user, scope, entry_id, lock=True)
+    if entry is None or store is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, removed_message)
+    return entry, store
+
+
 def edit_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, new_count: int, reason: str, expected_version: int) -> dict:
-    """A correction by a Team Lead (their team) or an administrator. The creator never changes; the old and new values, the reason, the editor, his role
-    and the time go into the history in the same transaction."""
+    """A correction. A Team Lead may correct only an entry still `submitted` (the edit counts as their verification); a Reviewer or administrator may correct
+    any entry (the edit is final). The creator never changes; the old and new values, the reason, the editor, their role and the time go into the
+    history in the same transaction, and the database moves the verification state from who changed the number."""
     scope = scope_for(db, user, perms)
     if not scope.can_edit_values:
         _deny(db, user, scope, "entry_edit_denied", entry_id)
@@ -344,12 +397,13 @@ def edit_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, ne
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Say why you are correcting this entry (at least {MIN_REASON} characters).")
     if not (settings.MIN_BOTTLE_COUNT <= new_count <= settings.MAX_BOTTLE_COUNT):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Bottle count must be from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.")
-    entry, store = _authorize(db, user, scope, entry_id, lock=True)
-    if entry is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This entry was removed. Mark the day again instead.")
+    entry, store = _locked(db, user, scope, entry_id, "This entry was removed. Mark the day again instead.")
+    if scope.level is Level.TEAM_LEAD and entry.verification_status != STATUS_SUBMITTED:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"This entry is already {STATUS_LABEL[entry.verification_status].lower()}. Only a Reviewer can change it now.")
     if not scope.can_edit(entry, store.partner_organization_id):
         _deny(db, user, scope, "entry_edit_denied", entry_id, {"reason": "creator not verified or not editable by this level"})
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This entry's creator is not verified, so only an administrator can change it.")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This entry's creator is not verified, so only a Reviewer or an administrator can change it.")
     if entry.version != expected_version:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, detail={
@@ -362,13 +416,60 @@ def edit_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, ne
     entry.source = EntrySource.ADMIN.value                         # a correction: the sheet import and the employee never overwrite it
     entry.marked_by_user_id = user.id
     db.commit()
-    from app.core.cache import read_cache
-    read_cache.invalidate()
+    _invalidate_reads()
     return timeline(db, user, perms, entry_id)
 
 
+def verify_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, comment: str | None) -> dict:
+    """Level 2: the Team Lead confirms a `submitted` entry of their team as it stands. Nothing about the number changes."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_verify:
+        _deny(db, user, scope, "entry_verify_denied", entry_id)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Team Lead can verify entries.")
+    entry, _store = _locked(db, user, scope, entry_id, "This entry was removed.")
+    if entry.verification_status != STATUS_SUBMITTED:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"This entry is already {STATUS_LABEL[entry.verification_status].lower()}.")
+    comment = (comment or "").strip()[:MAX_COMMENT]
+    audit_context.bind(db, user, comment=comment or None, reason=comment or None)
+    entry.verification_status = STATUS_VERIFIED
+    db.commit()
+    return timeline(db, user, perms, entry_id)
+
+
+def request_check(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, note: str | None) -> dict:
+    """Level 3 / 4: ask the Team Lead of the person who entered it to check a `submitted` entry. Creates the request (shown in the Team Lead's list as
+    'Verification requested', with an in-app notification); the Reviewer can still review it themselves."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_request_check:
+        _deny(db, user, scope, "entry_request_denied", entry_id)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't ask for a check.")
+    entry, store = _locked(db, user, scope, entry_id, "This entry was removed.")
+    if entry.verification_status != STATUS_SUBMITTED:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"This entry is already {STATUS_LABEL[entry.verification_status].lower()}; there is nothing for the Team Lead to check.")
+    note = (note or "").strip()[:MAX_COMMENT]
+    if entry.check_requested_at is not None and not note:
+        return {**timeline(db, user, perms, entry_id), "request": {"already_open": True}}
+    lead = None
+    if entry.created_by_user_id:
+        creator = db.get(User, entry.created_by_user_id)
+        lead = db.get(User, creator.reports_to_user_id) if creator is not None and creator.reports_to_user_id else None
+    audit_context.bind(db, user, comment=note or None, reason=note or None)
+    entry.check_requested_at = datetime.now(timezone.utc)
+    entry.check_request_note = note or None
+    if lead is not None:
+        staff_notify.notify_users(
+            db, [lead.id], kind="entry_check", title="Verification requested",
+            body=f"{user.full_name} asked you to check {store.name} for {entry.order_date.strftime('%d %b %Y')}." + (f' "{note}"' if note else ""),
+            ref_id=entry.id, skip=user.id)
+    db.commit()
+    return {**timeline(db, user, perms, entry_id), "request": {"already_open": False, "team_lead": None if lead is None else {"id": lead.id, "name": lead.full_name}}}
+
+
 def review_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, action: str, comment: str | None) -> dict:
-    """A reviewer's mark (reviewed / flagged / needs correction / clear). Only the review state changes — never a value, the creator or the history."""
+    """A Reviewer's / administrator's decision. `reviewed` finalises the entry directly (the Team Lead is no longer needed: the shortcut); flagged /
+    needs_correction / clear only set the review mark. None of them changes a value, the creator or the history."""
     scope = scope_for(db, user, perms)
     if not scope.can_review:
         _deny(db, user, scope, "entry_review_denied", entry_id)
@@ -378,9 +479,17 @@ def review_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, 
     comment = (comment or "").strip()
     if action in ("flagged", "needs_correction") and len(comment) < MIN_REASON:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Say what is wrong (at least {MIN_REASON} characters).")
-    entry, _store = _authorize(db, user, scope, entry_id, lock=True)
-    if entry is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This entry was removed.")
+    entry, _store = _locked(db, user, scope, entry_id, "This entry was removed.")
+    if action == "reviewed":
+        if entry.verification_status == STATUS_REVIEWED and not comment:
+            return timeline(db, user, perms, entry_id)
+        audit_context.bind(db, user, comment=comment or None, reason=comment or None)
+        if entry.verification_status != STATUS_REVIEWED:
+            entry.verification_status = STATUS_REVIEWED
+        if entry.review_status in ("flagged", "needs_correction"):
+            entry.review_status = "none"                       # the reviewer has dealt with it
+        db.commit()
+        return timeline(db, user, perms, entry_id)
     new_status = REVIEW_ACTIONS[action]
     if entry.review_status == new_status and not comment:
         return timeline(db, user, perms, entry_id)
@@ -388,6 +497,88 @@ def review_entry(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, 
     entry.review_status = new_status
     db.commit()
     return timeline(db, user, perms, entry_id)
+
+
+def add_comment(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, text_: str) -> dict:
+    """A free-text comment on an entry's history (Team Lead inside their team, Reviewer, administrator). It is appended to the same hash-chained history
+    as every other event; it changes nothing about the entry."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        _deny(db, user, scope, "entry_comment_denied", entry_id)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    body = (text_ or "").strip()
+    if not body:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Write a comment first.")
+    if len(body) > MAX_COMMENT:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"A comment can be at most {MAX_COMMENT} characters.")
+    entry, _store = _locked(db, user, scope, entry_id, "This entry was removed.")
+    audit_context.bind(db, user)
+    db.execute(
+        text("SELECT entry_append_event(CAST(:e AS uuid), CAST(:s AS uuid), CAST(:o AS uuid), 'COMMENTED', CAST(NULL AS jsonb), CAST(NULL AS jsonb), :v, CAST(:a AS uuid), NULL, :c)"),
+        {"e": str(entry.id), "s": str(entry.store_id), "o": str(entry.organization_id), "v": entry.version, "a": str(user.id), "c": body},
+    )
+    db.commit()
+    return timeline(db, user, perms, entry_id)
+
+
+# --------------------------------------------------------------------------
+# pickers + counters for the Team Lead / Reviewer screens
+# --------------------------------------------------------------------------
+
+def filter_options(db: Session, user: User, perms: set[str], kind: str, q: str | None, limit: int = 20) -> list[dict]:
+    """Typeahead for the Store-wise and Employee-wise filters. Always inside the caller's scope: a Team Lead gets their team and the stores their team
+    entered; a Reviewer / administrator gets the organisation (a platform-limited Reviewer only that platform)."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        _deny(db, user, scope, "entry_options_denied")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    limit = max(1, min(limit, 50))
+    term = _like(q) if q and q.strip() else None
+    if kind == "store":
+        stmt = select(Store, Organization).join(Organization, Organization.id == Store.partner_organization_id).where(Store.organization_id == scope.organization_id)
+        if scope.platform_id is not None:
+            stmt = stmt.where(Store.partner_organization_id == scope.platform_id)
+        if scope.creator_ids is not None:
+            since = date.today() - timedelta(days=120)
+            stmt = stmt.where(Store.id.in_(select(OrderEntry.store_id).where(*scope.conditions(), OrderEntry.order_date >= since)))
+        if term:
+            stmt = stmt.where(or_(Store.name.ilike(term, escape="\\"), Store.crm_code.ilike(term, escape="\\"), Store.external_code.ilike(term, escape="\\")))
+        rows = db.execute(stmt.order_by(Store.name).limit(limit)).all()
+        return [{"id": s.id, "name": s.name, "code": s.external_code, "crm_code": s.crm_code, "platform": p.name, "status": s.status} for s, p in rows]
+    if kind == "person":
+        stmt = select(User).where(User.organization_id == scope.organization_id, User.is_active.is_(True))
+        if scope.creator_ids is not None:
+            stmt = stmt.where(User.id.in_(list(scope.creator_ids)))
+        elif scope.platform_id is not None:
+            stmt = stmt.where(User.platform_organization_id == scope.platform_id)
+        if term:
+            stmt = stmt.where(or_(User.full_name.ilike(term, escape="\\"), User.employee_code.ilike(term, escape="\\")))
+        users = db.execute(stmt.order_by(User.full_name).limit(limit)).scalars().all()
+        return [{"id": u.id, "name": u.full_name, "code": u.employee_code, "is_me": u.id == user.id} for u in users]
+    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind must be 'store' or 'person'.")
+
+
+def summary(db: Session, user: User, perms: set[str], days: int = 30) -> dict:
+    """How many entries sit in each state for the caller's scope over the last `days` days (indexed: organisation, state, day)."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    days = max(1, min(days, 366))
+    since = date.today() - timedelta(days=days)
+    stmt = (
+        select(OrderEntry.verification_status, func.count(), func.count().filter(OrderEntry.check_requested_at.is_not(None)))
+        .join(Store, Store.id == OrderEntry.store_id)
+        .where(*scope.conditions(), OrderEntry.order_date >= since)
+        .group_by(OrderEntry.verification_status)
+    )
+    if scope.platform_id is not None:
+        stmt = stmt.where(Store.partner_organization_id == scope.platform_id)
+    counts = {status_: (n, req) for status_, n, req in db.execute(stmt).all()}
+    return {
+        "since": since, "days": days,
+        "pending_l2": counts.get(STATUS_SUBMITTED, (0, 0))[0], "verified_l2": counts.get(STATUS_VERIFIED, (0, 0))[0],
+        "reviewed_l3": counts.get(STATUS_REVIEWED, (0, 0))[0], "requested": counts.get(STATUS_SUBMITTED, (0, 0))[1],
+    }
 
 
 # --------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_permissions, get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.entry import EntryEdit, EntryReview
+from app.schemas.entry import EntryCheckRequest, EntryComment, EntryEdit, EntryReview, EntryVerify
 from app.services import entry_service
 
 router = APIRouter(prefix="/entries", tags=["entries"])
@@ -25,6 +25,7 @@ def search(
     date_from: date | None = None, date_to: date | None = None,
     created_from: str | None = Query(None, max_length=40), created_to: str | None = Query(None, max_length=40),
     review_status: str | None = Query(None, pattern="^(none|reviewed|flagged|needs_correction)$"),
+    verification: str | None = Query(None, pattern="^(pending_l2|verified_l2|reviewed_l3|requested)$"),
     edited: bool | None = None, flagged: bool | None = None, unverified: bool | None = None,
     failed_sync: bool | None = None, duplicate_attempts: bool | None = None, deleted: bool | None = None,
     source: str | None = Query(None, max_length=60),
@@ -35,7 +36,7 @@ def search(
     response.headers["Cache-Control"] = "no-store"
     f = {k: v for k, v in locals().items() if k in {
         "entry_id", "store_id", "store", "outlet_id", "platform", "creator", "creator_id", "creator_role", "modifier", "team_lead", "date_from",
-        "date_to", "created_from", "created_to", "review_status", "edited", "flagged", "unverified", "failed_sync", "duplicate_attempts", "deleted",
+        "date_to", "created_from", "created_to", "review_status", "verification", "edited", "flagged", "unverified", "failed_sync", "duplicate_attempts", "deleted",
         "source"} and v is not None}
     return entry_service.search(db, user, perms, f, page, page_size)
 
@@ -60,6 +61,26 @@ def security_events(
 ) -> dict:
     response.headers["Cache-Control"] = "no-store"
     return entry_service.security_events(db, user, perms, event_type=event_type, page=page, page_size=page_size)
+
+
+@router.get("/options")
+def options(
+    response: Response, kind: str = Query(..., pattern="^(store|person)$"), q: str | None = Query(None, max_length=100), limit: int = Query(20, ge=1, le=50),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> list[dict]:
+    """Typeahead for the Store-wise and Employee-wise filters, always inside the caller's own scope."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.filter_options(db, user, perms, kind, q, limit)
+
+
+@router.get("/summary")
+def summary(
+    response: Response, days: int = Query(30, ge=1, le=366),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Entries per verification state (pending Team Lead, verified, reviewed, verification requested) in the caller's scope."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.summary(db, user, perms, days)
 
 
 @router.get("/leads")
@@ -97,3 +118,30 @@ def review_entry(
     perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
     return entry_service.review_entry(db, user, perms, entry_id, payload.action, payload.comment)
+
+
+@router.post("/{entry_id}/verify")
+def verify_entry(
+    entry_id: uuid.UUID, payload: EntryVerify,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Level 2: verify a Submitted entry of your team (409 if it is no longer Submitted)."""
+    return entry_service.verify_entry(db, user, perms, entry_id, payload.comment)
+
+
+@router.post("/{entry_id}/request-check")
+def request_check(
+    entry_id: uuid.UUID, payload: EntryCheckRequest,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Level 3 / 4: ask the Team Lead to check a Submitted entry (creates the pending request and notifies them)."""
+    return entry_service.request_check(db, user, perms, entry_id, payload.note)
+
+
+@router.post("/{entry_id}/comments")
+def add_comment(
+    entry_id: uuid.UUID, payload: EntryComment,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Add a comment to the entry's history."""
+    return entry_service.add_comment(db, user, perms, entry_id, payload.text)

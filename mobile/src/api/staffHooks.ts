@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "@/api/client";
 import { staffApi, type CashFilter, type LeaveType } from "@/api/staff";
+import type { EntryChange, EntryStatus } from "@/lib/format";
 
 const FRESH = 30_000;
 
@@ -25,7 +26,11 @@ export interface CalendarDay { day: number; date: string; marked: boolean; count
   /** A colleague at your own level marked it: shown as marked, with no number, name or time. */
   masked?: boolean;
   /** Someone more senior (Team Lead, administrator, the developer) entered it: you can see it, you cannot change it. */
-  by_higher?: boolean }
+  by_higher?: boolean;
+  /** Where the entry stands (Submitted / Verified by Team Lead / Reviewed by Reviewer). */
+  verification?: EntryStatus | null;
+  /** The latest change somebody made to the number after it was entered: who, in which role, when, old and new. */
+  changed?: EntryChange | null }
 export interface Calendar {
   store_id: string; store_name: string; store_code: string; year: number; month: number; month_label: string; days: CalendarDay[];
   /** False when this month cannot be marked by the caller (view only). */

@@ -35,6 +35,7 @@ function PendingCount() {
 export function OrdersLayout() {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
+  const dataEntryOnly = hasPermission("orders.mark") && !hasPermission("orders.overview") && !hasPermission("orders.correct");
   // People who can only look (e.g. partner accounts) get "Store entries" instead of "Mark orders".
   const tabs = ORDER_TABS.filter((t) => hasPermission(t.permission)).map((t) =>
     t.to === "/orders" && !hasPermission("orders.mark") ? { ...t, label: "Store entries", blurb: "Browse each store's daily entries." } : t,
@@ -64,8 +65,8 @@ export function OrdersLayout() {
         <div className="relative flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">{today}</p>
-            <h2 className="mt-1 text-2xl font-extrabold text-heading sm:text-[1.75rem]">Orders</h2>
-            <p className="mt-1 text-sm text-gray-500">Record, review and correct daily bottle counts across every store.</p>
+            <h2 className="mt-1 text-2xl font-extrabold text-heading sm:text-[1.75rem]">{dataEntryOnly ? "Data Entry" : "Orders"}</h2>
+            <p className="mt-1 text-sm text-gray-500">{dataEntryOnly ? "Mark each store's daily bottle count, and see when a Team Lead or Reviewer changed one of yours." : "Record, review and correct daily bottle counts across every store."}</p>
           </div>
         </div>
 

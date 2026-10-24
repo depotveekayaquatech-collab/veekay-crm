@@ -1,5 +1,6 @@
 /** Veekay employee endpoints (the same API the web app uses). Shapes are kept as the API sends them. */
 import { adoptTokens, request } from "@/api/client";
+import type { EntryChange, EntryStatus } from "@/lib/format";
 
 function qs(params: Record<string, string | number | undefined | null>): string {
   const p = new URLSearchParams();
@@ -49,6 +50,8 @@ export interface MyEntry {
   store_status: string; bottles: number; source: string; entered_at: string;
   /** The server's own record of this entry. */
   entry_id?: string; version?: number; saved_on_server?: boolean; corrected?: boolean;
+  /** Where it stands in the verification workflow, and who changed the number after it was saved. */
+  verification?: EntryStatus | null; changed?: EntryChange | null;
 }
 export interface MyEntries { today: string; days: number; total: number; items: MyEntry[] }
 
@@ -77,6 +80,8 @@ export interface MyStore {
   status: string; partner_name: string | null; today: string;
   /** YOUR number for the day (null when you have not marked it, or a colleague did). */
   today_count: number | null; yesterday_count?: number | null;
+  /** What a Team Lead / Reviewer did to YOUR number after you saved it: who (name and role), when, old and new. */
+  today_changed?: EntryChange | null; yesterday_changed?: EntryChange | null;
   /** Somebody (you or a colleague) marked the day. */
   today_marked?: boolean; yesterday_marked?: boolean;
   /** Days up to yesterday with no entry since the store's last filled day this month (0: only today is still due). */

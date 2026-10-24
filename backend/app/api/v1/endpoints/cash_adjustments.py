@@ -16,7 +16,8 @@ from app.services import cash_adjustment_service as svc, store_sync_service
 from app.services import cash_analysis_service as analysis_svc
 from app.services import cash_purchase_service, cash_sync_service as sync_svc
 
-# Developer-only: every route needs the reserved `cash.adjust` permission, which only the developer role can hold.
+# Level 3 (Reviewer) and above: every route needs the reserved `cash.adjust` permission, which only the developer, administrators and Reviewers hold
+# (see LEVEL3_TOOL_PERMISSIONS); Level 1 and Level 2 get 403.
 router = APIRouter(
     prefix="/developer/cash-adjustments", tags=["developer"],
     dependencies=[Depends(require_permission("cash.adjust"))],

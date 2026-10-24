@@ -9,7 +9,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useSubmissionKey } from "@/lib/submissionKey";
 import { Button, Card, Chips, ErrorNote, ListSkeleton } from "@/components/ui";
 import { MonthGrid, type CellState } from "@/components/MonthGrid";
-import { daysAgo, fmtDate, fmtNumber } from "@/lib/format";
+import { changedByLine, changedDetail, daysAgo, fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
 const MAX = 300;
@@ -107,10 +107,17 @@ export default function MarkMany() {
       );
       return;
     }
+    if (d.changed && d.mine) {
+      Alert.alert(
+        "Your entry was changed",
+        `${changedDetail(d.changed)}.${d.verification ? `\n\nStatus: ${d.verification.label}${d.verification.by_name ? ` (${d.verification.by_name})` : ""}.` : ""}\n\nYour original number stays in the history.`,
+      );
+      return;
+    }
     if (!canFixOwn) {
       Alert.alert(
         "Saved on the server",
-        `You marked ${d.count ?? 0} bottles${d.entered_at ? ` on ${new Date(d.entered_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. A saved entry can't be changed from the app. If it is wrong, ask your Team Lead or an admin to correct it; your original number stays in the history.`,
+        `You marked ${d.count ?? 0} bottles${d.entered_at ? ` on ${new Date(d.entered_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}.${d.verification ? ` Status: ${d.verification.label}${d.verification.by_name ? ` (${d.verification.by_name})` : ""}.` : ""} A saved entry can't be changed from the app. If it is wrong, ask your Team Lead or an admin to correct it; your original number stays in the history.`,
       );
       return;
     }
@@ -214,7 +221,7 @@ export default function MarkMany() {
       selected: selected.includes(iso) || fixing === iso,
       today: d.is_today,
       badge: d.masked ? "•" : d.marked ? d.count : null,
-      badgeTone: d.masked || d.by_higher ? "muted" : "done",
+      badgeTone: d.masked || d.by_higher ? "muted" : d.changed ? "changed" : "done",
     };
   };
 
@@ -268,6 +275,18 @@ export default function MarkMany() {
             <Card style={{ marginTop: 14, padding: 8 }}>
               <MonthGrid year={cal.data!.year} month={cal.data!.month} state={state} onPress={toggle} />
             </Card>
+
+            {(cal.data?.days ?? []).some((x) => x.changed && x.mine) ? (
+              <Card style={{ marginTop: 12, padding: 14, borderColor: colors.warning, backgroundColor: colors.warningSoft }}>
+                <Text style={{ fontSize: 15, fontWeight: "800", color: colors.warning }}>Changes to your entries</Text>
+                {(cal.data?.days ?? []).filter((x) => x.changed && x.mine).reverse().map((x) => (
+                  <View key={x.date} style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{dayLabel(x.date)}: {x.changed!.old_count} → {x.changed!.new_count} bottles</Text>
+                    <Text style={font.small}>{changedByLine(x.changed!)}{x.changed!.reason ? ` · ${x.changed!.reason}` : ""}</Text>
+                  </View>
+                ))}
+              </Card>
+            ) : null}
 
             {fixing ? (
               <Card style={{ marginTop: 12, padding: 14, borderColor: colors.brand200, backgroundColor: colors.brand50 }}>

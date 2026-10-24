@@ -226,7 +226,8 @@ def test_a_team_lead_sees_and_corrects_their_team_only(client, db, cast):
     e = _entry(db, cast["s1"])
     assert e.bottle_count == 14 and e.version == 2 and e.created_by_user_id == cast["ids"]["A"]            # the creator never changes
     assert e.last_modified_by_user_id == cast["ids"]["L"] and e.last_modified_by_role == "team_lead" and e.last_modified_at is not None
-    created, edited = _events(db, a_entry.id)
+    created, edited, verified = _events(db, a_entry.id)
+    assert verified["event_type"] == "VERIFIED_L2" and verified["actor_user_id"] == cast["ids"]["L"]          # a Team Lead's correction counts as their verification
     assert created["event_type"] == "CREATED" and created["actor_user_id"] == cast["ids"]["A"] and created["new_values"]["bottle_count"] == 11
     assert edited["event_type"] == "EDITED" and edited["actor_user_id"] == cast["ids"]["L"] and edited["actor_role"] == "team_lead"
     assert edited["old_values"] == {"bottle_count": 11, "source": "employee"} and edited["new_values"] == {"bottle_count": 14, "source": "admin"}
@@ -248,9 +249,11 @@ def test_a_correction_needs_a_reason_and_the_current_version(client, db, cast):
     assert client.patch(url, headers=cast["L"], json={"bottle_count": 11, "reason": "same number", "expected_version": 1}).status_code == 422
     assert client.patch(url, headers=cast["L"], json={"bottle_count": 12, "reason": "valid reason", "expected_version": 1, "created_by_user_id": str(cast["ids"]["L"])}).status_code == 422
     assert client.patch(url, headers=cast["L"], json={"bottle_count": 12, "reason": "first correction", "expected_version": 1}).status_code == 200
-    stale = client.patch(url, headers=cast["L"], json={"bottle_count": 13, "reason": "a stale second edit", "expected_version": 1})
+    again = client.patch(url, headers=cast["L"], json={"bottle_count": 13, "reason": "a second edit", "expected_version": 2})
+    assert again.status_code == 409 and "already verified" in again.json()["detail"]                          # a Team Lead acts only on Submitted entries
+    stale = client.patch(url, headers=cast["ADM"], json={"bottle_count": 13, "reason": "a stale second edit", "expected_version": 1})
     assert stale.status_code == 409 and stale.json()["detail"]["current_version"] == 2
-    assert _entry(db, cast["s1"]).bottle_count == 12 and len(_events(db, e.id)) == 2                           # nothing partial, nothing extra
+    assert _entry(db, cast["s1"]).bottle_count == 12 and len(_events(db, e.id)) == 3                           # nothing partial, nothing extra (created, edited, verified)
 
 
 def test_a_team_lead_entry_belongs_to_the_team_lead(client, db, cast):
@@ -263,13 +266,12 @@ def test_a_team_lead_entry_belongs_to_the_team_lead(client, db, cast):
     assert [i["creator"]["role"] for i in client.get(SEARCH, headers=cast["L"]).json()["items"]] == ["team_lead"]       # and it is in their own scope
 
 
-def test_a_reviewer_audits_everything_but_changes_nothing(client, db, cast):
+def test_a_reviewer_audits_everything_and_a_review_mark_changes_nothing(client, db, cast):
     _mark(client, cast["A"], cast["s1"], 11)
     _mark(client, cast["B"], cast["s2"], 22)
     e = _entry(db, cast["s1"])
     got = client.get(SEARCH, headers=cast["R"]).json()
     assert got["level"] == "entry_reviewer" and {i["store"]["outlet_id"] for i in got["items"]} >= {"HX-1", "HX-2"}
-    assert client.patch(f"{API}/entries/{e.id}", headers=cast["R"], json={"bottle_count": 1, "reason": "silent edit?", "expected_version": 1}).status_code == 403
     assert client.patch(f"{API}/orders/entry", headers=cast["R"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
     assert client.post(f"{API}/entries/{e.id}/review", headers=cast["R"], json={"action": "flagged"}).status_code == 422            # a flag needs the reason
     flagged = client.post(f"{API}/entries/{e.id}/review", headers=cast["R"], json={"action": "flagged", "comment": "A usually delivers 20 here"})
@@ -291,7 +293,7 @@ def test_the_administrator_sees_everything_and_corrections_keep_the_creator(clie
     after = _entry(db, cast["s1"])
     assert after.created_by_user_id == cast["ids"]["A"] and after.bottle_count == 15 and after.version == 2 and after.last_modified_by_role == "administrator"
     t = client.get(f"{API}/entries/{e.id}", headers=cast["ADM"]).json()
-    assert t["chain_ok"] is True and [x["type"] for x in t["events"]] == ["CREATED", "EDITED"]
+    assert t["chain_ok"] is True and [x["type"] for x in t["events"]] == ["CREATED", "EDITED", "REVIEWED_L3"]
     assert t["entry"]["creator"]["name"] and t["entry"]["last_modified"]["role"] == "administrator"
     cal = client.get(f"{API}/orders/calendar", headers=cast["ADM"], params={"store_id": str(cast["s1"].id)}).json()["days"]
     d = next(x for x in cal if x["date"] == TODAY.isoformat())
@@ -374,7 +376,10 @@ def test_every_change_writes_its_own_event_and_the_original_survives(client, db,
         r = client.patch(f"{API}/entries/{e.id}", headers=cast["ADM"], json={"bottle_count": count, "reason": f"correction number {n}", "expected_version": n})
         assert r.status_code == 200, r.text
     ev = _events(db, e.id)
-    assert [x["event_type"] for x in ev] == ["CREATED", "EDITED", "EDITED", "EDITED"] and [x["entry_version"] for x in ev] == [1, 2, 3, 4]
+    # the first change also finalised the entry (an administrator's number is the Reviewed one), so it carries one extra REVIEWED_L3 event
+    assert [x["event_type"] for x in ev] == ["CREATED", "EDITED", "REVIEWED_L3", "EDITED", "EDITED"]
+    ev = [x for x in ev if x["event_type"] in ("CREATED", "EDITED")]
+    assert [x["entry_version"] for x in ev] == [1, 2, 3, 4]
     assert [x["new_values"]["bottle_count"] for x in ev] == [11, 12, 13, 14] and ev[0]["new_values"]["bottle_count"] == 11
     assert [x["reason"] for x in ev[1:]] == ["correction number 1", "correction number 2", "correction number 3"]
     now = _entry(db, cast["s1"])

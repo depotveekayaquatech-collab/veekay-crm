@@ -8,38 +8,37 @@ import { Select } from "@/components/ui/Select";
 import { Table, TableEmpty, Td, Th } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { usePermission } from "@/hooks/usePermission";
-import { useAttempts, useEntrySearch, useSecurityEvents, type Filters } from "@/features/entries/api";
-import { EntryHistoryModal } from "@/features/entries/EntryHistoryModal";
+import { useAttempts, useEntrySearch, useSecurityEvents } from "@/features/entries/api";
+import { EntryDrawer } from "@/features/entries/EntryDrawer";
+import { EntryPicker, StatusChips } from "@/features/entries/EntryFilters";
 import { EntryResultsTable } from "@/features/entries/EntryResultsTable";
-import { fmtDay, fmtMoment } from "@/features/entries/format";
+import { STATUS_FILTER_OPTIONS, fmtDay, fmtMoment } from "@/features/entries/format";
+import { useEntryFilters } from "@/features/entries/useEntryFilters";
 
 type Tab = "entries" | "removed" | "attempts" | "security";
 
-const BLANK: Filters = {};
 const TRI = [{ value: "", label: "Any" }, { value: "true", label: "Yes" }, { value: "false", label: "No" }];
 
 /**
- * Store Audit (Entry Reviewer + Administrator): find any entry in scope by store, id, person, team lead, date/time or state, and open its full history.
- * Every search runs on the server and is paginated; nothing depends on what the browser has loaded.
+ * Entry Review (Level 3 Reviewer and Level 4 Administrator): the work queue starts on the entries the Team Lead has verified ("ready to review"); find ANY
+ * entry in scope by store, employee, team lead, date/time or state, and open it in the verification panel to edit, review it yourself, ask the Team Lead to
+ * check it, or read its full history. Every search runs on the server and is paginated; nothing depends on what the browser has loaded.
  */
 export function StoreAuditPage() {
-  const canReview = usePermission("entries.review");
-  const canEdit = usePermission("orders.correct"); // administrators correct; reviewers flag
   const [tab, setTab] = useState<Tab>("entries");
-  const [draft, setDraft] = useState<Filters>(BLANK);
-  const [applied, setApplied] = useState<Filters>(BLANK);
-  const [page, setPage] = useState(1);
+  const f = useEntryFilters("verified_l2");
+  const { draft, applied, page, setPage } = f;
   const [open, setOpen] = useState<string | null>(null);
+  const [storeName, setStoreName] = useState("");
   const [secType, setSecType] = useState("");
 
-  const search = useEntrySearch(tab === "removed" ? { ...applied, deleted: true } : applied, page);
+  const search = useEntrySearch(tab === "removed" ? { ...applied, verification: "", deleted: true } : applied, page);
   const attempts = useAttempts({ store: applied.store as string, store_id: applied.store_id as string, outcome: applied.attempt_outcome as string, date_from: applied.date_from as string, date_to: applied.date_to as string }, page, tab === "attempts");
   const security = useSecurityEvents(secType, page, tab === "security");
 
-  const set = (k: string) => (v: string) => setDraft((d) => ({ ...d, [k]: v }));
-  const apply = () => { setApplied(draft); setPage(1); };
-  const reset = () => { setDraft(BLANK); setApplied(BLANK); setPage(1); };
+  const set = f.set;
+  const apply = f.search;
+  const reset = () => { setStoreName(""); f.reset(); };
   const changeTab = (t: Tab) => { setTab(t); setPage(1); };
   const input = (k: string, label: string, placeholder?: string) => (
     <Input label={label} value={(draft[k] as string) ?? ""} onChange={(e) => set(k)(e.target.value)} placeholder={placeholder} />
@@ -49,7 +48,7 @@ export function StoreAuditPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Store Audit" subtitle="Trace any entry to the person who created it, when, and every change since. Searches run on the server over everything you are allowed to see." />
+      <PageHeader title="Entry Review" subtitle="Review entries after the Team Lead, or step in yourself. Trace any entry to the person who created it, when, and every change since. Searches run on the server over everything you are allowed to see." />
 
       <div role="tablist" className="flex flex-wrap gap-1.5">
         {tabs.map(([id, label]) => (
@@ -60,17 +59,26 @@ export function StoreAuditPage() {
         ))}
       </div>
 
+      {tab === "entries" && <StatusChips active={(draft.verification as string) ?? ""} onPick={f.chooseStatus} />}
+
       {(tab === "entries" || tab === "removed" || tab === "attempts") && (
         <form className="grid gap-3 rounded-2xl border border-surface-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => { e.preventDefault(); apply(); }}>
+          {tab === "entries" && (
+            <>
+              <EntryPicker kind="store" label="Store" placeholder="Search a store…" value={(draft.store_id as string) ?? ""} valueLabel={storeName} onPick={(id, label) => { setStoreName(label ?? ""); f.pick("store_id", id); }} />
+              <EntryPicker kind="person" label="Employee" placeholder="Search an employee…" value={(draft.creator_id as string) ?? ""} onPick={(id) => f.pick("creator_id", id)} />
+              <Select label="Status" value={(draft.verification as string) ?? ""} onChange={(e) => f.chooseStatus(e.target.value)} options={STATUS_FILTER_OPTIONS} />
+            </>
+          )}
           {input("store", "Store name, code or outlet", "e.g. CPC Sonipat")}
           {tab !== "attempts" && input("outlet_id", "Outlet ID (exact)")}
           {tab !== "attempts" && input("entry_id", "Entry ID (exact)")}
-          {input("store_id", "Store ID (exact)")}
+          {tab !== "entries" && input("store_id", "Store ID (exact)")}
           {tab === "entries" && (
             <>
-              {input("creator", "Creator name or employee ID")}
+              {input("creator", "Creator name or employee ID (text)")}
               <Select label="Creator role" value={(draft.creator_role as string) ?? ""} onChange={(e) => set("creator_role")(e.target.value)}
-                options={[{ value: "", label: "Any" }, { value: "entry_contributor", label: "Entry Contributor" }, { value: "team_lead", label: "Team Lead" }, { value: "administrator", label: "Administrator" }, { value: "developer", label: "Developer" }]} />
+                options={[{ value: "", label: "Any" }, { value: "entry_contributor", label: "Data Entry" }, { value: "team_lead", label: "Team Lead" }, { value: "entry_reviewer", label: "Reviewer" }, { value: "administrator", label: "Administrator" }, { value: "developer", label: "Developer" }]} />
               {input("team_lead", "Team Lead name or ID")}
               {input("modifier", "Last changed by")}
             </>
@@ -85,8 +93,8 @@ export function StoreAuditPage() {
           )}
           {tab === "entries" && (
             <>
-              <Select label="Review" value={(draft.review_status as string) ?? ""} onChange={(e) => set("review_status")(e.target.value)}
-                options={[{ value: "", label: "Any" }, { value: "none", label: "Not reviewed" }, { value: "reviewed", label: "Reviewed" }, { value: "flagged", label: "Flagged" }, { value: "needs_correction", label: "Needs correction" }]} />
+              <Select label="Flag" value={(draft.review_status as string) ?? ""} onChange={(e) => set("review_status")(e.target.value)}
+                options={[{ value: "", label: "Any" }, { value: "none", label: "No mark" }, { value: "flagged", label: "Flagged" }, { value: "needs_correction", label: "Needs correction" }]} />
               <Select label="Edited" value={(draft.edited as string) ?? ""} onChange={(e) => set("edited")(e.target.value)} options={TRI} />
               <Select label="Creator not verified" value={(draft.unverified as string) ?? ""} onChange={(e) => set("unverified")(e.target.value)} options={TRI.slice(0, 2)} />
               <Select label="Had a refused attempt" value={(draft.failed_sync as string) ?? ""} onChange={(e) => set("failed_sync")(e.target.value)} options={TRI.slice(0, 2)} />
@@ -112,7 +120,13 @@ export function StoreAuditPage() {
           {search.data && tab === "entries" && (
             <>
               <p className="text-sm text-gray-500">{search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"} found</p>
-              <EntryResultsTable rows={search.data.items} onOpen={setOpen} />
+              {applied.store_id && (
+                <p className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-500/8 px-3.5 py-2 text-sm text-gray-800">
+                  Showing <b>{storeName || "one store"}</b>, date by date. Click a date to open it.
+                  <button type="button" className="font-semibold text-brand-600 hover:underline" onClick={() => f.pick("store_id", "")}>Show every store</button>
+                </p>
+              )}
+              <EntryResultsTable rows={search.data.items} onOpen={setOpen} onPickStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />
               <Pagination page={page} pageSize={search.data.page_size} total={search.data.total} onPageChange={setPage} />
             </>
           )}
@@ -203,7 +217,7 @@ export function StoreAuditPage() {
         </>
       )}
 
-      {open && <EntryHistoryModal entryId={open} onClose={() => setOpen(null)} canEdit={canEdit} canReview={canReview} />}
+      {open && <EntryDrawer entryId={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }

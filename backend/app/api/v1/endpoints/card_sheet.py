@@ -1,4 +1,4 @@
-"""Cards from an uploaded sheet. Developer-only for now (reserved `cards.sheet`), and behind an access code."""
+"""Cards from an uploaded sheet / the random card PDF. Level 3 (Reviewer) and above (reserved `cards.sheet`), and behind an access code."""
 import uuid
 import datetime as dt
 

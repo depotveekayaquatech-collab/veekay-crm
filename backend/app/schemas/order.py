@@ -26,6 +26,10 @@ class CalendarDay(BaseModel):
     version: int | None = None
     creator_name: str | None = None
     creator_verified: bool | None = None
+    # For whoever may see this day's number: where it stands (Submitted / Verified by Team Lead / Reviewed by Reviewer) and the latest change made to
+    # it after it was entered: {by_name, by_role, by_role_label, at, old_count, new_count, reason}. Never reports a developer's hidden cash adjustment.
+    verification: dict | None = None
+    changed: dict | None = None
 
 
 class OrderCalendar(BaseModel):
@@ -76,6 +80,9 @@ class MyStore(BaseModel):
     today: date  # the server's "today" — the date the quick-entry list marks against
     today_count: int | None = None                # YOUR number for today (null when you have not marked it, or somebody else did)
     yesterday_count: int | None = None
+    # What happened to YOUR number after you entered it (who changed it, in which role, when, old -> new), or null: see services/entry_changes.py
+    today_changed: dict | None = None
+    yesterday_changed: dict | None = None
     today_marked: bool = False                    # somebody marked today (you or somebody else); the number is only shown if it is yours
     yesterday_marked: bool = False
     # days up to yesterday with no entry since the store's last filled day (this month); 0 = only today is still due

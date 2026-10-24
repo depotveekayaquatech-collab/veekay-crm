@@ -6,12 +6,14 @@ Written for: the developer who maintains the CRM.
 
 The names are generic. The rules live in one place: `backend/app/core/entry_access.py`.
 
-| | Entry Contributor | Team Lead | Entry Reviewer | Administrator |
+| | Level 1: Data Entry | Level 2: Team Lead | Level 3: Reviewer | Level 4: Administrator |
 |---|---|---|---|---|
 | Who | role `employee` (everyone by default) | role `team_lead` (permission `entries.team`) | role `entry_reviewer` (`entries.audit` + `entries.review`) | role `admin`, and the developer |
 | Create entries | yes, for their stores | yes (recorded as the Team Lead) | only if they also hold the employee role | yes |
 | See entries | **their own, plus numbers set by someone more senior (read-only)** | own + people who report to them, plus numbers set by someone more senior | everything in scope (whole company, or one platform if the account has one) | everything |
-| Change a submitted entry | **no** | yes, inside the team, with a reason | **no** (flags only) | yes, with a reason (`PATCH /entries/{id}`) or the existing correct-entries page |
+| Change a submitted entry | **no** | yes, inside the team, with a reason, **only while it is still Submitted** (the edit also verifies it) | **yes, any entry, with a reason; the edit is final** (`PATCH /entries/{id}`) | yes, with a reason (`PATCH /entries/{id}`) or the existing correct-entries page; the edit is final |
+| Verify / review | no | verify a Submitted entry of the team | review any entry directly (the shortcut), or ask the Team Lead to check it | same as Level 3 |
+| Cash purchase import + manual add, random card PDF | no (403) | no (403) | yes (the PDF still needs the access code) | yes |
 | Delete an entry | no | no | no | yes (kept in history and `deleted_rows`) |
 | History of an entry | no | yes, inside the team | yes | yes |
 | Store Audit, attempts, security log | no | no | yes | yes |
@@ -60,7 +62,12 @@ developer's cash adjustment created first) the person who entered the employee's
 | `GET /entries/search` | Team Lead (team), Reviewer / Admin (scope) | server-side, paginated, combinable filters: store (partial), store id, outlet id, entry id, creator, creator id / role, team lead, last modifier, day range, created-at range (Indian time unless an offset is given), review status, edited, flagged, unverified creator, refused attempt, same-number-again, source, `deleted=true` for removed entries |
 | `GET /entries/{id}` | same, inside scope | the entry plus its full timeline, the attempts for that store and day, and `chain_ok` |
 | `PATCH /entries/{id}` | Team Lead (team), Admin | `{bottle_count, reason (>= 5 chars), expected_version}`; extra fields are refused (422); a stale version answers 409 with the current version |
-| `POST /entries/{id}/review` | Reviewer, Admin | reviewed / flagged / needs_correction / clear; a flag needs a comment; never touches value, creator or version |
+| `POST /entries/{id}/review` | Reviewer, Admin | `reviewed` = finalise directly (Reviewed, the Team Lead is no longer needed); flagged / needs_correction / clear set the review mark; a flag needs a comment; never touches value, creator or version |
+| `POST /entries/{id}/verify` | Team Lead (own team) | Submitted -> Verified by Team Lead; 409 if it is no longer Submitted |
+| `POST /entries/{id}/request-check` | Reviewer, Admin | ask the creator's Team Lead to check a Submitted entry: an open request on the entry plus an in-app notification |
+| `POST /entries/{id}/comments` | Team Lead (team), Reviewer, Admin | a comment appended to the entry's history |
+| `GET /entries/options?kind=store\|person&q=` | Team Lead (team), Reviewer, Admin | typeahead for the Store-wise and Employee-wise filters, inside the caller's scope |
+| `GET /entries/summary` | Team Lead (team), Reviewer, Admin | entries per state over the last 30 days |
 | `GET /entries/attempts`, `/entries/security-events` | Reviewer, Admin | every try to mark (saved, refused, same number again); refused / sensitive actions |
 | `GET /entries/team`, `/entries/leads` | Team Lead / Admin | people in the team; the Team Leads to choose from |
 | `PUT /employees/{id}/entry-role` | Admin | `{level, reports_to_id}` |
@@ -68,6 +75,33 @@ developer's cash adjustment created first) the person who entered the employee's
 
 An entry id outside the caller's scope answers **404**, the same as a made-up id, and the attempt is written to `security_events`.
 Unauthenticated requests get 401. Responses of the audit endpoints are `Cache-Control: no-store`; the web client keeps no audit data once a screen is left.
+
+## The verification workflow (migration 0053)
+
+`Submitted (L1)` -> `Verified by Team Lead (L2)` -> `Reviewed by Reviewer (L3)`, stored in `order_entries.verification_status` and moved by the database
+triggers from **who changed the number**, so every writer is covered:
+
+* a new entry starts `submitted`, unless a more senior person created it (a Team Lead's own entry is `verified_l2`; an administrator's or reviewer's is `reviewed_l3`);
+* a changed number moves the entry to the state of whoever changed it: Team Lead -> `verified_l2` (only while it was `submitted`; the database refuses a Team Lead
+  changing anything already verified or reviewed), Reviewer / administrator -> `reviewed_l3`, the contributor or an unknown writer -> back to `submitted`;
+* without a number change the state only moves forward (Team Lead and above may verify a `submitted` entry; Reviewer and above may finalise any). **Reviewer shortcut:**
+  finalising a `submitted` entry directly skips Level 2 for good, and writes no `VERIFIED_L2` event;
+* a Reviewer can **request a check**: `check_requested_*` is an open request on a `submitted` entry, shown to the Team Lead as "Verification requested" (filter
+  `verification=requested`) with an in-app notification (kind `entry_check`) to the creator's Team Lead; the next verification or change clears it. A creator with no
+  Team Lead assigned is recorded and the answer says nobody was notified.
+
+**Reports show the final value only.** `bottle_count` is always the number of the current state (the L1 value until a senior changes it, then theirs), and every report
+reads it. Earlier values exist only in `order_entry_events`, never in a report or export. History is never overwritten: each step appends `EDITED`, `VERIFIED_L2`,
+`REVIEWED_L3`, `CHECK_REQUESTED`, `STATUS_CHANGED` or `COMMENTED` (a comment is appended with `entry_append_event`, on the same hash chain).
+
+**Level 1 sees changes.** `GET /orders/calendar` and `GET /orders/my-entries` carry `changed` (who, in which role, when, old and new number, the reason) and `verification`
+(the state). A developer's hidden cash adjustment is never reported and names nobody.
+
+**Existing entries.** All start `submitted` (nobody verified them); a `reviewed` mark from 0052 becomes `reviewed_l3`. The Team Lead's default list is the last pending
+entries, so the old backlog does not flood it; to settle the backlog in one go an administrator can run, for example,
+`UPDATE order_entries SET verification_status = 'reviewed_l3', l3_reviewed_at = now() WHERE order_date < '2026-10-01' AND verification_status = 'submitted'`
+**with an actor set** (`SELECT set_config('app.actor_id', '<a reviewer id>', true)` in the same transaction; the trigger refuses it otherwise). Migration 0053 takes about 2 s
+on 300,000 entries (measured on a laptop).
 
 ## Retries and "saved"
 
@@ -93,6 +127,9 @@ entry gets a BASELINE event. In Store Audit, filter "Creator not verified" lists
 
 * **Store-level aggregates stay visible by design**: Zepto capping status, printed store cards and their public QR page show store totals, not
   entries. Say if any of these should also be restricted.
+* Level 3 and Level 4 now also hold the two tools that were developer-only (`cash.adjust`: cash purchase sheet import and manual add; `cards.sheet`: the random card PDF,
+  still behind its access code). They are computed per request in `UserRepository.get_permission_codes`; they stay reserved (never grantable per person), a reviewer limited
+  to one platform does not get them, and Level 1 / Level 2 get 403.
 * Employees can no longer correct their own saved entry (the earlier "edit my own count" feature). `EMPLOYEE_CAN_CORRECT_OWN=true` brings it back;
   every such change is still audited.
 * A Team Lead can only correct entries whose creator is verified. Unverified legacy entries are an administrator's to investigate.

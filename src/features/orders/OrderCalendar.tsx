@@ -3,6 +3,7 @@ import { MAX_BOTTLES } from "@/features/orders/limits";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { CalendarDay, OrderCalendar as Cal } from "@/types/order";
+import { fmtMomentShort } from "@/features/entries/format";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -11,6 +12,51 @@ function Chevron({ dir }: { dir: "left" | "right" }) {
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={dir === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"} />
     </svg>
+  );
+}
+
+/**
+ * What happened to this person's entries after they saved them: who changed the number (name and role), when, from what to what, why, and where the
+ * entry stands now. It comes from the server's append-only history, so it is always the real record.
+ */
+function ChangedByList({ days }: { days: CalendarDay[] }) {
+  const changed = days.filter((d) => d.changed && !d.masked);
+  const states = days.filter((d) => d.verification && d.mine && !d.masked);
+  if (changed.length === 0 && states.length === 0) return null;
+  const tone = { submitted: "bg-amber-500/10 text-amber-800 dark:text-amber-300", verified_l2: "bg-sky-500/10 text-sky-800 dark:text-sky-300", reviewed_l3: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300" } as const;
+  return (
+    <div className="mt-5 flex flex-col gap-3 rounded-xl border border-surface-border bg-surface-subtle p-3.5">
+      {changed.length > 0 && (
+        <div>
+          <h4 className="text-sm font-bold text-heading">Changes to your entries</h4>
+          <ul className="mt-2 flex flex-col gap-2">
+            {[...changed].reverse().map((d) => (
+              <li key={d.date} className="rounded-lg bg-surface px-3 py-2 text-sm ring-1 ring-surface-border">
+                <p className="font-semibold text-gray-900">
+                  {d.date}: <span className="text-gray-500 line-through">{d.changed!.oldCount}</span> → <span className="text-brand-700">{d.changed!.newCount}</span> bottles
+                </p>
+                <p className="text-xs text-gray-600">
+                  Changed by <b>{d.changed!.byName ?? "a senior colleague"}</b> – {d.changed!.byRoleLabel}, {fmtMomentShort(d.changed!.at)}
+                  {d.changed!.reason ? ` · "${d.changed!.reason}"` : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {states.length > 0 && (
+        <div>
+          <h4 className="text-sm font-bold text-heading">Where your entries stand</h4>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {states.map((d) => (
+              <span key={d.date} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone[d.verification!.status]}`}>
+                {d.date.slice(5)}: {d.verification!.label}{d.verification!.byName ? ` (${d.verification!.byName})` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -324,7 +370,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 type="button"
                 onClick={() => pick(d)}
                 disabled={!isClickable}
-                title={d.masked ? "Marked by a colleague. Only the person who entered a number (and their Team Lead) can see it." : d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}` : d.isFuture ? undefined : "Not marked"}
+                title={d.masked ? "Marked by a colleague. Only the person who entered a number (and their Team Lead) can see it." : d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}${d.changed ? ` · changed by ${d.changed.byName ?? "a senior colleague"} (${d.changed.byRoleLabel}), ${d.changed.oldCount} to ${d.changed.newCount}` : ""}${d.verification ? ` · ${d.verification.label}` : ""}` : d.isFuture ? undefined : "Not marked"}
                 style={
                   !isPicked && d.marked && !d.masked && d.source !== "admin"
                     ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` }
@@ -346,6 +392,9 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 ) : !d.isFuture ? (
                   <span className="text-lg font-light text-gray-300">+</span>
                 ) : null}
+                {d.changed && !d.masked && !isPicked && (
+                  <span className="absolute bottom-1 right-1.5 h-2 w-2 rounded-full bg-status-warning" aria-label={`Changed by ${d.changed.byName ?? "a senior colleague"}`} />
+                )}
                 {isPicked && (
                   <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-600 text-[10px] text-white font-bold">
                     ✓
@@ -492,6 +541,8 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
             </div>
           </form>
         )}
+
+        {!isAdmin && <ChangedByList days={calendar.days} />}
 
         {!multiMode && !selected && canMark && stats.missing > 0 && (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-gray-500">

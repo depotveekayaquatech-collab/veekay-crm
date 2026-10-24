@@ -32,6 +32,7 @@ from app.models.organization import Organization
 from app.models.store import Store
 from app.models.user import User
 from app.services import activity_service
+from app.services.entry_changes import last_changes, status_for_contributor
 
 MAX_DAYS = 14
 MAX_ROWS = 1000
@@ -204,10 +205,16 @@ def my_entries(db: Session, user: User, days: int) -> dict:
         .where(owned_clause({user.id}), OrderEntry.order_date >= since, OrderEntry.order_date <= today)
         .order_by(OrderEntry.order_date.desc(), Store.name).limit(5000)
     ).all()
+    entries = [e for e, _s in rows]
+    changes = last_changes(db, entries)
+    names = {r[0]: r[1] for r in db.execute(select(User.id, User.full_name).where(User.id.in_(
+        {i for e in entries for i in (e.verified_by_user_id, e.l3_reviewed_by_user_id) if i})))} if entries else {}
     items = [{
         "order_date": e.order_date, "store_id": s.id, "store_name": s.name, "store_code": s.external_code, "city": s.city, "state": s.state,
         "store_status": s.status, "bottles": e.bottle_count - e.cash_adjustment, "source": e.source, "entered_at": e.created_at,
         # the server's own record of this entry: shown in the app as "Saved on server"
         "entry_id": e.id, "version": e.version, "saved_on_server": True, "corrected": e.version > 1,
+        # where it stands in the verification workflow, and who changed the number after it was saved (name, role, time, old -> new)
+        "verification": status_for_contributor(e, names), "changed": changes.get(e.id),
     } for e, s in rows]
     return {"today": today, "days": days, "total": len(items), "items": items}

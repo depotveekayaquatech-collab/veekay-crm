@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMyEntries } from "@/api/staffHooks";
 import type { MyEntry } from "@/api/staff";
 import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
-import { fmtNumber } from "@/lib/format";
+import { changedByLine, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
 type Range = "3" | "7" | "14";
@@ -61,8 +61,15 @@ export default function MyEntries() {
                 <Text numberOfLines={2} style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{item.entry.store_name}</Text>
                 <Text numberOfLines={1} style={font.tiny}>{item.entry.store_code}{item.entry.city ? ` · ${item.entry.city}` : ""}</Text>
                 <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success, marginTop: 2 }}>
-                  <Ionicons name="cloud-done-outline" size={12} color={colors.success} /> Saved on the server{item.entry.corrected ? " · corrected by your Team Lead or an admin" : ""}
+                  <Ionicons name="cloud-done-outline" size={12} color={colors.success} /> Saved on the server{item.entry.verification ? ` · ${item.entry.verification.label}` : ""}
                 </Text>
+                {item.entry.changed ? (
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.warning, marginTop: 2 }}>
+                    {changedByLine(item.entry.changed)}: {item.entry.changed.old_count} → {item.entry.changed.new_count}
+                  </Text>
+                ) : item.entry.corrected ? (
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.warning, marginTop: 2 }}>Corrected by a Team Lead or an admin</Text>
+                ) : null}
                 {item.entry.store_status !== "LIVE" ? (
                   <View style={{ alignSelf: "flex-start", marginTop: 4, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
                     <Ionicons name="information-circle-outline" size={13} color={colors.warning} />

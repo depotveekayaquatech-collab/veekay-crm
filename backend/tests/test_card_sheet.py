@@ -32,8 +32,7 @@ def _files(text, name="entries.csv"):
 
 
 def test_permission_and_access_code(client, admin, emp, dev, db):
-    for who in (admin, emp):                                           # the permission is reserved to the developer
-        assert _unlock(client, who).status_code == 403
+    assert _unlock(client, emp).status_code == 403                     # Level 1 / 2 never hold it (Level 3 and 4 do: tests/test_entry_verification.py)
     bad = _unlock(client, dev, "0000")
     assert bad.status_code == 403 and "isn't right" in bad.json()["detail"]
     ok = _unlock(client, dev)

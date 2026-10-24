@@ -58,9 +58,9 @@ def _purchase(db, store, amount, day):
 
 # ---- upload a cash purchase sheet ---------------------------------------------------------------------------------
 
-def test_upload_is_developer_only(client, admin, emp):
-    for who in (admin, emp):
-        assert _upload(client, who, _sheet([])).status_code == 403
+def test_upload_is_for_the_developer_and_levels_3_and_4_only(client, admin, emp):
+    assert _upload(client, emp, _sheet([])).status_code == 403
+    assert _upload(client, admin, _sheet([])).status_code != 403          # Level 4 reaches the cash tools; Level 1 / 2 never do (tests/test_entry_verification.py)
 
 
 def test_upload_brings_rows_in_for_review_and_changes_nothing_else(client, dev, db, make_store):
@@ -438,10 +438,9 @@ def test_an_applied_row_and_unknown_ids_are_left_alone(client, dev, db, make_sto
     assert db.query(CashSyncRecord).count() == 1
 
 
-def test_only_the_developer_can_delete_rows(client, admin, emp):
+def test_level_1_cannot_delete_rows(client, emp):
     import uuid as _uuid
-    for who in (admin, emp):
-        assert client.post(f"{CASH}/sync/delete", headers=who, json={"record_ids": [str(_uuid.uuid4())]}).status_code == 403
+    assert client.post(f"{CASH}/sync/delete", headers=emp, json={"record_ids": [str(_uuid.uuid4())]}).status_code == 403
 
 
 # ---- "Match stores again" -----------------------------------------------------------------------------------------------
@@ -466,9 +465,8 @@ def test_match_stores_again_fills_in_rows_from_what_the_sheet_said_without_a_new
     assert client.post(f"{CASH}/sync/rematch", headers=dev).json()["matched"] == 0         # nothing left to find
 
 
-def test_only_the_developer_can_rematch(client, admin, emp):
-    for who in (admin, emp):
-        assert client.post(f"{CASH}/sync/rematch", headers=who).status_code == 403
+def test_level_1_cannot_rematch(client, emp):
+    assert client.post(f"{CASH}/sync/rematch", headers=emp).status_code == 403
 
 
 def test_start_date_sync_can_be_limited_to_one_vendor(client, dev, db, make_store):
