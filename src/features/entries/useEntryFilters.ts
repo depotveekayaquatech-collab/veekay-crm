@@ -15,8 +15,9 @@ export function useEntryFilters(defaultStatus: string) {
   const [page, setPage] = useState(1);
 
   const commit = (next: Filters, chosen = statusChosen) => {
-    const lookingUpAStore = Boolean(next.store_id || (typeof next.store === "string" && next.store.trim()));
-    const out = lookingUpAStore && !chosen ? { ...next, verification: "" } : next;
+    const lookingSomeoneUp = Boolean(next.store_id || next.creator_id || (typeof next.store === "string" && next.store.trim()));
+    // looking someone up opens the status filter to "all"; going back to the full list returns to the work queue (unless a status was chosen on purpose)
+    const out = chosen ? next : { ...next, verification: lookingSomeoneUp ? "" : defaultStatus };
     setDraft(out);
     setApplied(out);
     setPage(1);
@@ -26,8 +27,16 @@ export function useEntryFilters(defaultStatus: string) {
     draft, applied, page, setPage,
     /** Edit a free-text / date field (applied by Search). */
     set: (k: string) => (v: string) => setDraft((d) => ({ ...d, [k]: v })),
-    /** Choose a store or an employee (applied at once). */
-    pick: (k: "store_id" | "creator_id", v: string) => commit({ ...draft, [k]: v, ...(k === "store_id" ? { store: "" } : {}) }),
+    /** Choose a partner, an employee or a store (applied at once). A new partner clears the employee and store; a new employee clears the store. */
+    pick: (k: "platform" | "store_id" | "creator_id", v: string) =>
+      commit({
+        ...draft, [k]: v,
+        ...(k === "store_id" ? { store: "" } : {}),
+        ...(k === "creator_id" ? { store_id: "", store: "" } : {}),
+        ...(k === "platform" ? { creator_id: "", store_id: "", store: "" } : {}),
+      }),
+    /** Back up one step of the drill-down (employee -> stores -> entries) or all the way to the full list. */
+    clearDrill: (keep: "none" | "employee") => commit({ ...draft, store_id: "", store: "", ...(keep === "none" ? { creator_id: "" } : {}) }),
     chooseStatus: (v: string) => { setStatusChosen(true); commit({ ...draft, verification: v }, true); },
     search: () => commit(draft),
     reset: () => { setStatusChosen(false); setDraft(start); setApplied(start); setPage(1); },

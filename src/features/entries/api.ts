@@ -127,8 +127,9 @@ export function toQuery(filters: Filters, extra: Record<string, string | number>
 }
 
 // Audit data is never kept after the screen is left (gcTime 0) and never shown stale.
-export function useEntrySearch(filters: Filters, page: number, pageSize = 25) {
+export function useEntrySearch(filters: Filters, page: number, pageSize = 25, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["entry-search", filters, page, pageSize],
     queryFn: () => apiRequest<SearchResult>(`/entries/search?${toQuery(filters, { page, page_size: pageSize })}`, { silent: true }),
     placeholderData: keepPreviousData,
@@ -179,14 +180,68 @@ export interface StoreOption { id: string; name: string; code: string; crm_code:
 export interface PersonOption { id: string; name: string; code: string; is_me: boolean }
 
 /** Server-side typeahead for the Store-wise and Employee-wise filters (always inside the caller's own scope, so it stays fast on any list size). */
-export function useFilterOptions<K extends "store" | "person">(kind: K, q: string, enabled = true) {
+export function useFilterOptions<K extends "store" | "person">(kind: K, q: string, enabled = true, platformId = "") {
   return useQuery({
     enabled,
-    queryKey: ["entry-options", kind, q],
-    queryFn: () => apiRequest<(K extends "store" ? StoreOption : PersonOption)[]>(`/entries/options?${toQuery({ kind, q }, { limit: 20 })}`, { silent: true }),
+    queryKey: ["entry-options", kind, q, platformId],
+    // employees: the whole list of a partner fits one dropdown (up to 300); stores stay a 20-best-matches typeahead
+    queryFn: () => apiRequest<(K extends "store" ? StoreOption : PersonOption)[]>(`/entries/options?${toQuery({ kind, q, platform_id: platformId }, { limit: kind === "person" ? 300 : 20 })}`, { silent: true }),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
+}
+
+export interface PlatformOption { id: string; name: string; slug: string }
+
+/** The partners (Blinkit, Zepto ...) the caller can look into. One entry means the dropdown is not needed (a Blinkit Reviewer sees only Blinkit). */
+export function usePlatforms() {
+  return useQuery({ queryKey: ["entry-platforms"], queryFn: () => apiRequest<PlatformOption[]>("/entries/options?kind=platform", { silent: true }), staleTime: 5 * 60_000 });
+}
+
+export interface StoreOfEmployee {
+  store: { id: string; name: string; crm_code: string | null; outlet_id: string; status: string; entity: string | null; platform: string };
+  entries: number;
+  pending_l2: number;
+  verified_l2: number;
+  reviewed_l3: number;
+  requested: number;
+  bottles: number;
+  last_entry: string | null;
+}
+
+/** The stores one employee has entered, with how many of their entries are in each state: the step between choosing an employee and opening a store's entries. */
+export function useEmployeeStores(creatorId: string, filters: Filters) {
+  return useQuery({
+    queryKey: ["entry-employee-stores", creatorId, filters.date_from, filters.date_to, filters.verification],
+    queryFn: () =>
+      apiRequest<{ employee: { id: string; name: string; code: string }; total: number; items: StoreOfEmployee[] }>(
+        `/entries/employee-stores?${toQuery({ creator_id: creatorId, date_from: filters.date_from, date_to: filters.date_to, verification: filters.verification }, {})}`, { silent: true }),
+    enabled: Boolean(creatorId),
+    gcTime: 0,
+    staleTime: 0,
+  });
+}
+
+export interface TeamOverview {
+  month_start: string;
+  today: string;
+  members: number;
+  stores: number;
+  entries: number;
+  bottles: number;
+  today_entries: number;
+  today_bottles: number;
+  pending_l2: number;
+  verified_l2: number;
+  reviewed_l3: number;
+  requested: number;
+  not_entered_today: number;
+  people: { id: string; name: string; code: string; is_me: boolean; entries: number; stores: number; bottles: number; pending_l2: number; verified_l2: number; reviewed_l3: number; requested: number; last_entry: string | null; today_entries: number; today_bottles: number }[];
+}
+
+/** The Team Lead's dashboard numbers (this month and today, for the whole team). */
+export function useTeamOverview(enabled = true) {
+  return useQuery({ queryKey: ["entry-team-overview"], queryFn: () => apiRequest<TeamOverview>("/entries/team-overview", { silent: true }), enabled, staleTime: 30_000, refetchInterval: 120_000 });
 }
 
 export interface EntrySummary { since: string; days: number; pending_l2: number; verified_l2: number; reviewed_l3: number; requested: number }

@@ -71,9 +71,10 @@ def issue_code(db: Session, slug: str, employee_code: str) -> tuple[str, str] | 
 
 def send_code_email(email: str, code: str) -> None:
     mailer.send_mail(
-        email, "Your Veekay verification code",
-        f"Your Veekay verification code is {code}.\n\nIt works for {settings.RESET_CODE_MINUTES} minutes. "
-        "If you did not ask to reset your password, ignore this email. Nothing has changed.",
+        email, "Veekay password reset code",
+        f"Your Veekay password reset code is {code}.\n\nEnter it in the app (or on the website) with your new password. It works for "
+        f"{settings.RESET_CODE_MINUTES} minutes and only once. Do not share it with anyone.\n\n"
+        "If you did not ask to reset your password, ignore this email. Nothing has changed.\n\nVeekay Aquatech",
     )
 
 

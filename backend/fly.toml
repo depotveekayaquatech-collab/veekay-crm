@@ -17,6 +17,11 @@ primary_region = "sin"
 DB_POOL_SIZE = "5"
 DB_MAX_OVERFLOW = "5"
   DASHBOARD_CACHE_SECONDS = "30"
+  # "Forgot password" emails go out from the company mailbox. The App Password is a Fly SECRET (SMTP_PASSWORD), never written here.
+  SMTP_HOST = "smtp.gmail.com"
+  SMTP_PORT = "587"
+  SMTP_USER = "depot.veekayaquatech@gmail.com"
+  SMTP_FROM = "Veekay Aquatech <depot.veekayaquatech@gmail.com>"
 
 [deploy]
   release_command = "sh -c 'alembic upgrade head && python scripts/seed.py'"

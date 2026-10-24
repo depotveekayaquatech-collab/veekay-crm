@@ -6,7 +6,8 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { useEntrySearch } from "@/features/entries/api";
+import { useEntrySearch, usePlatforms } from "@/features/entries/api";
+import { Crumbs, EmployeeStoresTable, PartnerSelect } from "@/features/entries/DrillDown";
 import { EntryDrawer } from "@/features/entries/EntryDrawer";
 import { EntryPicker, StatusChips } from "@/features/entries/EntryFilters";
 import { EntryResultsTable } from "@/features/entries/EntryResultsTable";
@@ -21,7 +22,14 @@ export function TeamEntriesPage() {
   const f = useEntryFilters("pending_l2");
   const [open, setOpen] = useState<string | null>(null);
   const [storeName, setStoreName] = useState("");
-  const search = useEntrySearch(f.applied, f.page);
+  const [personName, setPersonName] = useState("");
+  const platforms = usePlatforms();
+  const platformId = platforms.data?.find((p) => p.slug === f.draft.platform)?.id ?? "";
+  // Employee chosen and no store yet: that employee's stores come first; opening one shows its entries.
+  const employeeId = (f.applied.creator_id as string) ?? "";
+  const storeId = (f.applied.store_id as string) ?? "";
+  const showStores = Boolean(employeeId) && !storeId && !((f.applied.store as string) ?? "").trim();
+  const search = useEntrySearch(f.applied, f.page, 25, !showStores);
   const status = (f.draft.verification as string) ?? "";
 
   return (
@@ -30,8 +38,10 @@ export function TeamEntriesPage() {
       <StatusChips active={status} onPick={f.chooseStatus} />
 
       <form className="grid gap-3 rounded-2xl border border-surface-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => { e.preventDefault(); f.search(); }}>
+        <PartnerSelect platforms={platforms.data ?? []} value={(f.draft.platform as string) ?? ""} onChange={(slug) => { setPersonName(""); setStoreName(""); f.pick("platform", slug); }} />
+        <EntryPicker kind="person" label="Employee" placeholder="Choose an employee…" value={(f.draft.creator_id as string) ?? ""} valueLabel={personName} platformId={platformId}
+          onPick={(id, label) => { setPersonName(label ?? ""); setStoreName(""); f.pick("creator_id", id); }} />
         <EntryPicker kind="store" label="Store" placeholder="Search a store…" value={(f.draft.store_id as string) ?? ""} valueLabel={storeName} onPick={(id, label) => { setStoreName(label ?? ""); f.pick("store_id", id); }} />
-        <EntryPicker kind="person" label="Employee" placeholder="Search an employee…" value={(f.draft.creator_id as string) ?? ""} onPick={(id) => f.pick("creator_id", id)} />
         <Select label="Status" value={status} onChange={(e) => f.chooseStatus(e.target.value)} options={STATUS_FILTER_OPTIONS} />
         <Input label="Store name, code or outlet" value={(f.draft.store as string) ?? ""} onChange={(e) => f.set("store")(e.target.value)} placeholder="Type, then Search" />
         <Input label="Day from" type="date" value={(f.draft.date_from as string) ?? ""} onChange={(e) => f.set("date_from")(e.target.value)} />
@@ -39,20 +49,19 @@ export function TeamEntriesPage() {
         <Select label="Edited" value={(f.draft.edited as string) ?? ""} onChange={(e) => f.set("edited")(e.target.value)} options={[{ value: "", label: "Any" }, { value: "true", label: "Yes" }, { value: "false", label: "No" }]} />
         <div className="flex items-end gap-2">
           <Button type="submit">Search</Button>
-          <Button type="button" variant="ghost" onClick={() => { setStoreName(""); f.reset(); }}>Clear filters</Button>
+          <Button type="button" variant="ghost" onClick={() => { setStoreName(""); setPersonName(""); f.reset(); }}>Clear filters</Button>
         </div>
       </form>
 
-      {search.isLoading && <Skeleton className="h-64" />}
-      {search.isError && <ErrorState message={search.error instanceof Error ? search.error.message : "Couldn't load the entries."} onRetry={() => search.refetch()} />}
-      {search.data && (
+      {(employeeId || storeId) && (
+        <Crumbs person={employeeId ? personName || "This employee" : undefined} store={storeId ? storeName || "One store" : undefined}
+          onAll={() => { setPersonName(""); setStoreName(""); f.clearDrill("none"); }} onPerson={employeeId ? () => { setStoreName(""); f.clearDrill("employee"); } : undefined} />
+      )}
+      {showStores && <EmployeeStoresTable creatorId={employeeId} filters={f.applied} onOpenStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />}
+      {!showStores && search.isLoading && <Skeleton className="h-64" />}
+      {!showStores && search.isError && <ErrorState message={search.error instanceof Error ? search.error.message : "Couldn't load the entries."} onRetry={() => search.refetch()} />}
+      {!showStores && search.data && (
         <>
-          {f.applied.store_id && (
-            <p className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-500/8 px-3.5 py-2 text-sm text-gray-800">
-              Showing <b>{storeName || "one store"}</b>, date by date. Click a date to open it.
-              <button type="button" className="font-semibold text-brand-600 hover:underline" onClick={() => f.pick("store_id", "")}>Show every store</button>
-            </p>
-          )}
           <p className="text-sm text-gray-500">{search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"}</p>
           <EntryResultsTable rows={search.data.items} onOpen={setOpen} onPickStore={(s) => { setStoreName(s.name); f.pick("store_id", s.id); }} />
           <Pagination page={f.page} pageSize={search.data.page_size} total={search.data.total} onPageChange={f.setPage} />

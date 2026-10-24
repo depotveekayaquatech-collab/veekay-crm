@@ -8,7 +8,8 @@ import { Select } from "@/components/ui/Select";
 import { Table, TableEmpty, Td, Th } from "@/components/ui/Table";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { useAttempts, useEntrySearch, useSecurityEvents } from "@/features/entries/api";
+import { useAttempts, useEntrySearch, usePlatforms, useSecurityEvents } from "@/features/entries/api";
+import { Crumbs, EmployeeStoresTable, PartnerSelect } from "@/features/entries/DrillDown";
 import { EntryDrawer } from "@/features/entries/EntryDrawer";
 import { EntryPicker, StatusChips } from "@/features/entries/EntryFilters";
 import { EntryResultsTable } from "@/features/entries/EntryResultsTable";
@@ -30,15 +31,23 @@ export function StoreAuditPage() {
   const { draft, applied, page, setPage } = f;
   const [open, setOpen] = useState<string | null>(null);
   const [storeName, setStoreName] = useState("");
+  const [personName, setPersonName] = useState("");
+  const [more, setMore] = useState(false);
   const [secType, setSecType] = useState("");
+  const platforms = usePlatforms();
+  const platformId = platforms.data?.find((p) => p.slug === draft.platform)?.id ?? "";
 
-  const search = useEntrySearch(tab === "removed" ? { ...applied, verification: "", deleted: true } : applied, page);
+  // Drill-down: Partner -> Employee -> that employee's STORES -> one store's entries. With an employee chosen and no store yet, the stores come first.
+  const employeeId = (applied.creator_id as string) ?? "";
+  const storeId = (applied.store_id as string) ?? "";
+  const showStores = tab === "entries" && Boolean(employeeId) && !storeId && !((applied.store as string) ?? "").trim();
+  const search = useEntrySearch(tab === "removed" ? { ...applied, verification: "", deleted: true } : applied, page, 25, !showStores);
   const attempts = useAttempts({ store: applied.store as string, store_id: applied.store_id as string, outcome: applied.attempt_outcome as string, date_from: applied.date_from as string, date_to: applied.date_to as string }, page, tab === "attempts");
   const security = useSecurityEvents(secType, page, tab === "security");
 
   const set = f.set;
   const apply = f.search;
-  const reset = () => { setStoreName(""); f.reset(); };
+  const reset = () => { setStoreName(""); setPersonName(""); f.reset(); };
   const changeTab = (t: Tab) => { setTab(t); setPage(1); };
   const input = (k: string, label: string, placeholder?: string) => (
     <Input label={label} value={(draft[k] as string) ?? ""} onChange={(e) => set(k)(e.target.value)} placeholder={placeholder} />
@@ -65,16 +74,20 @@ export function StoreAuditPage() {
         <form className="grid gap-3 rounded-2xl border border-surface-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => { e.preventDefault(); apply(); }}>
           {tab === "entries" && (
             <>
+              <PartnerSelect platforms={platforms.data ?? []} value={(draft.platform as string) ?? ""} onChange={(slug) => { setPersonName(""); setStoreName(""); f.pick("platform", slug); }} />
+              <EntryPicker kind="person" label="Employee" placeholder="Choose an employee…" value={(draft.creator_id as string) ?? ""} valueLabel={personName} platformId={platformId}
+                onPick={(id, label) => { setPersonName(label ?? ""); setStoreName(""); f.pick("creator_id", id); }} />
               <EntryPicker kind="store" label="Store" placeholder="Search a store…" value={(draft.store_id as string) ?? ""} valueLabel={storeName} onPick={(id, label) => { setStoreName(label ?? ""); f.pick("store_id", id); }} />
-              <EntryPicker kind="person" label="Employee" placeholder="Search an employee…" value={(draft.creator_id as string) ?? ""} onPick={(id) => f.pick("creator_id", id)} />
               <Select label="Status" value={(draft.verification as string) ?? ""} onChange={(e) => f.chooseStatus(e.target.value)} options={STATUS_FILTER_OPTIONS} />
             </>
           )}
-          {input("store", "Store name, code or outlet", "e.g. CPC Sonipat")}
-          {tab !== "attempts" && input("outlet_id", "Outlet ID (exact)")}
-          {tab !== "attempts" && input("entry_id", "Entry ID (exact)")}
+          <Input label="Day from" type="date" value={(draft.date_from as string) ?? ""} onChange={(e) => set("date_from")(e.target.value)} />
+          <Input label="Day to" type="date" value={(draft.date_to as string) ?? ""} onChange={(e) => set("date_to")(e.target.value)} />
+          {(tab !== "entries" || more) && input("store", "Store name, code or outlet", "e.g. CPC Sonipat")}
+          {(tab !== "entries" || more) && tab !== "attempts" && input("outlet_id", "Outlet ID (exact)")}
+          {(tab !== "entries" || more) && tab !== "attempts" && input("entry_id", "Entry ID (exact)")}
           {tab !== "entries" && input("store_id", "Store ID (exact)")}
-          {tab === "entries" && (
+          {tab === "entries" && more && (
             <>
               {input("creator", "Creator name or employee ID (text)")}
               <Select label="Creator role" value={(draft.creator_role as string) ?? ""} onChange={(e) => set("creator_role")(e.target.value)}
@@ -83,15 +96,13 @@ export function StoreAuditPage() {
               {input("modifier", "Last changed by")}
             </>
           )}
-          <Input label="Day from" type="date" value={(draft.date_from as string) ?? ""} onChange={(e) => set("date_from")(e.target.value)} />
-          <Input label="Day to" type="date" value={(draft.date_to as string) ?? ""} onChange={(e) => set("date_to")(e.target.value)} />
-          {(tab === "entries" || tab === "removed") && (
+          {(tab === "removed" || (tab === "entries" && more)) && (
             <>
               <Input label="Created / changed from (IST)" type="datetime-local" value={(draft.created_from as string) ?? ""} onChange={(e) => set("created_from")(e.target.value)} />
               <Input label="Created / changed to (IST)" type="datetime-local" value={(draft.created_to as string) ?? ""} onChange={(e) => set("created_to")(e.target.value)} />
             </>
           )}
-          {tab === "entries" && (
+          {tab === "entries" && more && (
             <>
               <Select label="Flag" value={(draft.review_status as string) ?? ""} onChange={(e) => set("review_status")(e.target.value)}
                 options={[{ value: "", label: "Any" }, { value: "none", label: "No mark" }, { value: "flagged", label: "Flagged" }, { value: "needs_correction", label: "Needs correction" }]} />
@@ -109,28 +120,33 @@ export function StoreAuditPage() {
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
             <Button type="submit">Search</Button>
             <Button type="button" variant="ghost" onClick={reset}>Clear filters</Button>
+            {tab === "entries" && <Button type="button" variant="ghost" onClick={() => setMore((m) => !m)}>{more ? "Fewer filters" : "More filters"}</Button>}
           </div>
         </form>
       )}
 
       {(tab === "entries" || tab === "removed") && (
         <>
-          {search.isLoading && <Skeleton className="h-64" />}
-          {search.isError && <ErrorState message={search.error instanceof Error ? search.error.message : "Couldn't search."} onRetry={() => search.refetch()} />}
-          {search.data && tab === "entries" && (
+          {tab === "entries" && (employeeId || storeId) && (
+            <Crumbs
+              person={employeeId ? personName || "This employee" : undefined} store={storeId ? storeName || "One store" : undefined}
+              onAll={() => { setPersonName(""); setStoreName(""); f.clearDrill("none"); }} onPerson={employeeId ? () => { setStoreName(""); f.clearDrill("employee"); } : undefined}
+            />
+          )}
+          {showStores && <EmployeeStoresTable creatorId={employeeId} filters={applied} onOpenStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />}
+          {!showStores && search.isLoading && <Skeleton className="h-64" />}
+          {!showStores && search.isError && <ErrorState message={search.error instanceof Error ? search.error.message : "Couldn't search."} onRetry={() => search.refetch()} />}
+          {!showStores && search.data && tab === "entries" && (
             <>
-              <p className="text-sm text-gray-500">{search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"} found</p>
-              {applied.store_id && (
-                <p className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-500/8 px-3.5 py-2 text-sm text-gray-800">
-                  Showing <b>{storeName || "one store"}</b>, date by date. Click a date to open it.
-                  <button type="button" className="font-semibold text-brand-600 hover:underline" onClick={() => f.pick("store_id", "")}>Show every store</button>
-                </p>
-              )}
+              <p className="flex flex-wrap items-center gap-x-3 text-sm text-gray-500">
+                {search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"} found
+                {storeId && employeeId && <button type="button" className="font-semibold text-brand-600 hover:underline" onClick={() => f.pick("creator_id", "")}>Show every employee's entries for this store</button>}
+              </p>
               <EntryResultsTable rows={search.data.items} onOpen={setOpen} onPickStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />
               <Pagination page={page} pageSize={search.data.page_size} total={search.data.total} onPageChange={setPage} />
             </>
           )}
-          {search.data && tab === "removed" && (
+          {!showStores && search.data && tab === "removed" && (
             <>
               <p className="text-sm text-gray-500">Entries that were removed. They are no longer on any report; their history is kept.</p>
               <Table>

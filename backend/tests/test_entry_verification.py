@@ -418,3 +418,68 @@ def test_a_reviewer_flag_is_cleared_when_they_review_the_entry(client, db, cast)
     assert _post(client, cast["R"], e, "review", {"action": "reviewed", "comment": "confirmed with the vendor"}).status_code == 200
     after = _entry(db, cast["s1"])
     assert after.review_status == "none" and after.verification_status == "reviewed_l3"
+
+
+# =========================================================================== drill-down: partner -> employee -> that employee's stores -> a store's entries
+def test_partner_then_employee_pickers_narrow_each_other(client, db, cast, make_user):
+    zcode, zpw, zuid = make_user(role="employee", platform="zepto", region=None)
+    blink = str(cast["s1"].partner_organization_id)
+    plats = client.get(f"{API}/entries/options", headers=cast["R"], params={"kind": "platform"}).json()
+    assert {"blinkit", "zepto"} <= {p["slug"] for p in plats}
+    zepto_id = next(p["id"] for p in plats if p["slug"] == "zepto")
+    people = lambda **p: {x["id"] for x in client.get(f"{API}/entries/options", headers=cast["R"], params={"kind": "person", **p}).json()}
+    assert str(zuid) in people() and str(cast["ids"]["A"]) in people()
+    assert str(zuid) in people(platform_id=zepto_id) and str(cast["ids"]["A"]) not in people(platform_id=zepto_id)       # only that partner's employees
+    assert str(cast["ids"]["A"]) in people(platform_id=blink) and str(zuid) not in people(platform_id=blink)
+    # a Team Lead has only the partners of their own team; a Reviewer limited to Blinkit has only Blinkit
+    assert {p["slug"] for p in client.get(f"{API}/entries/options", headers=cast["L"], params={"kind": "platform"}).json()} == {"blinkit"}
+    code, pw, uid = make_user(role="entry_reviewer")
+    db.query(User).filter(User.id == uid).update({"platform_organization_id": cast["s1"].partner_organization_id})
+    db.commit()
+    mine = _as(client, code, pw)
+    assert [p["slug"] for p in client.get(f"{API}/entries/options", headers=mine, params={"kind": "platform"}).json()] == ["blinkit"]
+    assert str(zuid) not in {x["id"] for x in client.get(f"{API}/entries/options", headers=mine, params={"kind": "person", "platform_id": zepto_id}).json()}
+    assert client.get(f"{API}/entries/options", headers=cast["A"], params={"kind": "platform"}).status_code == 403
+
+
+def test_an_employees_stores_list_counts_entries_by_state_and_stays_in_scope(client, db, cast):
+    _mark(client, cast["A"], cast["s1"], 11)
+    _mark(client, cast["A"], cast["s1"], 12, day=TODAY - timedelta(days=1))
+    _mark(client, cast["A"], cast["s2"], 6)
+    _mark(client, cast["B"], cast["s2"], 9, day=TODAY - timedelta(days=1))                       # a different employee, same store
+    first = _entry(db, cast["s1"])
+    assert _post(client, cast["L"], first, "verify").status_code == 200
+    url = f"{API}/entries/employee-stores"
+    a = str(cast["ids"]["A"])
+    for who in ("R", "L", "ADM"):
+        body = client.get(url, headers=cast[who], params={"creator_id": a}).json()
+        by = {i["store"]["outlet_id"]: i for i in body["items"]}
+        assert set(by) == {"VF-1", "VF-2"} and body["employee"]["id"] == a, who                     # only the stores THIS employee entered
+        assert by["VF-1"]["entries"] == 2 and by["VF-1"]["pending_l2"] == 1 and by["VF-1"]["verified_l2"] == 1 and by["VF-1"]["bottles"] == 23, who
+        assert by["VF-2"]["entries"] == 1 and by["VF-2"]["last_entry"] == TODAY.isoformat(), who    # B's entry at VF-2 is not counted
+    only_pending = client.get(url, headers=cast["R"], params={"creator_id": a, "verification": "verified_l2"}).json()
+    assert [i["store"]["outlet_id"] for i in only_pending["items"]] == ["VF-1"]
+    ranged = client.get(url, headers=cast["R"], params={"creator_id": a, "date_from": TODAY.isoformat()}).json()
+    assert {i["store"]["outlet_id"]: i["entries"] for i in ranged["items"]} == {"VF-1": 1, "VF-2": 1}
+    # scope: a Team Lead cannot list a stranger's stores, Level 1 cannot use it at all
+    assert client.get(url, headers=cast["L"], params={"creator_id": str(cast["ids"]["B"])}).json()["items"] == []
+    assert client.get(url, headers=cast["A"], params={"creator_id": a}).status_code == 403
+    assert client.get(url, headers=cast["R"], params={"creator_id": "00000000-0000-0000-0000-000000000000"}).status_code == 404
+
+
+def test_the_team_lead_dashboard_totals_the_team_and_nobody_else(client, db, cast, make_store):
+    _mark(client, cast["A"], cast["s1"], 11)
+    _mark(client, cast["A"], cast["s2"], 6)
+    _mark(client, cast["C"], cast["s3"], 4)                                                      # a second team member
+    _mark(client, cast["B"], make_store(code="VF-4", state="Testland-V"), 50)                    # not on the team: never counted
+    assert _post(client, cast["L"], _entry(db, cast["s2"]), "verify").status_code == 200
+    o = client.get(f"{API}/entries/team-overview", headers=cast["L"]).json()
+    assert (o["members"], o["stores"], o["entries"], o["bottles"]) == (3, 3, 3, 21)             # the team lead, A and C; three distinct stores; B's 50 is not here
+    assert (o["today_entries"], o["today_bottles"]) == (3, 21)
+    assert (o["pending_l2"], o["verified_l2"], o["reviewed_l3"]) == (2, 1, 0)
+    by = {p["code"]: p for p in o["people"]}
+    assert by[cast["codes"]["A"]]["entries"] == 2 and by[cast["codes"]["A"]]["stores"] == 2 and by[cast["codes"]["A"]]["bottles"] == 17
+    assert by[cast["codes"]["L"]]["entries"] == 0 and o["not_entered_today"] == 0
+    for who in ("A", "R", "ADM"):
+        assert client.get(f"{API}/entries/team-overview", headers=cast[who]).status_code == 403, who
+

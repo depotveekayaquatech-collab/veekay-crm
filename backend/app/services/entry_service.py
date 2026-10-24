@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, aliased
 from app.core import audit_context
 from app.core.config import settings
 from app.core.entry_access import (
-    PERM_REVIEW, REVIEWER_ROLE, STATUS_REVIEWED, STATUS_SUBMITTED, STATUS_VERIFIED, TEAM_LEAD_ROLE, EntryScope, Level, scope_for,
+    PERM_REVIEW, REVIEWER_ROLE, STATUS_REVIEWED, STATUS_SUBMITTED, STATUS_VERIFIED, TEAM_LEAD_ROLE, EntryScope, Level, owned_clause, scope_for,
 )
 from app.core.roles import ADMIN, DEVELOPER, PARTNER
 from app.models.order_entry import EntrySource, OrderEntry
@@ -525,15 +525,23 @@ def add_comment(db: Session, user: User, perms: set[str], entry_id: uuid.UUID, t
 # pickers + counters for the Team Lead / Reviewer screens
 # --------------------------------------------------------------------------
 
-def filter_options(db: Session, user: User, perms: set[str], kind: str, q: str | None, limit: int = 20) -> list[dict]:
+def filter_options(db: Session, user: User, perms: set[str], kind: str, q: str | None, limit: int = 20, platform_id: uuid.UUID | None = None) -> list[dict]:
     """Typeahead for the Store-wise and Employee-wise filters. Always inside the caller's scope: a Team Lead gets their team and the stores their team
     entered; a Reviewer / administrator gets the organisation (a platform-limited Reviewer only that platform)."""
     scope = scope_for(db, user, perms)
     if not scope.can_view_history:
         _deny(db, user, scope, "entry_options_denied")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
-    limit = max(1, min(limit, 50))
+    limit = max(1, min(limit, 300 if kind == "person" else 50))
     term = _like(q) if q and q.strip() else None
+    if kind == "platform":
+        # The partners (Blinkit, Zepto ...) the caller can look into: a platform-limited Reviewer has exactly one, a Team Lead those of their team.
+        stmt = select(Organization).where(Organization.kind == "partner", Organization.is_active.is_(True))
+        if scope.platform_id is not None:
+            stmt = stmt.where(Organization.id == scope.platform_id)
+        elif scope.creator_ids is not None:
+            stmt = stmt.where(Organization.id.in_(select(User.platform_organization_id).where(User.id.in_(list(scope.creator_ids)), User.platform_organization_id.is_not(None))))
+        return [{"id": o.id, "name": o.name, "slug": o.slug} for o in db.execute(stmt.order_by(Organization.name)).scalars()]
     if kind == "store":
         stmt = select(Store, Organization).join(Organization, Organization.id == Store.partner_organization_id).where(Store.organization_id == scope.organization_id)
         if scope.platform_id is not None:
@@ -551,11 +559,101 @@ def filter_options(db: Session, user: User, perms: set[str], kind: str, q: str |
             stmt = stmt.where(User.id.in_(list(scope.creator_ids)))
         elif scope.platform_id is not None:
             stmt = stmt.where(User.platform_organization_id == scope.platform_id)
+        if platform_id is not None:                       # "employees under this partner" (can only narrow the scope, never widen it)
+            stmt = stmt.where(User.platform_organization_id == platform_id)
         if term:
             stmt = stmt.where(or_(User.full_name.ilike(term, escape="\\"), User.employee_code.ilike(term, escape="\\")))
         users = db.execute(stmt.order_by(User.full_name).limit(limit)).scalars().all()
         return [{"id": u.id, "name": u.full_name, "code": u.employee_code, "is_me": u.id == user.id} for u in users]
-    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind must be 'store' or 'person'.")
+    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind must be 'platform', 'store' or 'person'.")
+
+
+def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.UUID, f: dict) -> dict:
+    """The stores one employee has entered, with what state their entries are in: the screen between "pick an employee" and "open a store's entries".
+    Always inside the caller's scope (another person's entries are simply not counted), indexed by creator and day."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        _deny(db, user, scope, "entry_stores_denied")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    employee = db.get(User, creator_id)
+    if employee is None or employee.organization_id != scope.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found.")
+    v = OrderEntry.verification_status
+    stmt = (
+        select(
+            Store, Organization, func.count(OrderEntry.id), func.count().filter(v == STATUS_SUBMITTED), func.count().filter(v == STATUS_VERIFIED),
+            func.count().filter(v == STATUS_REVIEWED), func.count().filter(OrderEntry.check_requested_at.is_not(None)),
+            func.sum(OrderEntry.bottle_count - OrderEntry.cash_adjustment), func.max(OrderEntry.order_date),
+        )
+        .select_from(OrderEntry).join(Store, Store.id == OrderEntry.store_id).join(Organization, Organization.id == Store.partner_organization_id)
+        .where(*scope.conditions(), owned_clause({creator_id}))
+        .group_by(Store.id, Organization.id)
+    )
+    if scope.platform_id is not None:
+        stmt = stmt.where(Store.partner_organization_id == scope.platform_id)
+    if f.get("date_from"):
+        stmt = stmt.where(OrderEntry.order_date >= f["date_from"])
+    if f.get("date_to"):
+        stmt = stmt.where(OrderEntry.order_date <= f["date_to"])
+    wanted = {"pending_l2": v == STATUS_SUBMITTED, "verified_l2": v == STATUS_VERIFIED, "reviewed_l3": v == STATUS_REVIEWED,
+              "requested": and_(v == STATUS_SUBMITTED, OrderEntry.check_requested_at.is_not(None))}.get(f.get("verification") or "")
+    if wanted is not None:                                # only stores that have at least one entry in that state
+        stmt = stmt.having(func.count().filter(wanted) > 0)
+    rows = db.execute(stmt.order_by(func.count().filter(v == STATUS_SUBMITTED).desc(), Store.name).limit(1000)).all()
+    return {
+        "employee": {"id": employee.id, "name": employee.full_name, "code": employee.employee_code},
+        "total": len(rows),
+        "items": [{
+            "store": {"id": s.id, "name": s.name, "crm_code": s.crm_code, "outlet_id": s.external_code, "status": s.status, "entity": s.entity, "platform": p.name},
+            "entries": int(n), "pending_l2": int(pend), "verified_l2": int(ver), "reviewed_l3": int(rev), "requested": int(req),
+            "bottles": int(bottles or 0), "last_entry": last,
+        } for s, p, n, pend, ver, rev, req, bottles, last in rows],
+    }
+
+
+def team_overview(db: Session, user: User, perms: set[str]) -> dict:
+    """The Team Lead's dashboard: this month and today for the whole team (people, stores covered, bottles, entries in each state) and one row per person.
+    Numbers are the employees' own counts (a developer's cash adjustment is never part of them)."""
+    scope = scope_for(db, user, perms)
+    if scope.level is not Level.TEAM_LEAD or scope.creator_ids is None:
+        _deny(db, user, scope, "team_overview_denied")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This overview is for Team Leads.")
+    today = datetime.now(_tz()).date()
+    month_start = today.replace(day=1)
+    who = func.coalesce(OrderEntry.created_by_user_id, OrderEntry.marked_by_user_id)
+    amount = OrderEntry.bottle_count - OrderEntry.cash_adjustment
+    v = OrderEntry.verification_status
+    base = [*scope.conditions(), OrderEntry.order_date >= month_start, OrderEntry.order_date <= today]
+    rows = db.execute(
+        select(
+            who, func.count(), func.count(func.distinct(OrderEntry.store_id)), func.coalesce(func.sum(amount), 0),
+            func.count().filter(v == STATUS_SUBMITTED), func.count().filter(v == STATUS_VERIFIED), func.count().filter(v == STATUS_REVIEWED),
+            func.count().filter(OrderEntry.check_requested_at.is_not(None)), func.max(OrderEntry.order_date),
+            func.count().filter(OrderEntry.order_date == today), func.coalesce(func.sum(amount).filter(OrderEntry.order_date == today), 0),
+        ).where(*base).group_by(who)
+    ).all()
+    stores = int(db.execute(select(func.count(func.distinct(OrderEntry.store_id))).where(*base)).scalar_one())
+    members = {u.id: u for u in db.execute(select(User).where(User.id.in_(list(scope.creator_ids)), User.is_active.is_(True))).scalars()}
+    per = {r[0]: r for r in rows}
+    people = []
+    for uid, u in members.items():
+        r = per.get(uid)
+        people.append({
+            "id": uid, "name": u.full_name, "code": u.employee_code, "is_me": uid == user.id,
+            "entries": int(r[1]) if r else 0, "stores": int(r[2]) if r else 0, "bottles": int(r[3]) if r else 0,
+            "pending_l2": int(r[4]) if r else 0, "verified_l2": int(r[5]) if r else 0, "reviewed_l3": int(r[6]) if r else 0,
+            "requested": int(r[7]) if r else 0, "last_entry": r[8] if r else None, "today_entries": int(r[9]) if r else 0, "today_bottles": int(r[10]) if r else 0,
+        })
+    people.sort(key=lambda p: (-p["pending_l2"], p["name"]))
+    total = lambda k: sum(p[k] for p in people)
+    return {
+        "month_start": month_start, "today": today,
+        "members": len(members), "stores": stores,
+        "entries": total("entries"), "bottles": total("bottles"), "today_entries": total("today_entries"), "today_bottles": total("today_bottles"),
+        "pending_l2": total("pending_l2"), "verified_l2": total("verified_l2"), "reviewed_l3": total("reviewed_l3"), "requested": total("requested"),
+        "not_entered_today": sum(1 for p in people if p["today_entries"] == 0 and not p["is_me"]),
+        "people": people,
+    }
 
 
 def summary(db: Session, user: User, perms: set[str], days: int = 30) -> dict:

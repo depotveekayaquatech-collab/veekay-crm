@@ -65,12 +65,33 @@ def security_events(
 
 @router.get("/options")
 def options(
-    response: Response, kind: str = Query(..., pattern="^(store|person)$"), q: str | None = Query(None, max_length=100), limit: int = Query(20, ge=1, le=50),
+    response: Response, kind: str = Query(..., pattern="^(platform|store|person)$"), q: str | None = Query(None, max_length=100), limit: int = Query(20, ge=1, le=300),
+    platform_id: uuid.UUID | None = None,
     perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> list[dict]:
-    """Typeahead for the Store-wise and Employee-wise filters, always inside the caller's own scope."""
+    """Pickers for the Partner, Store-wise and Employee-wise filters, always inside the caller's own scope. `platform_id` narrows the employees to one partner."""
     response.headers["Cache-Control"] = "no-store"
-    return entry_service.filter_options(db, user, perms, kind, q, limit)
+    return entry_service.filter_options(db, user, perms, kind, q, limit, platform_id)
+
+
+@router.get("/team-overview")
+def team_overview(
+    response: Response, perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Team Lead dashboard: people, stores covered, bottles (this month and today), entries by state, and one row per team member."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.team_overview(db, user, perms)
+
+
+@router.get("/employee-stores")
+def employee_stores(
+    response: Response, creator_id: uuid.UUID, date_from: date | None = None, date_to: date | None = None,
+    verification: str | None = Query(None, pattern="^(pending_l2|verified_l2|reviewed_l3|requested)$"),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """The stores one employee has entered, with the number of their entries in each state (drill-down: employee -> stores -> a store's entries)."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.employee_stores(db, user, perms, creator_id, {"date_from": date_from, "date_to": date_to, "verification": verification})
 
 
 @router.get("/summary")

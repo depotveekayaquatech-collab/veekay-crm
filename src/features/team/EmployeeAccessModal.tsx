@@ -137,7 +137,8 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
             minLength={8}
           />
         )}
-        <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Optional" />
+        <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@gmail.com"
+          hint="Needed for Forgot password: the 6-digit reset code is emailed here. Use an address this person can open." />
         {employee && (hasRole("admin") || hasRole("developer")) && <EntryRoleSection employee={employee} />}
 
         <div className="grid gap-4 sm:grid-cols-2">

@@ -12,6 +12,8 @@ interface PickerProps {
   value: string;
   /** The name to show when the id was chosen somewhere else (a store clicked in the table). */
   valueLabel?: string;
+  /** Employees only: list just the people of this partner. */
+  platformId?: string;
   onPick: (id: string, label?: string) => void;
 }
 
@@ -19,13 +21,13 @@ interface PickerProps {
  * A server-side typeahead for the Store-wise and Employee-wise filters: it asks the API for the 20 best matches inside the caller's own scope, so it stays
  * fast however many stores or people exist. The chosen name is remembered here; the parent only keeps the id.
  */
-export function EntryPicker({ kind, label, placeholder, value, valueLabel, onPick }: PickerProps) {
+export function EntryPicker({ kind, label, placeholder, value, valueLabel, platformId = "", onPick }: PickerProps) {
   const id = useId();
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<{ id: string; label: string } | null>(null);
   const q = useDebounced(text, 250);
-  const options = useFilterOptions(kind, q, open && !value);
+  const options = useFilterOptions(kind, q, open && !value, platformId);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

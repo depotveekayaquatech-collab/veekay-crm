@@ -17,6 +17,8 @@ import { CappingAlertBanner } from "@/features/capping/CappingAlertBanner";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
 import { useInsights, useMyStores } from "@/features/orders/useOrders";
+import { useTeamOverview } from "@/features/entries/api";
+import { fmtDay } from "@/features/entries/format";
 import { listActivity } from "@/services/activity";
 import { BarList, DonutChart } from "@/features/dashboard/charts";
 import { AlertStrip, ChannelContext, DeepInsights, PerformanceKpis, TrendCard } from "@/features/dashboard/InsightsPanel";
@@ -692,6 +694,57 @@ function QuickAction({
 /* employee dashboard                                                  */
 /* ------------------------------------------------------------------ */
 
+/** Team Lead home: how the whole team is doing this month and today, what waits for the Team Lead, and one row per person. */
+function TeamOverviewSection() {
+  const { data, isLoading } = useTeamOverview();
+  const monthLabel = data ? new Date(`${data.month_start}T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "this month";
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={IconUsers} label="Team members" value={data?.members ?? 0} hint={data ? `${data.not_entered_today} yet to enter today` : undefined} tone="brand" loading={isLoading} />
+        <StatCard icon={IconStore} label="Stores covered" value={data?.stores ?? 0} hint={`entered in ${monthLabel}`} tone="info" loading={isLoading} />
+        <StatCard icon={IconClipboard} label="Bottles this month" value={data?.bottles ?? 0} hint={data ? `${data.entries.toLocaleString()} entries` : undefined} tone="success" loading={isLoading} />
+        <StatCard icon={IconChart} label="Bottles today" value={data?.today_bottles ?? 0} hint={data ? `${data.today_entries.toLocaleString()} entries today` : undefined} tone="warning" loading={isLoading} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={IconCheckCircle} label="Waiting for you" value={data?.pending_l2 ?? 0} hint="submitted, not yet verified" tone="warning" loading={isLoading} />
+        <StatCard icon={IconShield} label="Verification requested" value={data?.requested ?? 0} hint="a Reviewer asked you to check" tone="warning" loading={isLoading} />
+        <StatCard icon={IconCheckCircle} label="Verified by you" value={data?.verified_l2 ?? 0} hint="waiting for the Reviewer" tone="info" loading={isLoading} />
+        <StatCard icon={IconCheckCircle} label="Reviewed" value={data?.reviewed_l3 ?? 0} hint="final" tone="success" loading={isLoading} />
+      </div>
+      <Card title={`Your team, ${monthLabel}`} action={<CardLink to="/team-entries">Entries to Verify →</CardLink>}>
+        {isLoading ? <Skeleton className="h-32" /> : !data || data.people.length === 0 ? (
+          <p className="text-sm text-gray-500">Nobody reports to you yet. An administrator sets this in Users &amp; access.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-sm">
+              <thead>
+                <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  <th className="pb-2 pr-3">Employee</th><th className="pb-2 pr-3 text-right">Stores</th><th className="pb-2 pr-3 text-right">Entries</th>
+                  <th className="pb-2 pr-3 text-right">Bottles</th><th className="pb-2 pr-3 text-right">Today</th><th className="pb-2 pr-3 text-right">Waiting</th><th className="pb-2">Last entry</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-border">
+                {data.people.map((p) => (
+                  <tr key={p.id}>
+                    <td className="py-2 pr-3"><span className="font-semibold text-gray-900">{p.name}</span>{p.is_me ? <span className="text-xs text-gray-500"> · you</span> : null}<span className="block text-xs text-gray-500">{p.code}</span></td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{p.stores}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{p.entries}</td>
+                    <td className="py-2 pr-3 text-right font-bold tabular-nums">{p.bottles.toLocaleString()}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{p.today_entries ? `${p.today_bottles} (${p.today_entries})` : <span className="text-status-warning">none yet</span>}</td>
+                    <td className="py-2 pr-3 text-right">{p.pending_l2 ? <Badge tone="warning">{p.pending_l2}</Badge> : <span className="text-gray-400">0</span>}</td>
+                    <td className="py-2 text-xs">{p.last_entry ? fmtDay(p.last_entry) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function EmployeeDashboard() {
   const { user } = useAuth();
   const { data: stores = [], isLoading } = useMyStores();
@@ -810,7 +863,12 @@ export function DashboardPage() {
         }
       />
       <CappingAlertBanner />
-      {isAdmin ? <AdminDashboard /> : <EmployeeDashboard />}
+      {isAdmin ? <AdminDashboard /> : (
+        <>
+          {isLead && <TeamOverviewSection />}
+          <EmployeeDashboard />
+        </>
+      )}
     </div>
   );
 }
