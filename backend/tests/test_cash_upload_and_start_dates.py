@@ -58,9 +58,9 @@ def _purchase(db, store, amount, day):
 
 # ---- upload a cash purchase sheet ---------------------------------------------------------------------------------
 
-def test_upload_is_for_the_developer_and_levels_3_and_4_only(client, admin, emp):
+def test_upload_is_for_the_developer_and_level_3_only(client, admin, emp):
     assert _upload(client, emp, _sheet([])).status_code == 403
-    assert _upload(client, admin, _sheet([])).status_code != 403          # Level 4 reaches the cash tools; Level 1 / 2 never do (tests/test_entry_verification.py)
+    assert _upload(client, admin, _sheet([])).status_code == 403          # administrators no longer have the cash tools; Level 3 does (tests/test_entry_verification.py)
 
 
 def test_upload_brings_rows_in_for_review_and_changes_nothing_else(client, dev, db, make_store):

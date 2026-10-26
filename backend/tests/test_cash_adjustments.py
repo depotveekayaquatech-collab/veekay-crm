@@ -64,8 +64,8 @@ def test_only_the_developer_and_levels_3_and_4_can_reach_any_of_it(client, admin
     for method, url, body in calls:
         r = client.request(method, url, headers=emp, **({"json": body} if body else {}))
         assert r.status_code == 403, (method, url)
-        for who in (dev, admin):
-            assert client.request(method, url, headers=who, **({"json": body} if body else {})).status_code != 403, url
+        assert client.request(method, url, headers=dev, **({"json": body} if body else {})).status_code != 403, url
+        assert client.request(method, url, headers=admin, **({"json": body} if body else {})).status_code == 403, url     # not an administrator's tool
 
 
 def test_cash_is_added_to_the_employees_entry_for_several_stores(client, dev, db, make_store):
@@ -349,9 +349,8 @@ def test_vendor_analysis_ranks_flags_and_lists_store_names(client, admin, dev, d
     assert {"Alpha Store One", "Beta Store One"} <= {row[3] for row in stores[1:]}
     assert client.get(f"{BASE}/analysis?start={TODAY.isoformat()}&end={TODAY.isoformat()}", headers=dev).json()["total_purchases"] == 10
     assert client.get(f"{BASE}/analysis?end=2000-01-01", headers=dev).json()["vendors_count"] == 0
-    for who in (admin,):                                                # Level 4 reaches it too
-        assert client.get(f"{BASE}/analysis", headers=who).status_code == 200
-        assert client.get(f"{BASE}/analysis/export", headers=who).status_code == 200
+    assert client.get(f"{BASE}/analysis", headers=admin).status_code == 403          # administrators no longer have the cash tools
+    assert client.get(f"{BASE}/analysis/export", headers=admin).status_code == 403
 
 
 def test_a_cash_adjustment_on_an_earlier_day_pulls_the_stores_start_date_back(client, dev, db, make_store):
