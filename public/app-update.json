@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 23,
+    "latestVersionCode": 24,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code23.apk",
-    "notes": "Admins: new Performance screen (each employee's share of the entries they should have marked this month), plus attendance today and every employee's present dates by month. Employees: new ticket alerts for the stores you handle.",
-    "apkSizeBytes": 56611781,
-    "apkSha256": "c57814cff30a90e0ff930bd236fabd3cc796d4fd39c610b3e0e869099253ac5c"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code24.apk",
+    "notes": "Admin attendance now shows company holidays as days off, and the holiday name appears on today's card.",
+    "apkSizeBytes": 56614701,
+    "apkSha256": "f993f2838a3c374a759aadd39db4526fa3533255bda9eca34dea421c7d5ed995"
   }
 }
