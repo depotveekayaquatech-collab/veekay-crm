@@ -32,6 +32,13 @@ LEVEL3_TOOL_PERMISSIONS = frozenset({"cash.adjust", "cards.sheet"})
 # Accounts (the accountant role) also get the random card PDF (still behind its access code), but not the cash-purchase tools.
 ACCOUNTS_TOOL_PERMISSIONS = frozenset({"cards.sheet"})
 
+# Zero Review. Computed per request in UserRepository.get_permission_codes (nothing is stored per person), so a role change applies at once:
+#   zero.view    every staff account except partner logins (an employee sees only their own stores)
+#   zero.review  Team Leads, Entry Reviewers and administrators: weekly review and monthly verification inside their scope
+#   zero.reopen  administrators and the developer: reopen a closed month
+ZERO_VIEW, ZERO_REVIEW, ZERO_REOPEN = "zero.view", "zero.review", "zero.reopen"
+ZERO_PERMISSIONS = frozenset({ZERO_VIEW, ZERO_REVIEW, ZERO_REOPEN})
+
 # The only permissions a partner account may ever hold — enforced server-side whatever the UI sends.
 PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create", "reports.delivery"]
 

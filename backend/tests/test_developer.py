@@ -41,15 +41,17 @@ def test_developer_can_reach_every_admin_area(client, dev, db):
     for url in (f"{API}/stores", f"{API}/employees", f"{API}/activity", f"{API}/cash-purchases", f"{API}/partners"):
         assert client.get(url, headers=dev).status_code == 200, url
     all_codes = {c for (c,) in db.query(Permission.code)}
-    assert set(client.get(f"{API}/auth/me", headers=dev).json()["permissions"]) == all_codes
+    from app.core.roles import ZERO_PERMISSIONS
+
+    assert set(client.get(f"{API}/auth/me", headers=dev).json()["permissions"]) == all_codes | ZERO_PERMISSIONS
 
 
 def test_admin_gets_everything_except_the_reserved_permissions(client, admin, db):
-    from app.core.roles import LEVEL3_TOOL_PERMISSIONS
+    from app.core.roles import LEVEL3_TOOL_PERMISSIONS, ZERO_PERMISSIONS
 
     all_codes = {c for (c,) in db.query(Permission.code)}
     # ... apart from the two cash / card tools that Level 3 and Level 4 share
-    assert set(client.get(f"{API}/auth/me", headers=admin).json()["permissions"]) == (all_codes - RESERVED_PERMISSIONS) | LEVEL3_TOOL_PERMISSIONS
+    assert set(client.get(f"{API}/auth/me", headers=admin).json()["permissions"]) == (all_codes - RESERVED_PERMISSIONS) | LEVEL3_TOOL_PERMISSIONS | ZERO_PERMISSIONS
 
 
 def test_no_one_can_grant_the_sheet_permission(client, admin, emp, make_user, db):
@@ -121,7 +123,9 @@ def test_create_developer_script_makes_the_account(db):
     try:
         roles = [r for (r,) in db.query(Role.code).join(UserRole, UserRole.role_id == Role.id).filter(UserRole.user_id == u.id)]
         assert roles == ["developer"]
-        assert UserRepository(db).get_permission_codes(u.id) == {c for (c,) in db.query(Permission.code)}
+        from app.core.roles import ZERO_PERMISSIONS
+
+        assert UserRepository(db).get_permission_codes(u.id) == {c for (c,) in db.query(Permission.code)} | ZERO_PERMISSIONS
     finally:
         db.query(UserRole).filter_by(user_id=u.id).delete()
         db.query(User).filter_by(id=u.id).delete()

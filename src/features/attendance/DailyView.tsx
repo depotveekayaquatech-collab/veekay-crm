@@ -220,7 +220,7 @@ export function DailyView() {
       {data && <CategoryChips rows={data.rows} value={cat} onChange={setCat} />}
 
       {data?.isWeeklyOff && (
-        <p className="rounded-lg bg-surface-subtle px-4 py-3 text-sm text-gray-600">This day is the weekly off — nobody is expected, so no one is marked absent.</p>
+        <p className="rounded-lg bg-surface-subtle px-4 py-3 text-sm text-gray-600">{data.holiday ? `Holiday: ${data.holiday}.` : "This day is the weekly off."} Nobody is expected, so no one is marked absent.</p>
       )}
 
       {s && (

@@ -19,7 +19,7 @@ from app.models.order_entry import OrderEntry
 from app.models.organization import Organization, OrganizationKind
 from app.models.user import User
 from app.repositories.employee_repository import EmployeeRepository
-from app.services import assignment_service
+from app.services import assignment_service, holiday_service
 
 
 def _pct(done: int, expected: int) -> float:
@@ -44,7 +44,9 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
 
     last_of_month = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
     as_of = min(today - timedelta(days=1), last_of_month)
-    days = [month + timedelta(days=i) for i in range((as_of - month).days + 1)] if as_of >= month else []
+    holidays = holiday_service.between(db, admin.organization_id, month, last_of_month)
+    # a company holiday is not a day anyone is expected to mark
+    days = [d for d in (month + timedelta(days=i) for i in range((as_of - month).days + 1)) if d not in holidays] if as_of >= month else []
 
     employees = EmployeeRepository(db).all_for_platform(admin.organization_id, partner.id)
     scopes, all_ids = assignment_service.employee_store_scopes(db, partner, employees)
@@ -81,6 +83,7 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
     return {
         "partner_slug": partner.slug, "partner_label": partner.name, "month": f"{month:%Y-%m}", "month_label": month.strftime("%B %Y"),
         "from": days[0] if days else None, "as_of": days[-1] if days else None, "days": len(days), "today": today,
+        "holidays": {d.isoformat(): n for d, n in holidays.items() if d <= as_of},
         "summary": {"employees": len(rows), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
                     "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50)},
         "employees": rows,

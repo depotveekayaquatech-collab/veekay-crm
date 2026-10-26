@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_permission
 from app.db.session import get_db
 from app.models.user import User
-from app.services import attendance_import_service, attendance_service, leave_service
+from app.services import attendance_import_service, attendance_service, holiday_service, leave_service
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -141,6 +141,29 @@ def correct_record(payload: RecordCorrection, user: User = Depends(get_current_u
     """Developer only: fix a day's check-in time and / or whether the person was at the office or away. Lateness is recomputed."""
     return attendance_service.correct_record(db, user, payload.user_id, payload.work_date, payload.check_in_time, payload.presence, payload.office_id,
                                            payload.late, payload.half_day, payload.clear_check_out)
+
+
+class HolidayIn(BaseModel):
+    holiday_date: date
+    name: str = Field(min_length=1, max_length=128)
+
+
+@router.get("/holidays", dependencies=[Depends(require_permission("attendance.view"))])
+def holidays(year: int | None = Query(None, ge=2000, le=2100), user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict]:
+    """The company holidays of a year (default this year)."""
+    return holiday_service.listing(db, user.organization_id, year or attendance_service.today_local().year)
+
+
+@router.post("/holidays", dependencies=[Depends(require_permission("attendance.manage"))])
+def set_holiday(payload: HolidayIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Mark a date as a company holiday (or rename it). Nobody is counted absent on it, salary pays it, leave does not use it."""
+    return holiday_service.add(db, user, payload.holiday_date, payload.name)
+
+
+@router.delete("/holidays/{day}", status_code=204, dependencies=[Depends(require_permission("attendance.manage"))])
+def remove_holiday(day: date, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    holiday_service.remove(db, user, day)
+    return Response(status_code=204)
 
 
 @router.post("/mark", dependencies=[Depends(require_permission("attendance.edit"))])

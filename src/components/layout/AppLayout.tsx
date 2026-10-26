@@ -6,6 +6,7 @@ import { ShortcutsModal, type GoShortcut } from "@/components/layout/ShortcutsMo
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   IconActivity,
+  IconAlertTriangle,
   IconBox,
   IconCard,
   IconClipboard,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/icons";
 import { useTheme } from "@/lib/theme";
 import { SalaryReceivedPopup } from "@/features/payroll/SalaryReceivedPopup";
+import { useBadge } from "@/features/zero/api";
 
 interface NavItem {
   label: string;
@@ -72,6 +74,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       { label: "Bottle QR", to: "/bottles", icon: IconBox, anyPermission: ["bottles.view", "bottles.scan", "bottles.manage", "bottles.delete"], excludeRole: "partner" },
       { label: "Tickets", to: "/tickets", icon: IconTicket, anyPermission: ["tickets.view", "tickets.manage"] },
+      { label: "Zero Review", to: "/zero-review", icon: IconAlertTriangle, permission: "zero.view", prefix: true },
     ],
   },
   {
@@ -129,7 +132,7 @@ const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[], 
   return (
     !(item.excludeRole && [item.excludeRole].flat().some((r) => roles.includes(r))) &&
     !(item.requireRole && !roles.includes(item.requireRole)) &&
-    (item.platform ? platformSlug?.toLowerCase() === item.platform.slug || has(item.platform.orPermission) : true) &&
+    (item.platform ? platformSlug?.toLowerCase() === item.platform.slug || (!platformSlug && has(item.platform.orPermission)) : true) &&
     (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission))
   );
 };
@@ -168,6 +171,18 @@ function BrandMark() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** The number of Zero Review items waiting for the signed-in reviewer (nothing for people who cannot review). */
+function ZeroBadge() {
+  const { hasPermission } = useAuth();
+  const { data } = useBadge(hasPermission("zero.review"));
+  if (!data || data.pending === 0) return null;
+  return (
+    <span className="ml-auto rounded-full bg-status-danger px-1.5 py-px text-[11px] font-bold tabular-nums text-white" aria-label={`${data.pending} waiting`}>
+      {data.pending > 99 ? "99+" : data.pending}
+    </span>
   );
 }
 
@@ -220,6 +235,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                         }`}
                       />
                       <span>{navLabel(item, hasPermission)}</span>
+                      {item.to === "/zero-review" && <ZeroBadge />}
                     </>
                   )}
                 </NavLink>

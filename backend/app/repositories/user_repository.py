@@ -8,7 +8,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.roles import ACCOUNTS_TOOL_PERMISSIONS, LEVEL3_TOOL_PERMISSIONS, RESERVED_PERMISSIONS
+from app.core.roles import ACCOUNTS_TOOL_PERMISSIONS, LEVEL3_TOOL_PERMISSIONS, RESERVED_PERMISSIONS, ZERO_PERMISSIONS, ZERO_REVIEW, ZERO_VIEW
 from app.models.permission import Permission, RolePermission
 from app.models.role import Role
 from app.models.user import User, UserRole
@@ -43,10 +43,10 @@ class UserRepository:
         roles = self.get_role_codes(user_id)
         if "developer" in roles:
             # The developer holds EVERY permission that exists, including the reserved ones nobody else can have.
-            return set(self.db.execute(select(Permission.code)).scalars().all())
+            return set(self.db.execute(select(Permission.code)).scalars().all()) | ZERO_PERMISSIONS
         if "admin" in roles:
             everything = set(self.db.execute(select(Permission.code)).scalars().all()) - RESERVED_PERMISSIONS
-            return everything | LEVEL3_TOOL_PERMISSIONS
+            return everything | LEVEL3_TOOL_PERMISSIONS | ZERO_PERMISSIONS
         from_roles = (
             select(Permission.code)
             .join(RolePermission, RolePermission.permission_id == Permission.id)
@@ -63,6 +63,9 @@ class UserRepository:
         codes.update(set(self.db.execute(direct).scalars().all()) - RESERVED_PERMISSIONS)
         if "partner" not in roles:
             codes.add(EVERYONE_ON_STAFF)
+            codes.add(ZERO_VIEW)
+            if {"team_lead", "entry_reviewer"} & set(roles) or "entries.audit" in codes:
+                codes.add(ZERO_REVIEW)
         if "entry_reviewer" in roles:
             codes |= LEVEL3_TOOL_PERMISSIONS
         if "accountant" in roles:

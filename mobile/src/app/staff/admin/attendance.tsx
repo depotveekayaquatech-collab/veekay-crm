@@ -79,7 +79,7 @@ function DatesGrid({ month, r }: { month: AttendanceMonth; r: AttendanceMonthRow
         {Array.from({ length: first }).map((_, i) => <View key={`b${i}`} style={{ width: "14.285%" }} />)}
         {month.dates.map((iso) => {
           const d = new Date(`${iso}T00:00:00`);
-          const off = d.getDay() === (month.weekly_off_weekday + 1) % 7;          // Python Monday=0 -> JS Sunday=0
+          const off = d.getDay() === (month.weekly_off_weekday + 1) % 7 || Boolean(month.holidays?.[iso]);          // Python Monday=0 -> JS Sunday=0; a company holiday is a day off too
           const future = iso > month.today;
           const kind = present.has(iso) ? "present" : leave.has(iso) ? "leave" : off ? "off" : future ? "future" : "absent";
           const [bg, fg] = kind === "present" ? [colors.successSoft, colors.success] : kind === "leave" ? [colors.warningSoft, colors.warning] : kind === "absent" ? [colors.dangerSoft, colors.danger] : [colors.surfaceMuted, colors.textFaint];
@@ -156,7 +156,7 @@ export default function AdminAttendance() {
       <Chips<Mode> options={[{ label: "Today", value: "today" }, { label: "Monthly dates", value: "month" }]} value={mode} onChange={setMode} />
       {mode === "today" && s && (
         <View style={{ backgroundColor: colors.ink950, borderRadius: radius.xl, padding: 16 }}>
-          <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{day.data?.is_weekly_off ? "Weekly off today" : "Present today"}</Text>
+          <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{day.data?.holiday ? `Holiday today: ${day.data.holiday}` : day.data?.is_weekly_off ? "Weekly off today" : "Present today"}</Text>
           <Text style={{ color: colors.white, fontSize: 30, fontWeight: "800" }}>{s.present} <Text style={{ fontSize: 15, color: "rgba(255,255,255,0.6)", fontWeight: "600" }}>of {s.expected}</Text></Text>
           <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 4 }}>{s.checked_in_now} in now · {s.late} late · {s.on_leave} on leave · {s.absent} absent</Text>
         </View>

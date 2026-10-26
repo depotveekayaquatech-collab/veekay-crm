@@ -71,6 +71,8 @@ export interface RecordCorrection {
 export interface DayOverview {
   date: string;
   isWeeklyOff: boolean;
+  /** The company holiday on this date, if any (nobody is expected, so no one is marked absent). */
+  holiday?: string | null;
   summary: {
     expected: number;
     present: number;
@@ -110,6 +112,8 @@ export interface MonthData {
   month: string;
   dates: string[];
   today: string;
+  /** { "2026-11-01": "Diwali" }: the company holidays in this month. */
+  holidays?: Record<string, string>;
   rows: MonthRow[];
 }
 
@@ -294,6 +298,32 @@ export function useOffices(enabled = true) {
     queryFn: async () => camelize<OfficeInfo[]>(await apiRequest("/attendance/offices")),
     enabled,
   });
+}
+
+export interface HolidayInfo { date: string; name: string }
+
+export function useHolidays(year: number, enabled = true) {
+  return useQuery({ queryKey: ["attendance", "holidays", year], queryFn: () => apiRequest<HolidayInfo[]>(`/attendance/holidays?year=${year}`), enabled });
+}
+
+export function useHolidayMutations() {
+  const qc = useQueryClient();
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["attendance"] });
+    void qc.invalidateQueries({ queryKey: ["payroll"] });
+    void qc.invalidateQueries({ queryKey: ["performance"] });
+  };
+  const add = useMutation({
+    mutationFn: (v: { holiday_date: string; name: string }) => apiRequest("/attendance/holidays", { method: "POST", body: v, silent: true }),
+    onSuccess: () => { refresh(); pushToast("Holiday saved. Nobody is counted absent that day.", "success"); },
+    onError: (e) => pushToast(e instanceof Error ? e.message : "Could not save the holiday.", "error"),
+  });
+  const remove = useMutation({
+    mutationFn: (day: string) => apiRequest<void>(`/attendance/holidays/${day}`, { method: "DELETE", silent: true }),
+    onSuccess: () => { refresh(); pushToast("Holiday removed.", "success"); },
+    onError: (e) => pushToast(e instanceof Error ? e.message : "Could not remove the holiday.", "error"),
+  });
+  return { add, remove };
 }
 
 export function useOfficeMutations() {

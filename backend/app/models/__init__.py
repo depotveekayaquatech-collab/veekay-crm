@@ -15,6 +15,8 @@ from app.models.order_entry import EntrySource, OrderEntry
 from app.models.order_entry_event import OrderEntryEvent, SecurityEvent
 from app.models.audit_log import AuditLog
 from app.models.refresh_session import RefreshSession
+from app.models.holiday import Holiday
+from app.models.zero_review import ZeroReview, ZeroReviewLog
 from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office
 from app.models.payroll import DayMark, EmployeeSalary, PayrollPeriod, Payslip
 from app.models.deleted_row import DeletedRow, OrderEntryChange
@@ -74,6 +76,9 @@ __all__ = [
     "AttendanceRecord",
     "LeaveRequest",
     "Office",
+    "Holiday",
+    "ZeroReview",
+    "ZeroReviewLog",
     "ComplianceDocument",
     "ComplianceDocumentVersion",
     "DocKind",

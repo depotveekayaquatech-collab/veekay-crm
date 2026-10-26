@@ -144,10 +144,10 @@ def update_period(db: Session, admin: User, month_str: str | None, release_date:
 
 # ---------------------------------------------------------------- counting a month
 
-def _kind(entry: dict | None, d: date, joined: date) -> str:
+def _kind(entry: dict | None, d: date, joined: date, holiday: bool = False) -> str:
     if entry is not None:
         return "LEAVE" if entry["status"] == "ON_LEAVE" else "PRESENT"
-    if d.weekday() == attendance_service.WEEKLY_OFF:
+    if d.weekday() == attendance_service.WEEKLY_OFF or holiday:        # a company holiday is paid like a weekly off
         return "OFF" if d >= joined else "BEFORE_JOINING"
     return "BEFORE_JOINING" if d < joined else "ABSENT"
 
@@ -162,7 +162,7 @@ def _default_value(kind: str, entry: dict | None) -> Decimal:
     return Decimal("0")
 
 
-def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[date, str]) -> list[dict]:
+def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[date, str], holidays: dict[str, str] | None = None) -> list[dict]:
     """Every date of the month: what attendance shows, the admin's mark if any, and how much of a day it counts for."""
     out = []
     for i in range(1, _dim(month) + 1):
@@ -170,7 +170,7 @@ def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[
         entry = entries.get(d.isoformat())
         if entry is not None and entry.get("source") == "sheet":
             entry = None            # a day filled from an uploaded attendance sheet is not passed to salary: it counts only if the admin marks it
-        kind = _kind(entry, d, joined)
+        kind = _kind(entry, d, joined, d.isoformat() in (holidays or {}))
         mark = marks.get(d)
         counted = MARK_VALUE[mark] if mark else _default_value(kind, entry)
         out.append({
@@ -181,6 +181,7 @@ def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[
             "minutes": entry["minutes"] if entry else 0, "late": bool(entry and entry.get("late")),
             "no_checkout": bool(entry and entry["status"] == "NO_CHECKOUT"),
             "location": entry["location"]["label"] if entry and entry.get("location") else None,
+            "holiday": (holidays or {}).get(d.isoformat()),
             "leave_type": entry.get("leave_type") if entry and kind == "LEAVE" else None,
             "half_day": bool(entry and kind == "LEAVE" and entry.get("half_day")),
         })
@@ -236,7 +237,7 @@ def overview(db: Session, admin: User, month_str: str | None) -> dict:
             paid_total += amount
         else:
             salary = salaries.get(uid)
-            days = build_days(month, r["days"], _joined(u, month), marks.get(uid, {}))
+            days = build_days(month, r["days"], _joined(u, month), marks.get(uid, {}), data.get("holidays"))
             paid_days, amount = compute_amount(salary, days, dim)
             state = "NO_SALARY" if salary is None else "READY"
             if amount is not None:
@@ -279,7 +280,7 @@ def _detail_out(db: Session, u: User, month: date, period: PayrollPeriod, slip: 
     else:
         month_data = attendance_service._month_rows(db, u.organization_id, month, only_user=u.id, detail=True)  # noqa: SLF001
         entries = month_data["rows"][0]["days"] if month_data["rows"] else {}
-        days = build_days(month, entries, _joined(u, month), _marks(db, [u.id], month).get(u.id, {}))
+        days = build_days(month, entries, _joined(u, month), _marks(db, [u.id], month).get(u.id, {}), month_data.get("holidays"))
         salary = _salaries(db, [u.id]).get(u.id)
         paid_days, amount = compute_amount(salary, days, dim)
     return {

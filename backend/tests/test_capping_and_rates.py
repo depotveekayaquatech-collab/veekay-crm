@@ -443,3 +443,13 @@ def test_blinkit_report_with_vendor_rate_is_admin_only_and_multiplies_bottles(cl
     # the normal report is unchanged
     plain = load_workbook(io.BytesIO(client.get(f"{API}/orders/matrix/export", headers=admin, params={**params, "include_rate": "false"}).content)).active
     assert "Vendor Rate" not in [c.value for c in plain[1]]
+
+
+def test_a_blinkit_person_never_sees_zepto_capping_even_holding_correct_any_entry(client, make_user, make_store):
+    from .conftest import auth, login
+    code, pw, _ = make_user("employee", platform="blinkit", region="NORTH", grants=("orders.view", "orders.correct", "capping.alerts"))
+    h = auth(login(client, code, pw).json()["access_token"])
+    assert client.get(f"{API}/capping", headers=h).status_code == 403
+    assert client.get(f"{API}/capping/alerts", headers=h).status_code == 403
+    zepto_store = make_store(platform="zepto", region=None)
+    assert client.put(f"{API}/capping/stores/{zepto_store.id}", headers=h, json={"daily_cap": 5}).status_code == 403

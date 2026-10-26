@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.attendance import LeaveRequest
 from app.models.user import User
-from app.services import activity_service, attendance_service, staff_notify
+from app.services import activity_service, attendance_service, holiday_service, staff_notify
 
 LEAVE_TYPES = ("CASUAL", "SICK", "PAID", "UNPAID")
 STATUSES = ("PENDING", "APPROVED", "REJECTED", "CANCELLED")
@@ -26,8 +26,11 @@ MAX_SPAN_DAYS = 60
 BLOCKING = ("PENDING", "APPROVED")
 
 
-def working_days(start: date, end: date, half_day: bool) -> float:
-    n = sum(1 for i in range((end - start).days + 1) if (start + timedelta(days=i)).weekday() != attendance_service.WEEKLY_OFF)
+def working_days(start: date, end: date, half_day: bool, holidays: "set[date] | dict[date, str] | None" = None) -> float:
+    """Days a leave uses: not weekly offs and not company holidays."""
+    off = holidays or ()
+    n = sum(1 for i in range((end - start).days + 1)
+            if (start + timedelta(days=i)).weekday() != attendance_service.WEEKLY_OFF and (start + timedelta(days=i)) not in off)
     return 0.5 if half_day and n == 1 else float(n)
 
 
@@ -101,9 +104,9 @@ def apply(db: Session, user: User, leave_type: str, start: date, end: date, half
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A half day must be a single date.")
     if not reason.strip():
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please give a reason.")
-    days = working_days(start, end, half_day)
+    days = working_days(start, end, half_day, holiday_service.between(db, user.organization_id, start, end))
     if days == 0:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Those dates are all weekly offs — no leave needed.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Those dates are all weekly offs or holidays — no leave needed.")
 
     clash = db.execute(
         select(LeaveRequest).where(

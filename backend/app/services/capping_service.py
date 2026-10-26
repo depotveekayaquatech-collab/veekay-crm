@@ -3,8 +3,8 @@ Zepto capping: how many bottles each store may take, and how close it is.
 
 Who may use it (always re-checked on the server, whatever the app shows):
   * every ACTIVE employee whose platform is Zepto, whatever their state or region, and
-  * administrators (they hold orders.correct), so the Capping page works for them too.
-  Blinkit employees and partner logins are refused. Viewing and editing a store's cap are the same right.
+  * administrators (they hold orders.correct and belong to no platform), so the Capping page works for them too.
+  Blinkit employees (whatever else they hold) and partner logins are refused. Viewing and editing a store's cap are the same right.
 
 The capping sheet gives ONE DAILY number per store (store_caps.daily_cap). The monthly limit a store must not exceed is that
 number x 30 (always 30, whatever the month's length). No row = no cap; 0 is a real cap. Usage is the sum of the month's
@@ -55,10 +55,12 @@ def is_eligible(user: User, perms: set[str]) -> bool:
     """Active Zepto employee, or an administrator. Never a Blinkit employee or a partner login."""
     if not user.is_active:
         return False
-    if "orders.correct" in perms:   # administrators (same rule the rest of the order screens use)
+    slug = ((user.platform_organization.slug if user.platform_organization is not None else None) or "").strip().lower()
+    if slug == PLATFORM:
         return True
-    slug = user.platform_organization.slug if user.platform_organization is not None else None
-    return (slug or "").strip().lower() == PLATFORM
+    # Administrators (they hold orders.correct and belong to no platform). Someone who works on another platform (a Blinkit Team Lead, say) never sees Zepto
+    # capping, even if "correct any entry" was ticked for them.
+    return "orders.correct" in perms and not slug
 
 
 def require_eligible(user: User, perms: set[str]) -> None:

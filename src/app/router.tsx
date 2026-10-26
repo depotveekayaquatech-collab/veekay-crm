@@ -34,6 +34,7 @@ const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliv
 const BottlesPage = lazy(() => import("@/features/bottles/BottlesPage").then((m) => ({ default: m.BottlesPage })));
 const CardSheetPage = lazy(() => import("@/features/cardsheet/CardSheetPage").then((m) => ({ default: m.CardSheetPage })));
 const TicketsPage = lazy(() => import("@/features/tickets/TicketsPage").then((m) => ({ default: m.TicketsPage })));
+const ZeroReviewPage = lazy(() => import("@/features/zero/ZeroReviewPage").then((m) => ({ default: m.ZeroReviewPage })));
 const PerformancePage = lazy(() => import("@/features/orders/PerformancePage").then((m) => ({ default: m.PerformancePage })));
 const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m) => ({ default: m.PendingPage })));
 const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
@@ -65,7 +66,8 @@ function RequireAny({ permissions, children }: { permissions: string[]; children
 /** Capping is for Zepto employees and admins (the API enforces the same rule). */
 function RequireCapping({ children }: { children: React.ReactNode }) {
   const { user, hasPermission } = useAuth();
-  const ok = user?.platformSlug?.toLowerCase() === "zepto" || hasPermission("orders.correct");
+  const slug = user?.platformSlug?.toLowerCase();
+  const ok = slug === "zepto" || (!slug && hasPermission("orders.correct"));       // admins have no platform; a Blinkit person never sees Zepto capping
   return ok ? <>{children}</> : <Navigate to="/" replace />;
 }
 
@@ -99,6 +101,7 @@ export function AppRoutes() {
       >
         <Route path="/" element={<HomeRoute />} />
         <Route path="/delivery-reports" element={<Require permission="reports.delivery"><PartnerDeliveryReport /></Require>} />
+        <Route path="/zero-review" element={<Require permission="zero.view"><ZeroReviewPage /></Require>} />
         <Route path="/tickets" element={<RequireAny permissions={["tickets.view", "tickets.manage"]}><TicketsPage /></RequireAny>} />
         <Route path="/bottles" element={<RequireAny permissions={["bottles.view", "bottles.scan", "bottles.manage", "bottles.delete"]}><BottlesPage /></RequireAny>} />
         <Route path="/logins" element={<Navigate to="/team" replace />} />

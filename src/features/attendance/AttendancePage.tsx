@@ -6,12 +6,13 @@ import { LeavePanel } from "@/features/attendance/LeavePanel";
 import { LeaveRequestsView } from "@/features/attendance/LeaveRequestsView";
 import { MonthlyView } from "@/features/attendance/MonthlyView";
 import { MyAttendance } from "@/features/attendance/MyAttendance";
+import { HolidaysView } from "@/features/attendance/HolidaysView";
 import { OfficesView } from "@/features/attendance/OfficesView";
 import { useAllLeaves, useTodayStatus } from "@/features/attendance/api";
 import { MyPayslips } from "@/features/payroll/MyPayslips";
 import { PayslipView } from "@/features/payroll/PayslipView";
 
-type Tab = "me" | "leave" | "payslips" | "daily" | "monthly" | "requests" | "payroll" | "offices";
+type Tab = "me" | "leave" | "payslips" | "daily" | "monthly" | "requests" | "payroll" | "offices" | "holidays";
 
 /**
  * Attendance. Employees and accounts staff check in / out and apply for leave here (this is the only place a
@@ -31,7 +32,7 @@ export function AttendancePage() {
     ...(canView ? [{ id: "daily" as Tab, label: "Daily" }, { id: "monthly" as Tab, label: "Monthly" }] : []),
     ...(canReview ? [{ id: "requests" as Tab, label: pending?.pending ? `Leave requests (${pending.pending})` : "Leave requests" }] : []),
     ...(canPayroll ? [{ id: "payroll" as Tab, label: "Payslips" }] : []),
-    ...(canView ? [{ id: "offices" as Tab, label: "Offices" }] : []),
+    ...(canView ? [{ id: "holidays" as Tab, label: "Holidays" }, { id: "offices" as Tab, label: "Offices" }] : []),
   ];
   const requested = params.get("tab") as Tab | null;
   const tab: Tab | null = tabs.some((t) => t.id === requested) ? (requested as Tab) : (tabs[0]?.id ?? null);
@@ -77,6 +78,7 @@ export function AttendancePage() {
       {tab === "daily" && <DailyView />}
       {tab === "monthly" && <MonthlyView />}
       {tab === "requests" && <LeaveRequestsView />}
+      {tab === "holidays" && <HolidaysView />}
       {tab === "offices" && <OfficesView />}
     </div>
   );

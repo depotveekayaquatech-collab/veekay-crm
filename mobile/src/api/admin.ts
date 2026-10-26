@@ -56,7 +56,7 @@ export interface AttendanceDayRow {
   location: { status: string; label: string };
 }
 export interface AttendanceDay {
-  date: string; is_weekly_off: boolean;
+  date: string; is_weekly_off: boolean; holiday?: string | null;
   summary: { expected: number; present: number; checked_in_now: number; late: number; on_leave: number; absent: number; outside_office: number; location_unknown: number };
   rows: AttendanceDayRow[];
 }
@@ -64,7 +64,7 @@ export interface AttendanceMonthRow {
   user_id: string; employee_code: string; full_name: string; platform: string | null; region: string | null; category: string; category_label: string;
   present_dates: string[]; leave_dates: string[]; days_present: number; late_days: number; leave_days: number; absent_days: number;
 }
-export interface AttendanceMonth { month: string; dates: string[]; today: string; weekly_off_weekday: number; rows: AttendanceMonthRow[] }
+export interface AttendanceMonth { month: string; dates: string[]; today: string; weekly_off_weekday: number; holidays?: Record<string, string>; rows: AttendanceMonthRow[] }
 
 export interface PerformanceDay { date: string; done: number; expected: number; percent: number; cumulative: number }
 export interface PerformanceRow {

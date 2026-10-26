@@ -27,6 +27,7 @@ from app.models.attendance import AttendanceRecord, Office
 from app.models.payroll import PayrollPeriod, Payslip
 from app.models.role import Role
 from app.models.user import User, UserRole
+from app.services import holiday_service
 
 # Attendance is for employees and accounts staff. Admins and partner logins are never tracked.
 ATTENDING_ROLES = {"employee", "accountant"}
@@ -327,6 +328,7 @@ def today_status(db: Session, user: User) -> dict:
         "work_start": settings.ATTENDANCE_WORK_START,
         "grace_minutes": settings.ATTENDANCE_GRACE_MINUTES,
         "is_weekly_off": today.weekday() == WEEKLY_OFF,
+        "holiday": holiday_service.between(db, user.organization_id, today, today).get(today),
         "checked_in": rec is not None,
         "checked_out": bool(rec and rec.check_out_at),
         "check_in_at": rec.check_in_at if rec else None,
@@ -421,7 +423,8 @@ def day_overview(db: Session, admin: User, day: date) -> dict:
             if u is not None:
                 people[uid] = u
 
-    off = day.weekday() == WEEKLY_OFF
+    holiday = holiday_service.between(db, org, day, day).get(day)
+    off = day.weekday() == WEEKLY_OFF or holiday is not None
     rows = []
     for uid, u in people.items():
         base = _person(u, roles.get(uid, []))
@@ -444,6 +447,7 @@ def day_overview(db: Session, admin: User, day: date) -> dict:
     return {
         "date": day,
         "is_weekly_off": off,
+        "holiday": holiday,
         "summary": {
             "expected": len(expected),
             "present": len(present),
@@ -487,6 +491,7 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
     for r in db.execute(stmt).scalars():
         grouped.setdefault(r.user_id, {})[r.work_date] = r
     leaves = leave_service.approved_between(db, org_id, start, end)
+    holidays = holiday_service.between(db, org_id, start, end)
 
     roles = _roles_by_user(db, org_id)
     if only_user:
@@ -513,7 +518,7 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
             if rec is not None:
                 days[d.isoformat()] = _entry(rec, now)
                 continue
-            if d.weekday() == WEEKLY_OFF:
+            if d.weekday() == WEEKLY_OFF or d in holidays:       # a weekly off or a company holiday: never an absence, never leave
                 continue
             lv = next((x for x in leaves.get(uid, []) if x["start_date"] <= d <= x["end_date"]), None)
             if lv:
@@ -537,6 +542,7 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
         "month": f"{month:%Y-%m}",
         "dates": [d.isoformat() for d in all_dates],
         "today": today,
+        "holidays": {d.isoformat(): n for d, n in holidays.items()},
         "rows": rows,
     }
 
@@ -553,7 +559,7 @@ def month_brief(db: Session, admin: User, month: date) -> dict:
             "category": r["category"], "category_label": r["category_label"], "present_dates": present, "leave_dates": leave,
             "days_present": r["days_present"], "late_days": r["late_days"], "leave_days": r["leave_days"], "absent_days": r["absent_days"],
         })
-    return {"month": full["month"], "dates": full["dates"], "today": full["today"], "weekly_off_weekday": WEEKLY_OFF, "rows": rows}
+    return {"month": full["month"], "dates": full["dates"], "today": full["today"], "weekly_off_weekday": WEEKLY_OFF, "holidays": full["holidays"], "rows": rows}
 
 
 def month_summary(db: Session, admin: User, month: date) -> dict:

@@ -86,9 +86,10 @@ export function MonthlyView() {
                 <th className="sticky left-0 top-0 z-30 min-w-[13rem] border-b border-r border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-white/70">Employee</th>
                 {data.dates.map((d) => {
                   const dt = new Date(`${d}T12:00:00`);
+                  const holiday = data.holidays?.[d];
                   const sunday = dt.getDay() === 0;
                   return (
-                    <th key={d} className={`sticky top-0 z-20 min-w-[2.4rem] border-b border-surface-border px-1 py-1.5 text-center ${sunday ? "bg-ink-700" : "bg-ink-800"}`}>
+                    <th key={d} title={holiday ? `Holiday: ${holiday}` : undefined} className={`sticky top-0 z-20 min-w-[2.4rem] border-b border-surface-border px-1 py-1.5 text-center ${holiday ? "bg-status-warning/80" : sunday ? "bg-ink-700" : "bg-ink-800"}`}>
                       <div className="text-[11px] font-bold text-white">{d.slice(8)}</div>
                       <div className="text-[9px] font-medium uppercase text-white/50">{dt.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2)}</div>
                     </th>
@@ -116,8 +117,9 @@ export function MonthlyView() {
                   </td>
                   {data.dates.map((d) => {
                     const e = r.days[d];
-                    const sunday = new Date(`${d}T12:00:00`).getDay() === 0;
-                    if (!e) return <td key={d} className={`border-b border-surface-border/60 px-1 py-2 text-center text-gray-400 ${sunday ? "bg-surface-subtle" : ""}`}>{d > data.today ? "" : "·"}</td>;
+                    const holiday = data.holidays?.[d];
+                    const sunday = new Date(`${d}T12:00:00`).getDay() === 0 || Boolean(holiday);
+                    if (!e) return <td key={d} title={holiday ? `Holiday: ${holiday}` : undefined} className={`border-b border-surface-border/60 px-1 py-2 text-center text-gray-400 ${sunday ? "bg-surface-subtle" : ""}`}>{holiday ? "H" : d > data.today ? "" : "·"}</td>;
                     if (e.status === "ON_LEAVE") {
                       return (
                         <td key={d} className="border-b border-surface-border/60 px-0.5 py-1.5 text-center" title={`On leave${e.halfDay ? " (half day)" : ""}`}>
