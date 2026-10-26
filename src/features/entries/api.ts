@@ -210,13 +210,13 @@ export interface StoreOfEmployee {
 }
 
 /** The stores one employee has entered, with how many of their entries are in each state: the step between choosing an employee and opening a store's entries. */
-export function useEmployeeStores(creatorId: string, filters: Filters) {
+export function useEmployeeStores(creatorId: string, filters: Filters, enabled = Boolean(creatorId)) {
   return useQuery({
-    queryKey: ["entry-employee-stores", creatorId, filters.date_from, filters.date_to, filters.verification],
+    queryKey: ["entry-employee-stores", creatorId, filters.date_from, filters.date_to, filters.verification, filters.store, filters.platform],
     queryFn: () =>
-      apiRequest<{ employee: { id: string; name: string; code: string }; level: string; verify_to: Verification | null; total: number; items: StoreOfEmployee[] }>(
-        `/entries/employee-stores?${toQuery({ creator_id: creatorId, date_from: filters.date_from, date_to: filters.date_to, verification: filters.verification }, {})}`, { silent: true }),
-    enabled: Boolean(creatorId),
+      apiRequest<{ employee: { id: string; name: string; code: string } | null; level: string; verify_to: Verification | null; total: number; items: StoreOfEmployee[] }>(
+        `/entries/employee-stores?${toQuery({ creator_id: creatorId, date_from: filters.date_from, date_to: filters.date_to, verification: filters.verification, store: filters.store, platform: filters.platform }, {})}`, { silent: true }),
+    enabled,
     gcTime: 0,
     staleTime: 0,
   });

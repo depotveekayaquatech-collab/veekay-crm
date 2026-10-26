@@ -133,7 +133,7 @@ export function MonthlyView() {
                       );
                     }
                     const tone = e.location.status === "office" ? "bg-status-success-soft text-status-success" : e.location.status === "outside" ? "bg-status-warning-soft text-status-warning" : "bg-surface-muted text-gray-600";
-                    const tip = `${fmtTime(e.checkInAt)}${e.late ? " (late)" : ""} → ${e.checkOutAt ? fmtTime(e.checkOutAt) : "no check-out"} · ${fmtMinutes(e.minutes)} · ${e.location.status === "office" ? e.location.label : e.location.status === "outside" ? `outside office (${e.location.label})` : "location not shared"}`;
+                    const tip = `${fmtTime(e.checkInAt)}${e.late ? " (late)" : ""} → ${e.checkOutAt ? fmtTime(e.checkOutAt) : e.status === "CHECKED_IN" ? "still in" : "no check-out"} · ${fmtMinutes(e.minutes)} · ${e.location.status === "office" ? e.location.label : e.location.status === "outside" ? `outside office (${e.location.label})` : "location not shared"}`;
                     return (
                       <td key={d} className="border-b border-surface-border/60 px-0.5 py-1.5 text-center" title={tip}>
                         <span className={`inline-block min-w-[1.9rem] rounded px-1 py-0.5 text-[11px] font-bold tabular-nums ${tone} ${e.late ? "underline decoration-status-warning decoration-2 underline-offset-2" : ""}`}>{(e.minutes / 60).toFixed(1)}</span>

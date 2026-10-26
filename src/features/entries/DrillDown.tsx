@@ -36,8 +36,8 @@ export function Crumbs({ person, store, onAll, onPerson }: { person?: string; st
  * Step two of the drill-down: after an employee is chosen, THEIR stores come first, each with how many of the employee's entries are pending, verified and
  * reviewed. Opening a store shows that store's entries, date by date.
  */
-export function EmployeeStoresTable({ creatorId, filters, onOpenStore }: { creatorId: string; filters: Filters; onOpenStore: (store: { id: string; name: string }) => void }) {
-  const q = useEmployeeStores(creatorId, filters);
+export function EmployeeStoresTable({ creatorId = "", filters, onOpenStore }: { creatorId?: string; filters: Filters; onOpenStore: (store: { id: string; name: string }) => void }) {
+  const q = useEmployeeStores(creatorId, filters, true);
   const verifyStore = useVerifyStore();
   const [busyId, setBusyId] = useState<string | null>(null);
   if (q.isLoading) return <Skeleton className="h-48" />;
@@ -47,9 +47,9 @@ export function EmployeeStoresTable({ creatorId, filters, onOpenStore }: { creat
   const reviewing = d.verify_to === "reviewed_l3";
   /** One click for a whole store of this employee: a Team Lead verifies what is waiting, a Reviewer marks everything not yet reviewed as reviewed. */
   function verifyWhole(r: StoreOfEmployee, todo: number) {
-    if (!window.confirm(`${reviewing ? "Mark reviewed" : "Verify"} ${todo} entr${todo === 1 ? "y" : "ies"} of ${d!.employee.name} in ${r.store.name}?`)) return;
+    if (!window.confirm(`${reviewing ? "Mark reviewed" : "Verify"} ${todo} entr${todo === 1 ? "y" : "ies"} ${d!.employee ? `of ${d!.employee.name} ` : ""}in ${r.store.name}?`)) return;
     setBusyId(r.store.id);
-    verifyStore.mutate({ storeId: r.store.id, creatorId, dateFrom: filters.date_from as string | undefined, dateTo: filters.date_to as string | undefined }, {
+    verifyStore.mutate({ storeId: r.store.id, creatorId: creatorId || undefined, dateFrom: filters.date_from as string | undefined, dateTo: filters.date_to as string | undefined }, {
       onSettled: () => setBusyId(null),
       onError: (e) => pushToast(e instanceof Error ? e.message : "That didn't work.", "error"),
     });
@@ -57,7 +57,9 @@ export function EmployeeStoresTable({ creatorId, filters, onOpenStore }: { creat
   return (
     <>
       <p className="text-sm text-gray-500">
-        <b className="text-gray-900">{d.employee.name}</b> ({d.employee.code}) has entered {d.total.toLocaleString()} store{d.total === 1 ? "" : "s"}. Open a store to see its entries.
+        {d.employee
+          ? <><b className="text-gray-900">{d.employee.name}</b> ({d.employee.code}) has entered {d.total.toLocaleString()} store{d.total === 1 ? "" : "s"}.</>
+          : <>{d.total.toLocaleString()} store{d.total === 1 ? "" : "s"} to check.</>} Open a store to see its calendar and entries.
       </p>
       <Table>
         <thead>
@@ -67,7 +69,7 @@ export function EmployeeStoresTable({ creatorId, filters, onOpenStore }: { creat
           </tr>
         </thead>
         <tbody>
-          {d.items.length === 0 && <TableEmpty colSpan={8}>No stores match these filters for this employee.</TableEmpty>}
+          {d.items.length === 0 && <TableEmpty colSpan={8}>No stores match these filters.</TableEmpty>}
           {d.items.map((r) => (
             <tr key={r.store.id} className="cursor-pointer hover:bg-surface-subtle/70" onClick={() => onOpenStore({ id: r.store.id, name: r.store.name })}>
               <Td>

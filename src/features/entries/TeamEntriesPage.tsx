@@ -26,10 +26,11 @@ export function TeamEntriesPage() {
   const [personName, setPersonName] = useState("");
   const platforms = usePlatforms();
   const platformId = platforms.data?.find((p) => p.slug === f.draft.platform)?.id ?? "";
-  // Employee chosen and no store yet: that employee's stores come first; opening one shows its entries.
+  // A Team Lead works store by store: one row per store (narrowed by employee, status, days or the store text), and opening a store shows its calendar,
+  // the one "Verify store" button and that store's entries below.
   const employeeId = (f.applied.creator_id as string) ?? "";
   const storeId = (f.applied.store_id as string) ?? "";
-  const showStores = Boolean(employeeId) && !storeId && !((f.applied.store as string) ?? "").trim();
+  const showStores = !storeId;
   const search = useEntrySearch(f.applied, f.page, 25, !showStores);
   const status = (f.draft.verification as string) ?? "";
 
@@ -58,7 +59,7 @@ export function TeamEntriesPage() {
         <Crumbs person={employeeId ? personName || "This employee" : undefined} store={storeId ? storeName || "One store" : undefined}
           onAll={() => { setPersonName(""); setStoreName(""); f.clearDrill("none"); }} onPerson={employeeId ? () => { setStoreName(""); f.clearDrill("employee"); } : undefined} />
       )}
-      {showStores && <EmployeeStoresTable creatorId={employeeId} filters={f.applied} onOpenStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />}
+      {showStores && <EmployeeStoresTable creatorId={employeeId || undefined} filters={f.applied} onOpenStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />}
       {storeId && (
         <StoreReviewPanel
           scope={{ storeId, creatorId: employeeId || undefined, dateFrom: (f.applied.date_from as string) || undefined, dateTo: (f.applied.date_to as string) || undefined }}

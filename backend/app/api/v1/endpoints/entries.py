@@ -85,13 +85,14 @@ def team_overview(
 
 @router.get("/employee-stores")
 def employee_stores(
-    response: Response, creator_id: uuid.UUID, date_from: date | None = None, date_to: date | None = None,
+    response: Response, creator_id: uuid.UUID | None = None, date_from: date | None = None, date_to: date | None = None,
+    store: str | None = Query(None, max_length=100), platform: str | None = Query(None, max_length=32),
     verification: str | None = Query(None, pattern="^(pending_l2|verified_l2|reviewed_l3|requested)$"),
     perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
-    """The stores one employee has entered, with the number of their entries in each state (drill-down: employee -> stores -> a store's entries)."""
+    """One row per store with the number of entries in each state, for one employee when `creator_id` is given, else for everything in the caller's scope."""
     response.headers["Cache-Control"] = "no-store"
-    return entry_service.employee_stores(db, user, perms, creator_id, {"date_from": date_from, "date_to": date_to, "verification": verification})
+    return entry_service.employee_stores(db, user, perms, creator_id, {"date_from": date_from, "date_to": date_to, "verification": verification, "store": store, "platform": platform})
 
 
 @router.get("/hierarchy")

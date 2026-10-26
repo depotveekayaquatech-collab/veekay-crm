@@ -571,15 +571,15 @@ def filter_options(db: Session, user: User, perms: set[str], kind: str, q: str |
     raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind must be 'platform', 'store' or 'person'.")
 
 
-def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.UUID, f: dict) -> dict:
-    """The stores one employee has entered, with what state their entries are in: the screen between "pick an employee" and "open a store's entries".
-    Always inside the caller's scope (another person's entries are simply not counted), indexed by creator and day."""
+def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.UUID | None, f: dict) -> dict:
+    """One row per store with what state its entries are in: the screen before "open a store". With an employee chosen, only that employee's entries count;
+    without one it is every store in the caller's scope (a Team Lead: their team's). Always inside the caller's scope, optionally narrowed by store text / partner / days."""
     scope = scope_for(db, user, perms)
     if not scope.can_view_history:
         _deny(db, user, scope, "entry_stores_denied")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
-    employee = db.get(User, creator_id)
-    if employee is None or employee.organization_id != scope.organization_id:
+    employee = db.get(User, creator_id) if creator_id else None
+    if creator_id and (employee is None or employee.organization_id != scope.organization_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found.")
     v = OrderEntry.verification_status
     stmt = (
@@ -589,11 +589,18 @@ def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.U
             func.sum(OrderEntry.bottle_count - OrderEntry.cash_adjustment), func.max(OrderEntry.order_date),
         )
         .select_from(OrderEntry).join(Store, Store.id == OrderEntry.store_id).join(Organization, Organization.id == Store.partner_organization_id)
-        .where(*scope.conditions(), owned_clause({creator_id}))
+        .where(*scope.conditions())
         .group_by(Store.id, Organization.id)
     )
+    if creator_id:
+        stmt = stmt.where(owned_clause({creator_id}))
     if scope.platform_id is not None:
         stmt = stmt.where(Store.partner_organization_id == scope.platform_id)
+    if f.get("platform"):
+        stmt = stmt.where(Organization.slug == f["platform"].strip().lower())
+    if f.get("store"):
+        k = _like(f["store"])
+        stmt = stmt.where(or_(Store.name.ilike(k, escape="\\"), Store.crm_code.ilike(k, escape="\\"), Store.external_code.ilike(k, escape="\\")))
     if f.get("date_from"):
         stmt = stmt.where(OrderEntry.order_date >= f["date_from"])
     if f.get("date_to"):
@@ -604,7 +611,7 @@ def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.U
         stmt = stmt.having(func.count().filter(wanted) > 0)
     rows = db.execute(stmt.order_by(func.count().filter(v == STATUS_SUBMITTED).desc(), Store.name).limit(1000)).all()
     return {
-        "employee": {"id": employee.id, "name": employee.full_name, "code": employee.employee_code},
+        "employee": None if employee is None else {"id": employee.id, "name": employee.full_name, "code": employee.employee_code},
         "level": scope.level.value, "verify_to": _verify_target(scope)[0] if (scope.can_review or scope.can_verify) else None,
         "total": len(rows),
         "items": [{
