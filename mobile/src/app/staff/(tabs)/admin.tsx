@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useBottleSummary, useDueBills, useInsights, useLeavesAll, usePending } from "@/api/adminHooks";
+import { useAttendanceDay, useBottleSummary, useDueBills, useInsights, useLeavesAll, usePending } from "@/api/adminHooks";
 import { useAuth } from "@/auth/AuthProvider";
 import { Card, ErrorNote, ListSkeleton, Screen, SectionTitle } from "@/components/ui";
 import { SyncCard } from "@/components/SyncCard";
@@ -36,12 +36,14 @@ export default function AdminOverview() {
   const canLeave = hasPermission("leave.review");
   const canBottles = hasPermission("bottles.view");
   const canBills = hasPermission("accounts.view");
+  const canAttendance = hasPermission("attendance.view");
 
   const ins = useInsights(canOrders);
   const pending = usePending(0, canOrders);
   const leaves = useLeavesAll("PENDING", canLeave);
   const bottles = useBottleSummary(canBottles);
   const bills = useDueBills(canBills);
+  const attendance = useAttendanceDay(canAttendance);
 
   const i = ins.data;
   const delta = i && i.bottles_yesterday ? Math.round(((i.bottles_today - i.bottles_yesterday) / i.bottles_yesterday) * 100) : null;
@@ -106,6 +108,34 @@ export default function AdminOverview() {
         </>
       )}
 
+      {canAttendance && (
+        <>
+          <SectionTitle>Attendance today</SectionTitle>
+          {attendance.isLoading ? <ListSkeleton rows={1} /> : attendance.isError ? <ErrorNote message={attendance.error.message} onRetry={() => attendance.refetch()} /> : attendance.data ? (
+            <Card style={{ gap: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 30, fontWeight: "800", color: colors.text }}>
+                  {attendance.data.summary.present}
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: colors.textMuted }}> of {attendance.data.summary.expected} present</Text>
+                </Text>
+                {attendance.data.is_weekly_off && <Text style={font.small}>Weekly off</Text>}
+              </View>
+              <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceMuted, overflow: "hidden" }}>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.success, width: `${attendance.data.summary.expected ? Math.min(100, (attendance.data.summary.present / attendance.data.summary.expected) * 100) : 0}%` }} />
+              </View>
+              <Text style={font.small}>
+                {attendance.data.summary.checked_in_now} in now · {attendance.data.summary.late} late · {attendance.data.summary.on_leave} on leave · {attendance.data.summary.absent} absent
+              </Text>
+              <Pressable onPress={() => router.push("/staff/admin/attendance" as never)} accessibilityRole="button" accessibilityLabel="See every employee's present dates"
+                android_ripple={{ color: colors.brand100 }} style={{ minHeight: 46, borderRadius: radius.md, backgroundColor: colors.brand50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <Ionicons name="calendar-outline" size={18} color={colors.brand600} />
+                <Text style={{ color: colors.brand600, fontWeight: "800" }}>Who was present, date by date</Text>
+              </Pressable>
+            </Card>
+          ) : null}
+        </>
+      )}
+
       {alerts.length > 0 && (
         <>
           <SectionTitle>Needs attention</SectionTitle>
@@ -124,6 +154,7 @@ export default function AdminOverview() {
       <SectionTitle>Reports</SectionTitle>
       <Card style={{ padding: 0, overflow: "hidden" }}>
         {canOrders && <NavRow icon="clipboard-outline" label="Stores yet to mark" value={pending.data ? String(pending.data.pending) : undefined} onPress={() => router.push("/staff/admin/pending")} />}
+        {canAttendance && <NavRow icon="people-outline" label="Attendance by employee" value={attendance.data ? `${attendance.data.summary.present}/${attendance.data.summary.expected}` : undefined} onPress={() => router.push("/staff/admin/attendance" as never)} />}
         {canLeave && <NavRow icon="calendar-outline" label="Leave approvals" value={leaves.data ? String(leaves.data.pending) : undefined} onPress={() => router.push("/staff/admin/leaves")} />}
         {canBottles && <NavRow icon="cube-outline" label="Overdue bottles" value={bottles.data ? String(bottles.data.overdue) : undefined} onPress={() => router.push("/staff/admin/bottles")} />}
         {canBills && <NavRow icon="receipt-outline" label="Bills past due" value={bills.data ? String(bills.data.total) : undefined} onPress={() => router.push("/staff/admin/bills")} />}

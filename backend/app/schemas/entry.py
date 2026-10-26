@@ -1,5 +1,6 @@
 """Request bodies for the entry audit / correction / review / role endpoints. The creator, role, scope and timestamps are never accepted from a client."""
 import uuid
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,6 +22,15 @@ class EntryReview(_Strict):
 
 
 class EntryVerify(_Strict):
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class StoreVerify(_Strict):
+    """Verify every entry of one store in view: `creator_id` / the days narrow it to what the checker was looking at (a filter, never an owner to set)."""
+    store_id: uuid.UUID
+    creator_id: uuid.UUID | None = None
+    date_from: date | None = None
+    date_to: date | None = None
     comment: str | None = Field(default=None, max_length=1000)
 
 

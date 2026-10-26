@@ -49,7 +49,26 @@ export interface OverdueList { items: OverdueBottle[]; total: number; page: numb
 export interface DueBill { id: string; store_name: string; external_code: string; platform: string | null; state: string | null; vendor_name: string | null; month: string; due_date: string; days_overdue: number }
 export interface DueBills { total: number; items: DueBill[] }
 
+export type AttendanceStatus = "CHECKED_IN" | "CHECKED_OUT" | "NO_CHECKOUT" | "PRESENT" | "ON_LEAVE" | "OFF" | "ABSENT";
+export interface AttendanceDayRow {
+  user_id: string; employee_code: string; full_name: string; platform: string | null; region: string | null; category: string; category_label: string;
+  status: AttendanceStatus; check_in_at: string | null; check_out_at: string | null; minutes: number; late: boolean; leave_type: string | null;
+  location: { status: string; label: string };
+}
+export interface AttendanceDay {
+  date: string; is_weekly_off: boolean;
+  summary: { expected: number; present: number; checked_in_now: number; late: number; on_leave: number; absent: number; outside_office: number; location_unknown: number };
+  rows: AttendanceDayRow[];
+}
+export interface AttendanceMonthRow {
+  user_id: string; employee_code: string; full_name: string; platform: string | null; region: string | null; category: string; category_label: string;
+  present_dates: string[]; leave_dates: string[]; days_present: number; late_days: number; leave_days: number; absent_days: number;
+}
+export interface AttendanceMonth { month: string; dates: string[]; today: string; weekly_off_weekday: number; rows: AttendanceMonthRow[] }
+
 export const adminApi = {
+  attendanceDay: () => request<AttendanceDay>("/attendance/day"),
+  attendanceMonth: (month: string) => request<AttendanceMonth>(`/attendance/month-brief${qs({ month })}`),
   syncStatus: () => request<SyncStatus>("/sync/status"),
   syncRun: () => request<{ stores: { platform: string; created: number; updated: number }[]; orders: { platform: string; created: number; updated: number }[] }>("/sync/run", { method: "POST", body: {} }),
   insights: () => request<Insights>("/orders/insights"),

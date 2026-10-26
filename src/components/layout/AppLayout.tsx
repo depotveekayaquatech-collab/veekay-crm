@@ -102,8 +102,8 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Level 3 (Reviewer) and Level 4 (administrator) only; the API refuses everybody else. The page paths keep their old /developer/ names on purpose.
-    title: "Reviewer tools",
+    // Cash import: Level 3 (Reviewer) and Level 4 (administrator). Random Card PDF: those too, plus Accounts. The API refuses everybody else. The page paths keep their old /developer/ names on purpose.
+    title: "Tools",
     items: [
       { label: "Cash Purchase Import", to: "/developer/cash", icon: IconWallet, permission: "cash.adjust" },
       { label: "Random Card PDF", to: "/developer/card-sheet", icon: IconCard, permission: "cards.sheet" },

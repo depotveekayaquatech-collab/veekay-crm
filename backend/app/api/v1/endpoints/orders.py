@@ -227,6 +227,20 @@ def daily_overview(
     return read_cache.get_or_set(("overview", user.organization_id, partner, 1 if day_offset == 1 else 0), settings.DASHBOARD_CACHE_SECONDS, compute)
 
 
+@router.get("/performance", dependencies=[Depends(require_permission("orders.overview"))])
+def performance(
+    response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Each employee's share of the entries they should have marked this month, counted from the 1st to yesterday, recounted on every call (so entries
+    marked late lift the earlier days). Never cached."""
+    from app.services import performance_service
+
+    response.headers["Cache-Control"] = "no-store"
+    today = order_service._today()
+    return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today)
+
+
 @router.get(
     "/report", response_model=SalesReport,
     dependencies=[Depends(require_permission("orders.overview"))],

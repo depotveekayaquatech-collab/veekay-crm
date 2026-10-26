@@ -117,6 +117,7 @@ function Navigator() {
         <Stack.Screen name="staff/sync" options={{ title: "Scan sync" }} />
         <Stack.Screen name="staff/alerts" options={{ title: "Alerts" }} />
         <Stack.Screen name="staff/admin/pending" options={{ title: "Stores yet to mark" }} />
+        <Stack.Screen name="staff/admin/attendance" options={{ title: "Attendance" }} />
         <Stack.Screen name="staff/admin/leaves" options={{ title: "Leave approvals" }} />
         <Stack.Screen name="staff/admin/bottles" options={{ title: "Overdue bottles" }} />
         <Stack.Screen name="staff/admin/bills" options={{ title: "Bills past due" }} />

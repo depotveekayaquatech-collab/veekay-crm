@@ -494,6 +494,21 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
     }
 
 
+def month_brief(db: Session, admin: User, month: date) -> dict:
+    """The month for a phone: per person only the dates they were present or on leave, and the counts. (The full grid carries every check-in's location.)"""
+    full = _month_rows(db, admin.organization_id, month, only_user=None, detail=False)
+    rows = []
+    for r in full["rows"]:
+        present = sorted(d for d, e in r["days"].items() if e["status"] != "ON_LEAVE")
+        leave = sorted(d for d, e in r["days"].items() if e["status"] == "ON_LEAVE")
+        rows.append({
+            "user_id": r["user_id"], "employee_code": r["employee_code"], "full_name": r["full_name"], "platform": r["platform"], "region": r["region"],
+            "category": r["category"], "category_label": r["category_label"], "present_dates": present, "leave_dates": leave,
+            "days_present": r["days_present"], "late_days": r["late_days"], "leave_days": r["leave_days"], "absent_days": r["absent_days"],
+        })
+    return {"month": full["month"], "dates": full["dates"], "today": full["today"], "weekly_off_weekday": WEEKLY_OFF, "rows": rows}
+
+
 def month_summary(db: Session, admin: User, month: date) -> dict:
     return _month_rows(db, admin.organization_id, month, only_user=None, detail=False)
 

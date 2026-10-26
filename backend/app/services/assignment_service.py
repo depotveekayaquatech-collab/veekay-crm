@@ -187,6 +187,30 @@ def visible_store_ids(db: Session, employee: User) -> set[uuid.UUID]:
     return {s.id for s in visible_stores(db, employee)}
 
 
+def employees_covering_store(db: Session, store: Store) -> list[User]:
+    """Active field employees (not partner logins) whose scope includes this store: the people who should hear about a ticket for it.
+    A cheap pre-filter picks the employees who could cover it (its region, its state's assignee, or any hand-added place), then the
+    exact scope rules in visible_stores make the final call."""
+    partner_id = store.partner_organization_id
+    if partner_id is None:
+        return []
+    could = or_(
+        User.region_id == store.region_id if store.region_id else User.id.is_(None),
+        User.id.in_(select(EmployeeRegion.user_id).where(EmployeeRegion.region_id == store.region_id)) if store.region_id else User.id.is_(None),
+        User.id.in_(select(StateAssignment.assigned_user_id).where(
+            StateAssignment.partner_organization_id == partner_id, func.lower(StateAssignment.state) == _norm(store.state),
+        )),
+        User.id.in_(select(EmployeeExclusion.user_id).where(EmployeeExclusion.mode == ScopeMode.ADD)),
+    )
+    candidates = db.execute(
+        select(User).where(
+            User.organization_id == store.organization_id, User.platform_organization_id == partner_id,
+            User.is_active.is_(True), could,
+        )
+    ).scalars().all()
+    return [u for u in candidates if not is_partner_account(db, u) and store.id in visible_store_ids(db, u)]
+
+
 # --------------------------------------------------------------------------
 # admin: employee scope
 # --------------------------------------------------------------------------

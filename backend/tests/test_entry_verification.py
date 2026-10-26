@@ -227,13 +227,22 @@ def test_cash_purchase_import_and_the_random_card_pdf_are_for_level_3_and_4_only
     assert client.post(f"{sheet}/totals-preview", headers=cast["R"], data={"token": "stolen"}, files={"file": ("t.csv", b"store,total\n", "text/csv")}).status_code == 403
 
 
-def test_a_reviewer_limited_to_one_platform_gets_no_company_wide_tools(client, db, cast, make_user):
+def test_a_reviewer_limited_to_one_platform_still_gets_the_tools(client, db, cast, make_user):
     code, pw, uid = make_user(role="entry_reviewer")
     db.query(User).filter(User.id == uid).update({"platform_organization_id": cast["s1"].partner_organization_id})
     db.commit()
     limited = _as(client, code, pw)
-    assert client.get(f"{API}/developer/cash-adjustments/stores", headers=limited).status_code == 403
-    assert "cards.sheet" not in client.get(f"{API}/auth/me", headers=limited).json()["permissions"]
+    assert client.get(f"{API}/developer/cash-adjustments/stores", headers=limited).status_code == 200
+    assert "cards.sheet" in client.get(f"{API}/auth/me", headers=limited).json()["permissions"]
+
+
+def test_accounts_get_the_random_card_pdf_but_not_the_cash_tools(client, db, cast, make_user):
+    code, pw, _uid = make_user(role="accountant")
+    acc = _as(client, code, pw)
+    perms = client.get(f"{API}/auth/me", headers=acc).json()["permissions"]
+    assert "cards.sheet" in perms and "cash.adjust" not in perms
+    assert client.post(f"{API}/developer/card-sheet/unlock", headers=acc, json={"code": "2580"}).status_code == 200
+    assert client.get(f"{API}/developer/cash-adjustments/stores", headers=acc).status_code == 403
 
 
 def test_the_tools_cannot_be_granted_per_person(client, db, cast, make_user, admin):
@@ -483,3 +492,41 @@ def test_the_team_lead_dashboard_totals_the_team_and_nobody_else(client, db, cas
     for who in ("A", "R", "ADM"):
         assert client.get(f"{API}/entries/team-overview", headers=cast[who]).status_code == 403, who
 
+
+
+# =========================================================================== one click per store
+def test_verifying_a_store_once_covers_every_entry_in_view(client, db, cast):
+    s1 = cast["s1"]
+    days = [TODAY - timedelta(days=i) for i in range(3)]
+    for d in days:
+        _mark(client, cast["A"], s1, 5, d)
+    _mark(client, cast["C"], cast["s2"], 7)                                 # another store: untouched
+    entries = [_entry(db, s1, d) for d in days]
+
+    # the store view: details, a month calendar, and what one click would change
+    r = client.get(f"{API}/entries/store-review", headers=cast["L"], params={"store_id": str(s1.id), "creator_id": str(cast["ids"]["A"])})
+    assert r.status_code == 200, r.text
+    view = r.json()
+    assert view["store"]["name"] == s1.name and view["counts"]["pending_l2"] == 3 and view["verify"] == {"allowed": True, "to": "verified_l2", "will_change": 3, "skipped_flagged": 0}
+    assert sum(1 for d in view["days"] if d["entry"]) >= 1
+
+    # a Level 1 person gets nothing; a Team Lead cannot reach somebody else's store
+    assert client.post(f"{API}/entries/verify-store", headers=cast["A"], json={"store_id": str(s1.id)}).status_code == 403
+    assert client.get(f"{API}/entries/store-review", headers=cast["L"], params={"store_id": str(cast["s3"].id)}).status_code == 404
+
+    # Team Lead: one call verifies the whole store, one history row per entry
+    ok = client.post(f"{API}/entries/verify-store", headers=cast["L"], json={"store_id": str(s1.id), "creator_id": str(cast["ids"]["A"]), "comment": "checked the sheet"})
+    assert ok.status_code == 200 and ok.json()["changed"] == 3 and ok.json()["to"] == "verified_l2", ok.text
+    assert all(_entry(db, s1, d).verification_status == "verified_l2" for d in days)
+    assert _entry(db, cast["s2"]).verification_status == "submitted"
+    assert [e["comment"] for e in _events(db, entries[0].id) if e["comment"] == "checked the sheet"]
+    assert client.post(f"{API}/entries/verify-store", headers=cast["L"], json={"store_id": str(s1.id)}).json()["changed"] == 0     # nothing left to do
+
+    # Reviewer: the same click finalises everything not yet reviewed, except an entry somebody flagged
+    client.post(f"{API}/entries/{entries[1].id}/review", headers=cast["R"], json={"action": "flagged", "comment": "number looks too low"})
+    r = client.get(f"{API}/entries/store-review", headers=cast["R"], params={"store_id": str(s1.id)}).json()
+    assert r["verify"]["to"] == "reviewed_l3" and r["verify"]["will_change"] == 2 and r["verify"]["skipped_flagged"] == 1
+    done = client.post(f"{API}/entries/verify-store", headers=cast["R"], json={"store_id": str(s1.id)}).json()
+    assert done["changed"] == 2 and done["skipped_flagged"] == 1
+    assert {_entry(db, s1, d).verification_status for d in (days[0], days[2])} == {"reviewed_l3"}
+    assert _entry(db, s1, days[1]).verification_status == "verified_l2"

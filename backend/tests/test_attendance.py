@@ -423,3 +423,15 @@ def test_developer_can_undo_a_mistaken_check_out(client, dev, admin, make_user, 
     assert today["checked_in"] is True and today["checked_out"] is False and today["check_out_location"] is None
     clock(18, 0)                                                                                       # they can check out again, properly
     assert client.post(f"{API}/attendance/check-out", headers=h, json={}).json()["checked_out"] is True
+
+
+def test_month_brief_lists_each_persons_present_dates(client, admin, make_user, clock, emp):
+    clock(10, 0)
+    h, uid = _fresh_employee(client, make_user)
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).status_code == 200
+    brief = client.get(f"{API}/attendance/month-brief", headers=admin)
+    assert brief.status_code == 200, brief.text
+    me = next(r for r in brief.json()["rows"] if str(r["user_id"]) == str(uid))
+    assert len(me["present_dates"]) == 1 and me["days_present"] == 1 and "check_in_at" not in me
+    assert "ADMIN001" not in {r["employee_code"] for r in brief.json()["rows"]}
+    assert client.get(f"{API}/attendance/month-brief", headers=emp).status_code == 403          # needs attendance.view

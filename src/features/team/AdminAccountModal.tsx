@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { PermissionGrid } from "@/features/team/PermissionGrid";
 import { usePermissionGroups, useTeamMutations } from "@/features/team/useTeam";
 import type { Employee } from "@/types/employee";
 
@@ -24,23 +25,6 @@ export function AdminAccountModal({ onClose, account }: { onClose: () => void; a
   const [level, setLevel] = useState<Level>(account?.adminLevel ?? "full");
   const [perms, setPerms] = useState<Set<string>>(new Set(account?.directPermissions ?? []));
   const [error, setError] = useState<string | null>(null);
-
-  function toggle(c: string) {
-    setPerms((prev) => {
-      const next = new Set(prev);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
-      return next;
-    });
-  }
-
-  function toggleGroup(codes: string[], on: boolean) {
-    setPerms((prev) => {
-      const next = new Set(prev);
-      codes.forEach((c) => (on ? next.add(c) : next.delete(c)));
-      return next;
-    });
-  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -125,30 +109,7 @@ export function AdminAccountModal({ onClose, account }: { onClose: () => void; a
         {level === "custom" && (
           <div>
             <p className="mb-2 text-sm font-medium text-gray-700">What this admin can do</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {groups.map((g) => {
-                const codes = g.permissions.map((p) => p.code);
-                const all = codes.every((c) => perms.has(c));
-                return (
-                  <div key={g.key} className="rounded-lg border border-surface-border p-3">
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">{g.label}</p>
-                      <button type="button" className="text-[11px] font-semibold text-brand-600 hover:text-brand-700" onClick={() => toggleGroup(codes, !all)}>
-                        {all ? "Clear" : "Select all"}
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      {g.permissions.map((p) => (
-                        <label key={p.code} className="flex items-start gap-2 text-sm text-gray-700">
-                          <input type="checkbox" checked={perms.has(p.code)} onChange={() => toggle(p.code)} className="mt-0.5 h-4 w-4 rounded border-surface-border text-brand-500 focus:ring-brand-500" />
-                          {p.description}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <PermissionGrid groups={groups} value={perms} onChange={setPerms} />
           </div>
         )}
 

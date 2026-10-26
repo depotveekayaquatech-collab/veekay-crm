@@ -33,6 +33,15 @@ def users_with_permission(db: Session, org_id: uuid.UUID, code: str) -> list[uui
     ).scalars())
 
 
+def ticket_audience(db: Session, store) -> list[uuid.UUID]:
+    """Who hears about a new ticket for this store: whoever manages tickets, and the employees who handle the store (if they can open tickets)."""
+    from app.services import assignment_service
+
+    can_open = set(users_with_permission(db, store.organization_id, "tickets.view"))
+    handlers = [u.id for u in assignment_service.employees_covering_store(db, store) if u.id in can_open]
+    return list(dict.fromkeys([*users_with_permission(db, store.organization_id, "tickets.manage"), *handlers]))
+
+
 def notify_users(
     db: Session, user_ids: list[uuid.UUID], *, kind: str, title: str, body: str, ref_id: uuid.UUID | str | None = None,
     skip: uuid.UUID | None = None,

@@ -222,6 +222,58 @@ export function useEmployeeStores(creatorId: string, filters: Filters) {
   });
 }
 
+export interface StoreReviewDay {
+  date: string;
+  day: number;
+  is_future: boolean;
+  is_today: boolean;
+  entry: { entry_id: string; count: number; status: Verification; requested: boolean; flagged: boolean; edited: boolean; created_by: string | null } | null;
+}
+
+/** One store opened for checking: its details, a month of its entries, the counts per state, and what one click on "Verify store" would change. */
+export interface StoreReview {
+  store: {
+    id: string; name: string; outlet_id: string; crm_code: string | null; entity: string | null; status: string; city: string | null; state: string | null;
+    region_name: string | null; platform: string | null; platform_slug: string | null; poc_name: string | null; poc_number: string | null; vendor_name: string | null; vendor_number: string | null;
+  };
+  year: number;
+  month: number;
+  days: StoreReviewDay[];
+  level: string;
+  counts: { entries: number; pending_l2: number; verified_l2: number; reviewed_l3: number; requested: number; flagged: number };
+  verify: { allowed: boolean; to: Verification; will_change: number; skipped_flagged: number };
+}
+
+export interface StoreReviewScope { storeId: string; creatorId?: string; dateFrom?: string; dateTo?: string }
+
+export function useStoreReview(scope: StoreReviewScope, period: { year?: number; month?: number }) {
+  return useQuery({
+    queryKey: ["entry-store-review", scope, period],
+    queryFn: () => apiRequest<StoreReview>(
+      `/entries/store-review?${toQuery({ store_id: scope.storeId, creator_id: scope.creatorId, date_from: scope.dateFrom, date_to: scope.dateTo }, { ...(period.year ? { year: period.year } : {}), ...(period.month ? { month: period.month } : {}) })}`,
+      { silent: true }),
+    gcTime: 0,
+    staleTime: 0,
+  });
+}
+
+/** "I checked this store": every entry in view is verified (Team Lead) or reviewed (Reviewer / administrator) in one step, not one by one. */
+export function useVerifyStore() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: StoreReviewScope & { comment?: string }) =>
+      apiRequest<{ changed: number; to: Verification; skipped_flagged: number }>("/entries/verify-store", {
+        method: "POST", silent: true,
+        body: { store_id: v.storeId, creator_id: v.creatorId || null, date_from: v.dateFrom || null, date_to: v.dateTo || null, comment: v.comment || null },
+      }),
+    onSuccess: (r) => {
+      const what = r.to === "reviewed_l3" ? "reviewed" : "verified";
+      pushToast(r.changed === 0 ? "Nothing to verify here." : `${r.changed} entr${r.changed === 1 ? "y" : "ies"} ${what}.${r.skipped_flagged ? ` ${r.skipped_flagged} flagged left for you to look at.` : ""}`, r.changed === 0 ? "info" : "success");
+      for (const key of ["entry-store-review", "entry-search", "entry-summary", "entry-employee-stores", "entry-timeline", "entry-team-overview"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
 export interface TeamOverview {
   month_start: string;
   today: string;
@@ -266,6 +318,7 @@ function applyToLists(qc: QueryClient, t: Timeline) {
   }
   void qc.invalidateQueries({ queryKey: ["entry-search"] });
   void qc.invalidateQueries({ queryKey: ["entry-summary"] });
+  void qc.invalidateQueries({ queryKey: ["entry-store-review"] });
 }
 
 export function useEditEntry() {

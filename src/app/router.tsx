@@ -34,6 +34,7 @@ const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliv
 const BottlesPage = lazy(() => import("@/features/bottles/BottlesPage").then((m) => ({ default: m.BottlesPage })));
 const CardSheetPage = lazy(() => import("@/features/cardsheet/CardSheetPage").then((m) => ({ default: m.CardSheetPage })));
 const TicketsPage = lazy(() => import("@/features/tickets/TicketsPage").then((m) => ({ default: m.TicketsPage })));
+const PerformancePage = lazy(() => import("@/features/orders/PerformancePage").then((m) => ({ default: m.PerformancePage })));
 const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m) => ({ default: m.PendingPage })));
 const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
 const StoresPage = lazy(() => import("@/features/stores/StoresPage").then((m) => ({ default: m.StoresPage })));
@@ -104,6 +105,7 @@ export function AppRoutes() {
         <Route path="/orders" element={<OrdersLayout />}>
           <Route index element={<OrdersIndex><MarkOrdersPage /></OrdersIndex>} />
           <Route path="overview" element={<Require permission="orders.overview"><DailyOverviewPage /></Require>} />
+          <Route path="performance" element={<Require permission="orders.overview"><PerformancePage /></Require>} />
           <Route path="pending" element={<Require permission="orders.overview"><PendingPage /></Require>} />
           <Route path="correct" element={<Require permission="orders.correct"><CorrectEntriesPage /></Require>} />
         </Route>

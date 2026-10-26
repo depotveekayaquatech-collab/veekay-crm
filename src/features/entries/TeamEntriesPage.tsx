@@ -11,6 +11,7 @@ import { Crumbs, EmployeeStoresTable, PartnerSelect } from "@/features/entries/D
 import { EntryDrawer } from "@/features/entries/EntryDrawer";
 import { EntryPicker, StatusChips } from "@/features/entries/EntryFilters";
 import { EntryResultsTable } from "@/features/entries/EntryResultsTable";
+import { StoreReviewPanel } from "@/features/entries/StoreReviewPanel";
 import { STATUS_FILTER_OPTIONS } from "@/features/entries/format";
 import { useEntryFilters } from "@/features/entries/useEntryFilters";
 
@@ -58,11 +59,20 @@ export function TeamEntriesPage() {
           onAll={() => { setPersonName(""); setStoreName(""); f.clearDrill("none"); }} onPerson={employeeId ? () => { setStoreName(""); f.clearDrill("employee"); } : undefined} />
       )}
       {showStores && <EmployeeStoresTable creatorId={employeeId} filters={f.applied} onOpenStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />}
+      {storeId && (
+        <StoreReviewPanel
+          scope={{ storeId, creatorId: employeeId || undefined, dateFrom: (f.applied.date_from as string) || undefined, dateTo: (f.applied.date_to as string) || undefined }}
+          onOpenEntry={setOpen}
+        />
+      )}
       {!showStores && search.isLoading && <Skeleton className="h-64" />}
       {!showStores && search.isError && <ErrorState message={search.error instanceof Error ? search.error.message : "Couldn't load the entries."} onRetry={() => search.refetch()} />}
       {!showStores && search.data && (
         <>
-          <p className="text-sm text-gray-500">{search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"}</p>
+          <p className="text-sm text-gray-500">
+            {storeId && <b className="mr-2 text-gray-900">Entries audit</b>}
+            {search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"}
+          </p>
           <EntryResultsTable rows={search.data.items} onOpen={setOpen} onPickStore={(s) => { setStoreName(s.name); f.pick("store_id", s.id); }} />
           <Pagination page={f.page} pageSize={search.data.page_size} total={search.data.total} onPageChange={f.setPage} />
         </>

@@ -34,6 +34,7 @@ MAX_PAGE = 100
 REVIEW_ACTIONS = {"reviewed": "reviewed", "flagged": "flagged", "needs_correction": "needs_correction", "clear": "none"}
 VERIFICATION_FILTERS = ("pending_l2", "verified_l2", "reviewed_l3", "requested")
 MAX_COMMENT = 1000
+MAX_VERIFY_STORE = 3000
 MIN_REASON = 5
 
 
@@ -609,6 +610,120 @@ def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.U
             "bottles": int(bottles or 0), "last_entry": last,
         } for s, p, n, pend, ver, rev, req, bottles, last in rows],
     }
+
+
+def _store_entries(scope: EntryScope, store_id: uuid.UUID, f: dict) -> list:
+    """The entries of one store the caller may see, narrowed to one employee and/or a range of days when asked."""
+    conds = [*scope.conditions(), OrderEntry.store_id == store_id]
+    if f.get("creator_id"):
+        conds.append(owned_clause({f["creator_id"]}))
+    if f.get("date_from"):
+        conds.append(OrderEntry.order_date >= f["date_from"])
+    if f.get("date_to"):
+        conds.append(OrderEntry.order_date <= f["date_to"])
+    return conds
+
+
+def _store_in_scope(db: Session, user: User, scope: EntryScope, store_id: uuid.UUID) -> Store:
+    """The store, only when the caller has at least one entry of it in scope (so this never hands out any other store's details)."""
+    store = db.get(Store, store_id)
+    allowed = store is not None and store.organization_id == scope.organization_id and (scope.platform_id is None or store.partner_organization_id == scope.platform_id)
+    if allowed and db.execute(select(exists().where(and_(*scope.conditions(), OrderEntry.store_id == store_id)))).scalar():
+        return store
+    _deny(db, user, scope, "entry_store_denied", store_id)
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Store not found.")
+
+
+def _is_flagged():
+    return OrderEntry.review_status.in_(("flagged", "needs_correction"))
+
+
+def _verify_target(scope: EntryScope) -> tuple[str, tuple[str, ...]]:
+    """What "verify this store" does for this level, and which entries it touches: a Team Lead verifies the `submitted` ones; a Reviewer / administrator
+    reviews every one that is not yet reviewed. Entries carrying a flag stay as they are: somebody asked for a correction there."""
+    if scope.can_review:
+        return STATUS_REVIEWED, (STATUS_SUBMITTED, STATUS_VERIFIED)
+    return STATUS_VERIFIED, (STATUS_SUBMITTED,)
+
+
+def store_review(db: Session, user: User, perms: set[str], store_id: uuid.UUID, f: dict) -> dict:
+    """One store opened for checking: its details and contacts, one month of its entries as a calendar, and how many entries are in each state
+    (for the chosen employee / days when those are set). Always inside the caller's scope."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        _deny(db, user, scope, "entry_store_denied", store_id)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    store = _store_in_scope(db, user, scope, store_id)
+    platform = db.get(Organization, store.partner_organization_id)
+    today = datetime.now(_tz()).date()
+    year, month = f.get("year") or today.year, f.get("month") or today.month
+    first = date(year, month, 1)
+    last = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+
+    in_month = {**f, "date_from": max(first, f["date_from"]) if f.get("date_from") else first, "date_to": min(last, f["date_to"]) if f.get("date_to") else last}
+    rows = db.execute(select(OrderEntry).where(*_store_entries(scope, store_id, in_month))).scalars().all()
+    by_day = {e.order_date: e for e in rows}
+    days = []
+    for n in range(1, last.day + 1):
+        d = date(year, month, n)
+        e = by_day.get(d)
+        days.append({
+            "date": d, "day": n, "is_future": d > today, "is_today": d == today,
+            "entry": None if e is None else {
+                "entry_id": e.id, "count": e.bottle_count - e.cash_adjustment, "status": e.verification_status, "requested": e.check_requested_at is not None,
+                "flagged": e.review_status in ("flagged", "needs_correction"), "edited": e.version > 1, "created_by": e.created_by_name,
+            },
+        })
+
+    v = OrderEntry.verification_status
+    target, from_states = _verify_target(scope)
+    counts = db.execute(
+        select(
+            func.count(), func.count().filter(v == STATUS_SUBMITTED), func.count().filter(v == STATUS_VERIFIED), func.count().filter(v == STATUS_REVIEWED),
+            func.count().filter(and_(v == STATUS_SUBMITTED, OrderEntry.check_requested_at.is_not(None))), func.count().filter(_is_flagged()),
+            func.count().filter(and_(v.in_(from_states), ~_is_flagged())),
+        ).select_from(OrderEntry).where(*_store_entries(scope, store_id, f))
+    ).one()
+    total, pend, ver, rev, req, flagged, todo = (int(x) for x in counts)
+    return {
+        "store": {
+            "id": store.id, "name": store.name, "outlet_id": store.external_code, "crm_code": store.crm_code, "entity": store.entity, "status": store.status,
+            "city": store.city, "state": store.state, "region_name": store.region.name if store.region else None,
+            "platform": platform.name if platform else None, "platform_slug": platform.slug if platform else None,
+            "poc_name": store.poc_name, "poc_number": store.poc_number, "vendor_name": store.vendor_name, "vendor_number": store.vendor_number,
+        },
+        "year": year, "month": month, "days": days, "level": scope.level.value,
+        "counts": {"entries": total, "pending_l2": pend, "verified_l2": ver, "reviewed_l3": rev, "requested": req, "flagged": flagged},
+        # what one click on "Verify store" would change, and what it would turn those entries into
+        "verify": {"allowed": scope.can_review or scope.can_verify, "to": target, "will_change": todo, "skipped_flagged": flagged},
+    }
+
+
+def verify_store(db: Session, user: User, perms: set[str], store_id: uuid.UUID, f: dict, comment: str | None) -> dict:
+    """Verify a whole store in one step instead of entry by entry: "I checked this store" means every entry in view is checked. Same rules as the single
+    entry actions (a Team Lead only for their team's `submitted` entries; a Reviewer / administrator for anything not yet reviewed), same history rows, one
+    per entry. Flagged entries are left for someone to look at on their own."""
+    scope = scope_for(db, user, perms)
+    if not (scope.can_review or scope.can_verify):
+        _deny(db, user, scope, "entry_verify_denied", store_id)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't verify entries.")
+    store = _store_in_scope(db, user, scope, store_id)
+    target, from_states = _verify_target(scope)
+    comment = (comment or "").strip()[:MAX_COMMENT]
+    entries = db.execute(
+        select(OrderEntry).where(*_store_entries(scope, store_id, f), OrderEntry.verification_status.in_(from_states), ~_is_flagged())
+        .order_by(OrderEntry.order_date).with_for_update().limit(MAX_VERIFY_STORE + 1)
+    ).scalars().all()
+    if len(entries) > MAX_VERIFY_STORE:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"That is more than {MAX_VERIFY_STORE} entries. Pick a shorter range of days (Day from / Day to) and verify in parts.")
+    audit_context.bind(db, user, comment=comment or None, reason=comment or f"Verified the whole store ({store.name})")
+    for e in entries:
+        e.verification_status = target
+    db.commit()
+    _invalidate_reads()
+    flagged_left = db.execute(select(func.count()).select_from(OrderEntry).where(*_store_entries(scope, store_id, f), _is_flagged())).scalar_one()
+    return {"changed": len(entries), "to": target, "skipped_flagged": int(flagged_left)}
 
 
 def team_overview(db: Session, user: User, perms: set[str]) -> dict:

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
+import { PermissionGrid } from "@/features/team/PermissionGrid";
 import { ScopePicker } from "@/features/team/ScopePicker";
 import { useAllRegions } from "@/features/regions/useRegions";
 import { useAllStores } from "@/features/stores/useAllStores";
@@ -57,15 +58,6 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
   };
   const regionOptions = useMemo(() => regionsFor(platformSlug), [regions, stores, platformSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function toggle(codeStr: string) {
-    setPerms((prev) => {
-      const next = new Set(prev);
-      if (next.has(codeStr)) next.delete(codeStr);
-      else next.add(codeStr);
-      return next;
-    });
-  }
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -106,6 +98,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
     <Modal
       open
       onClose={onClose}
+      size="lg"
       title={editing ? `Edit ${employee?.employeeCode}` : "New employee"}
       footer={
         <>
@@ -185,26 +178,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
 
         <div>
           <p className="mb-2 text-sm font-medium text-gray-700">What this employee can do</p>
-          <div className="space-y-3">
-            {groups.map((g) => (
-              <div key={g.key}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{g.label}</p>
-                <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
-                  {g.permissions.map((p) => (
-                    <label key={p.code} className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={perms.has(p.code)}
-                        onChange={() => toggle(p.code)}
-                        className="h-4 w-4 rounded border-surface-border text-brand-500 focus:ring-brand-500"
-                      />
-                      {p.description}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <PermissionGrid groups={groups} value={perms} onChange={setPerms} />
         </div>
 
         {error && <p className="text-sm text-status-danger">{error}</p>}

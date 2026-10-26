@@ -89,11 +89,8 @@ def _new_ticket(
     db.flush()
     _attach(db, account, ticket, photos)
     _audit(db, account, "external.ticket_created", "ticket", ticket.id, number=ticket.number, store=store.name, category=category)
-    # Whoever manages tickets hears about it straight away, without opening the app to look.
-    staff_notify.notify_users(
-        db, staff_notify.users_with_permission(db, store.organization_id, "tickets.manage"), kind="ticket", ref_id=ticket.id,
-        title=f"New ticket #{ticket.number} from {_label(account)}", body=f"{store.name}: {ticket.title}",
-    )
+    # Ticket managers and the employees who handle the store hear about it straight away, without opening the app to look.
+    ticket_service._announce(db, ticket, store, by=_label(account))
     return ticket
 
 

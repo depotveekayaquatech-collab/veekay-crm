@@ -12,6 +12,11 @@ export const useOverdue = (page: number) =>
   useQuery({ queryKey: ["a-overdue", page], queryFn: () => adminApi.overdueBottles(page), placeholderData: keepPreviousData, staleTime: 60_000 });
 export const useDueBills = (enabled = true) => useQuery({ queryKey: ["a-bills"], queryFn: adminApi.dueBills, enabled, staleTime: 60_000 });
 
+export const useAttendanceDay = (enabled = true) =>
+  useQuery({ queryKey: ["a-attendance-day"], queryFn: adminApi.attendanceDay, enabled, staleTime: 30_000, refetchInterval: 120_000 });
+export const useAttendanceMonth = (month: string, enabled = true) =>
+  useQuery({ queryKey: ["a-attendance-month", month], queryFn: () => adminApi.attendanceMonth(month), enabled, placeholderData: keepPreviousData, staleTime: 60_000 });
+
 export function useReviewLeave() {
   const qc = useQueryClient();
   return useMutation({

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_permissions, get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.entry import EntryCheckRequest, EntryComment, EntryEdit, EntryReview, EntryVerify
+from app.schemas.entry import EntryCheckRequest, EntryComment, EntryEdit, EntryReview, EntryVerify, StoreVerify
 from app.services import entry_service
 
 router = APIRouter(prefix="/entries", tags=["entries"])
@@ -92,6 +92,26 @@ def employee_stores(
     """The stores one employee has entered, with the number of their entries in each state (drill-down: employee -> stores -> a store's entries)."""
     response.headers["Cache-Control"] = "no-store"
     return entry_service.employee_stores(db, user, perms, creator_id, {"date_from": date_from, "date_to": date_to, "verification": verification})
+
+
+@router.get("/store-review")
+def store_review(
+    response: Response, store_id: uuid.UUID, creator_id: uuid.UUID | None = None, date_from: date | None = None, date_to: date | None = None,
+    year: int | None = Query(None, ge=2000, le=2100), month: int | None = Query(None, ge=1, le=12),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """One store opened for checking: details and contacts, a month of its entries as a calendar, and the counts per verification state."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.store_review(db, user, perms, store_id, {"creator_id": creator_id, "date_from": date_from, "date_to": date_to, "year": year, "month": month})
+
+
+@router.post("/verify-store")
+def verify_store(
+    payload: StoreVerify,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Verify a whole store at once (Team Lead: its `submitted` entries; Reviewer / administrator: everything not yet reviewed). Flagged entries are skipped."""
+    return entry_service.verify_store(db, user, perms, payload.store_id, {"creator_id": payload.creator_id, "date_from": payload.date_from, "date_to": payload.date_to}, payload.comment)
 
 
 @router.get("/summary")

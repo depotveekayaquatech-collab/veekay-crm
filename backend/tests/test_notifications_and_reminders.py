@@ -5,9 +5,9 @@ from datetime import date, timedelta
 import pytest
 
 from app.models.compliance_document import ComplianceDocument
-from app.models.external_activity import BillReminder
+from app.models.external_activity import BillReminder, StaffNotification
 from app.models.organization import Organization
-from app.services import reminder_service
+from app.services import reminder_service, ticket_service
 
 from .conftest import API, auth, jpeg, login
 from .test_external_portal import _login, _tok, make_account  # noqa: F401  (fixtures)
@@ -108,3 +108,25 @@ def test_my_notifications_read_and_devices(client, emp, make_user, db):
     assert db.query(StaffDevice).filter_by(token=tok).count() == 1
     assert client.delete(f"{API}/me/devices", params={"token": tok}, headers=h).status_code == 204     # not theirs: ignored
     assert db.query(StaffDevice).filter_by(token=tok).count() == 1
+
+
+def test_a_new_ticket_reaches_the_employees_who_handle_that_store(client, db, make_user, make_store, make_account):
+    store = make_store(platform="blinkit", region="NORTH")
+    north, pw, north_id = make_user(platform="blinkit", region="NORTH", grants=("tickets.view",))
+    _, _, south_id = make_user(platform="blinkit", region="SOUTH", grants=("tickets.view",))
+    _, _, blind_id = make_user(platform="blinkit", region="NORTH", grants=("orders.view",))     # same region, cannot open tickets
+    _, _, zepto_id = make_user(platform="zepto", region="NORTH", grants=("tickets.view",))
+    heard = lambda uid: [n for n in db.query(StaffNotification).filter_by(user_id=uid, kind="ticket").all() if "New ticket" in n.title]
+
+    poc = _tok(client, make_account(stores=[store], kind="poc"))
+    t = client.post(f"{API}/external/tickets", headers=poc, data={"store_id": str(store.id), "category": "OTHER", "title": "No water today"}, files=[("photos", ("p.jpg", jpeg(), "image/jpeg"))]).json()
+    assert [n.ref_id for n in heard(north_id)] == [t["id"]]
+    assert not heard(south_id) and not heard(blind_id) and not heard(zepto_id)
+
+    # a ticket from the Google form reaches them too
+    ticket, created = ticket_service.create_external(
+        db, store.organization_id, external_id=f"x-{uuid.uuid4().hex}", store_code=store.external_code, platform="blinkit", store_name=None,
+        category="late", priority=None, title="Late delivery", description=None, reporter="Form user", raised_at=None,
+    )
+    assert created and [n.ref_id for n in heard(north_id)] == [t["id"], str(ticket.id)]
+    assert not heard(south_id)

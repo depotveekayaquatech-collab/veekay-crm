@@ -1,6 +1,6 @@
 import { Suspense, useEffect, type ComponentType, type SVGProps } from "react";
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { IconAlertTriangle, IconChart, IconClipboard, IconEdit } from "@/components/ui/icons";
+import { IconActivity, IconAlertTriangle, IconChart, IconClipboard, IconEdit } from "@/components/ui/icons";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePending } from "@/services/reports";
 
@@ -17,6 +17,7 @@ const ORDER_TABS: OrderTab[] = [
   { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.view", end: true, blurb: "Log each store's daily bottle count." },
   { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview", blurb: "See how every employee is tracking today." },
   { label: "Pending entries", to: "/orders/pending", icon: IconAlertTriangle, permission: "orders.overview", blurb: "Live stores that still have no entry." },
+  { label: "Performance", to: "/orders/performance", icon: IconActivity, permission: "orders.overview", blurb: "Each employee's share of the entries they should have marked this month." },
   { label: "Correct entries", to: "/orders/correct", icon: IconEdit, permission: "orders.correct", blurb: "Fix or clear any past day for any store." },
 ];
 

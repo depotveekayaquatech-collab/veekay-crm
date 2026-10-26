@@ -8,7 +8,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.roles import LEVEL3_TOOL_PERMISSIONS, RESERVED_PERMISSIONS
+from app.core.roles import ACCOUNTS_TOOL_PERMISSIONS, LEVEL3_TOOL_PERMISSIONS, RESERVED_PERMISSIONS
 from app.models.permission import Permission, RolePermission
 from app.models.role import Role
 from app.models.user import User, UserRole
@@ -64,9 +64,9 @@ class UserRepository:
         if "partner" not in roles:
             codes.add(EVERYONE_ON_STAFF)
         if "entry_reviewer" in roles:
-            user = self.db.get(User, user_id)
-            if user is not None and user.platform_organization_id is None:       # a reviewer limited to one platform never gets company-wide tools
-                codes |= LEVEL3_TOOL_PERMISSIONS
+            codes |= LEVEL3_TOOL_PERMISSIONS
+        if "accountant" in roles:
+            codes |= ACCOUNTS_TOOL_PERMISSIONS
         return codes
 
     def _role_permission_codes(self, user_id: uuid.UUID) -> set[str]:

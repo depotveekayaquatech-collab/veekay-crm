@@ -13,6 +13,7 @@ import { Crumbs, EmployeeStoresTable, PartnerSelect } from "@/features/entries/D
 import { EntryDrawer } from "@/features/entries/EntryDrawer";
 import { EntryPicker, StatusChips } from "@/features/entries/EntryFilters";
 import { EntryResultsTable } from "@/features/entries/EntryResultsTable";
+import { StoreReviewPanel } from "@/features/entries/StoreReviewPanel";
 import { STATUS_FILTER_OPTIONS, fmtDay, fmtMoment } from "@/features/entries/format";
 import { useEntryFilters } from "@/features/entries/useEntryFilters";
 
@@ -134,11 +135,18 @@ export function StoreAuditPage() {
             />
           )}
           {showStores && <EmployeeStoresTable creatorId={employeeId} filters={applied} onOpenStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />}
+          {tab === "entries" && storeId && (
+            <StoreReviewPanel
+              scope={{ storeId, creatorId: employeeId || undefined, dateFrom: (applied.date_from as string) || undefined, dateTo: (applied.date_to as string) || undefined }}
+              onOpenEntry={setOpen}
+            />
+          )}
           {!showStores && search.isLoading && <Skeleton className="h-64" />}
           {!showStores && search.isError && <ErrorState message={search.error instanceof Error ? search.error.message : "Couldn't search."} onRetry={() => search.refetch()} />}
           {!showStores && search.data && tab === "entries" && (
             <>
               <p className="flex flex-wrap items-center gap-x-3 text-sm text-gray-500">
+                {storeId && <b className="text-gray-900">Entries audit</b>}
                 {search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"} found
                 {storeId && employeeId && <button type="button" className="font-semibold text-brand-600 hover:underline" onClick={() => f.pick("creator_id", "")}>Show every employee's entries for this store</button>}
               </p>

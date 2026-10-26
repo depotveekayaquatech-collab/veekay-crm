@@ -293,8 +293,18 @@ def create_ticket(db: Session, user: User, kind: str, payload: TicketCreate) -> 
             db, [ticket.assigned_to_user_id], kind="ticket", ref_id=ticket.id, skip=user.id,
             title=f"Ticket #{ticket.number} assigned to you", body=ticket.title,
         )
+    _announce(db, ticket, store, by=f"{user.full_name}", skip=user.id)
     db.commit()
     return get_ticket(db, user, kind, ticket.id)
+
+
+def _announce(db: Session, ticket: Ticket, store: Store, *, by: str, skip: uuid.UUID | None = None) -> None:
+    """A new ticket reaches ticket managers and the employees who handle the store, in their feed and on their phones."""
+    audience = [i for i in staff_notify.ticket_audience(db, store) if i != ticket.assigned_to_user_id]
+    staff_notify.notify_users(
+        db, audience, kind="ticket", ref_id=ticket.id, skip=skip,
+        title=f"New ticket #{ticket.number} from {by}", body=f"{store.name}: {ticket.title}",
+    )
 
 
 def _check_assignee(db: Session, actor: User, user_id: uuid.UUID) -> uuid.UUID:
@@ -587,5 +597,7 @@ def create_external(
     )
     ticket.created_at = start
     db.add(ticket)
+    db.flush()
+    _announce(db, ticket, store, by=ticket.reporter or "Google form")
     db.commit()
     return ticket, True

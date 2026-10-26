@@ -105,6 +105,12 @@ def month(month: str | None = None, user: User = Depends(get_current_user), db: 
     return attendance_service.month_summary(db, user, attendance_service.parse_month(month))
 
 
+@router.get("/month-brief", dependencies=[Depends(require_permission("attendance.view"))])
+def month_brief(month: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """The month for the phone app: each person's present dates and leave dates, with the counts."""
+    return attendance_service.month_brief(db, user, attendance_service.parse_month(month))
+
+
 @router.post("/import", dependencies=[Depends(require_permission("attendance.edit"))])
 async def import_sheet(
     month: str = Form(..., description="YYYY-MM"),

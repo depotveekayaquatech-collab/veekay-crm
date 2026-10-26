@@ -103,6 +103,10 @@ entries, so the old backlog does not flood it; to settle the backlog in one go a
 **with an actor set** (`SELECT set_config('app.actor_id', '<a reviewer id>', true)` in the same transaction; the trigger refuses it otherwise). Migration 0053 takes about 2 s
 on 300,000 entries (measured on a laptop).
 
+## Verifying a whole store at once
+
+Opening one store (from Entries to Verify or Entry Review) shows the store card, a month calendar coloured by verification state, then the entries audit. `GET /entries/store-review` feeds the calendar; `POST /entries/verify-store` is the single "Verify store" button: a Team Lead verifies every `submitted` entry of the store in view, a Reviewer / administrator reviews every entry not yet reviewed. It covers the chosen employee and day range when set, never leaves the caller's scope, writes one history row per entry (same as the per-entry buttons), skips flagged / needs-correction entries, and refuses more than 3000 entries in one go.
+
 ## Retries and "saved"
 
 * The web and Android apps send one `Idempotency-Key` per submission and reuse it on every retry. The server also treats "the same person sends
