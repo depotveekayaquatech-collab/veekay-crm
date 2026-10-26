@@ -50,6 +50,13 @@ class RecordCorrection(BaseModel):
     clear_check_out: bool = False
 
 
+class MarkDays(BaseModel):
+    """Developer: mark one person present on these dates (backlog days too), or take a hand-made mark away."""
+    user_id: uuid.UUID
+    dates: list[date] = Field(min_length=1, max_length=62)
+    present: bool = True
+
+
 class LeaveApply(BaseModel):
     leave_type: Literal["CASUAL", "SICK", "PAID", "UNPAID"]
     start_date: date
@@ -134,6 +141,12 @@ def correct_record(payload: RecordCorrection, user: User = Depends(get_current_u
     """Developer only: fix a day's check-in time and / or whether the person was at the office or away. Lateness is recomputed."""
     return attendance_service.correct_record(db, user, payload.user_id, payload.work_date, payload.check_in_time, payload.presence, payload.office_id,
                                            payload.late, payload.half_day, payload.clear_check_out)
+
+
+@router.post("/mark", dependencies=[Depends(require_permission("attendance.edit"))])
+def mark_days(payload: MarkDays, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Developer only: mark an employee present on any dates up to today (backlog days included), or remove a hand-made mark."""
+    return attendance_service.mark_days(db, user, payload.user_id, payload.dates, payload.present)
 
 
 # ---------------------------------------------------------------- leave

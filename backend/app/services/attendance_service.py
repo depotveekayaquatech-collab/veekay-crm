@@ -266,6 +266,50 @@ def correct_record(
     return _entry(rec, _now())
 
 
+def mark_days(db: Session, actor: User, user_id: uuid.UUID, days: list[date], present: bool) -> dict:
+    """Developer: mark one person present (or take a hand-made mark away) on any dates up to today, backlog days included. A marked day has no clock times
+    and counts as present for salary. A day the person really checked in on is never overwritten or removed here (use the correction for that)."""
+    from app.services import activity_service
+
+    target = db.get(User, user_id)
+    if target is None or target.organization_id != actor.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found.")
+    if not attends(db, target):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Attendance is not tracked for this account (admins and partner logins never check in).")
+    days = sorted(set(days))
+    today = today_local()
+    if not days or len(days) > 62:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose 1 to 62 dates.")
+    if days[-1] > today:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A day that has not started can't be marked.")
+    for month in {d.replace(day=1) for d in days}:
+        paid = db.execute(select(Payslip.id).join(PayrollPeriod, PayrollPeriod.id == Payslip.period_id).where(Payslip.user_id == user_id, PayrollPeriod.month == month)).first()
+        if paid is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{month:%B %Y}'s salary is already paid, so its days are locked.")
+    existing = {r.work_date: r for r in db.execute(select(AttendanceRecord).where(
+        AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date.in_(days))).scalars()}
+    marked = already = removed = 0
+    kept: list[str] = []
+    for d in days:
+        rec = existing.get(d)
+        if present:
+            if rec is not None:
+                already += 1
+                continue
+            db.add(AttendanceRecord(organization_id=actor.organization_id, user_id=user_id, work_date=d, check_in_at=datetime.combine(d, _work_start(), tzinfo=_tz()),
+                                    check_in_status="unknown", late=False, half_day=False, source=MANUAL))
+            marked += 1
+        elif rec is not None and rec.source in (MANUAL, "sheet"):
+            db.delete(rec)
+            removed += 1
+        elif rec is not None:
+            kept.append(d.isoformat())
+    activity_service.record(db, actor=actor, action="attendance.marked_by_hand", entity_type="employee", entity_id=target.id,
+                            metadata={"employee_code": target.employee_code, "present": present, "dates": [d.isoformat() for d in days], "marked": marked, "removed": removed})
+    db.commit()
+    return {"marked": marked, "already_present": already, "removed": removed, "kept_real_check_ins": kept}
+
+
 def today_status(db: Session, user: User) -> dict:
     from app.services import leave_service
 
@@ -342,12 +386,15 @@ def _record_status(r: AttendanceRecord, now: datetime) -> str:
     return "CHECKED_IN" if r.work_date == local_date(now) else "NO_CHECKOUT"
 
 
+MANUAL = "manual"      # a day a developer marked present by hand (no clock times); unlike a sheet day it counts for salary
+
+
 def _entry(r: AttendanceRecord, now: datetime) -> dict:
-    if r.source == "sheet":
-        # Filled from an uploaded attendance sheet: it only says the person was present. No times were recorded, so none are shown.
+    if r.source in ("sheet", MANUAL):
+        # Filled from an uploaded attendance sheet, or marked by a developer: it only says the person was present. No times were recorded, so none are shown.
         return {
-            "status": "PRESENT", "check_in_at": None, "check_out_at": None, "minutes": 0, "late": False, "half_day": False,
-            "location": {"status": "unknown", "label": "Attendance sheet"}, "check_out_location": None, "source": "sheet",
+            "status": "PRESENT", "check_in_at": None, "check_out_at": None, "minutes": 0, "late": False, "half_day": r.half_day,
+            "location": {"status": "unknown", "label": "Attendance sheet" if r.source == "sheet" else "Marked by developer"}, "check_out_location": None, "source": r.source,
         }
     return {
         "status": _record_status(r, now), "check_in_at": r.check_in_at, "check_out_at": r.check_out_at,

@@ -435,3 +435,29 @@ def test_month_brief_lists_each_persons_present_dates(client, admin, make_user, 
     assert len(me["present_dates"]) == 1 and me["days_present"] == 1 and "check_in_at" not in me
     assert "ADMIN001" not in {r["employee_code"] for r in brief.json()["rows"]}
     assert client.get(f"{API}/attendance/month-brief", headers=emp).status_code == 403          # needs attendance.view
+
+
+def test_a_developer_marks_backlog_days_present_by_hand(client, dev, admin, emp, make_user):
+    from datetime import timedelta
+
+    h, uid = _fresh_employee(client, make_user)
+    past = [(date.today() - timedelta(days=n)).isoformat() for n in (2, 3, 4)]
+    r = client.post(f"{API}/attendance/mark", headers=dev, json={"user_id": str(uid), "dates": past})
+    assert r.status_code == 200 and r.json()["marked"] == 3, r.text
+    again = client.post(f"{API}/attendance/mark", headers=dev, json={"user_id": str(uid), "dates": past}).json()
+    assert again["marked"] == 0 and again["already_present"] == 3                      # marking twice changes nothing
+    brief = client.get(f"{API}/attendance/month-brief", params={"month": past[0][:7]}, headers=admin).json()
+    me = next(x for x in brief["rows"] if str(x["user_id"]) == str(uid))
+    assert set(past) <= set(me["present_dates"])
+    # only a developer may; the future is refused; a hand-made mark can be taken away
+    assert client.post(f"{API}/attendance/mark", headers=admin, json={"user_id": str(uid), "dates": past}).status_code == 403
+    assert client.post(f"{API}/attendance/mark", headers=emp, json={"user_id": str(uid), "dates": past}).status_code == 403
+    future = (date.today() + timedelta(days=2)).isoformat()
+    assert client.post(f"{API}/attendance/mark", headers=dev, json={"user_id": str(uid), "dates": [future]}).status_code == 422
+    gone = client.post(f"{API}/attendance/mark", headers=dev, json={"user_id": str(uid), "dates": past[:1], "present": False}).json()
+    assert gone["removed"] == 1
+    assert client.post(f"{API}/attendance/mark", headers=dev, json={"user_id": str(emp_id_of_admin(client, admin)), "dates": past}).status_code == 422
+
+
+def emp_id_of_admin(client, admin):
+    return client.get(f"{API}/auth/me", headers=admin).json()["id"]

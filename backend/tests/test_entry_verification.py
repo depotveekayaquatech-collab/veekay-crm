@@ -567,3 +567,19 @@ def test_the_hierarchy_lists_each_platform_top_to_bottom_and_assigns_in_bulk(cli
     z_code, _pw, z_id = make_user(platform="zepto")
     bad = client.post(f"{API}/entries/assign-team", headers=cast["ADM"], json={"team_lead_id": str(ids["L"]), "employee_ids": [str(z_id)]})
     assert bad.status_code == 422 and "another platform" in bad.json()["detail"]
+
+
+def test_a_team_lead_gets_one_row_per_store_without_choosing_an_employee(client, db, cast):
+    _mark(client, cast["A"], cast["s1"], 4)
+    _mark(client, cast["C"], cast["s1"], 6, TODAY - timedelta(days=1))
+    _mark(client, cast["C"], cast["s2"], 7)
+    _mark(client, cast["B"], cast["s3"], 9)                               # not on this Team Lead's team
+    rows = client.get(f"{API}/entries/employee-stores", headers=cast["L"], params={"verification": "pending_l2"})
+    assert rows.status_code == 200, rows.text
+    body = rows.json()
+    by = {r["store"]["id"]: r for r in body["items"]}
+    assert body["employee"] is None and body["verify_to"] == "verified_l2"
+    assert by[str(cast["s1"].id)]["entries"] == 2 and by[str(cast["s1"].id)]["pending_l2"] == 2 and by[str(cast["s2"].id)]["entries"] == 1
+    assert str(cast["s3"].id) not in by
+    only = client.get(f"{API}/entries/employee-stores", headers=cast["L"], params={"store": cast["s2"].external_code}).json()
+    assert [r["store"]["id"] for r in only["items"]] == [str(cast["s2"].id)]
