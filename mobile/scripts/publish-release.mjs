@@ -4,7 +4,7 @@
  *   npm run release:publish -- --notes "What changed"
  *       Hosts the APK on the web app itself: it is copied to public/downloads/ and the link points there, so ONE git push
  *       publishes the file and the update alert together. Only the newest APK is kept in that folder.
- *   npm run release:publish -- --url "https://.../Veekay-Partner-1.0.1-code8.apk" --notes "What changed"
+ *   npm run release:publish -- --url "https://.../Aquatrack-1.0.1-code8.apk" --notes "What changed"
  *       Use a link you host elsewhere (Drive, GitHub release...) instead.
  *   options: --apk <file>   (default: the highest-code APK in mobile/build/apk)
  *            --audience <who>  both (default) | staff | partner. "both": everyone gets this release. "staff" (Veekay employees) or

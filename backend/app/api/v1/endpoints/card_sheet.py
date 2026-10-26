@@ -1,4 +1,4 @@
-"""Cards from an uploaded sheet / the random card PDF. Level 3 (Reviewer), Level 4 (administrators) and Accounts (reserved `cards.sheet`), and behind an access code."""
+"""Cards from an uploaded sheet / the random card PDF. Level 3 (Reviewer) and Accounts (reserved `cards.sheet`), and behind an access code."""
 import uuid
 import datetime as dt
 

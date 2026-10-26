@@ -62,7 +62,7 @@ export function UpdateGate({ children, enabled }: { children: ReactNode; enabled
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: space.xxl, gap: space.md, backgroundColor: colors.surface }}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: colors.text, textAlign: "center" }}>Update required</Text>
         <Text style={{ color: colors.textMuted, textAlign: "center", lineHeight: 22 }}>
-          A new version of Veekay Partner is required to continue. Tap the button to download and install the latest version ({apk.manifest.latestVersionName}).
+          A new version of Aquatrack is required to continue. Tap the button to download and install the latest version ({apk.manifest.latestVersionName}).
         </Text>
         {apk.manifest.notes ? <Text style={{ color: colors.textFaint, textAlign: "center" }}>{apk.manifest.notes}</Text> : null}
         <Button title={opening ? label : "Download and install"} onPress={() => void download()} loading={opening} style={{ alignSelf: "stretch", marginTop: space.sm }} />

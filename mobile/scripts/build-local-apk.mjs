@@ -131,6 +131,6 @@ if (!fs.existsSync(apk)) die("Gradle finished but app-release.apk was not produc
 const out = path.join(mobile, "build", "apk");
 fs.mkdirSync(out, { recursive: true });
 const versionName = /^\s{2}version:\s*"([^"]+)"/m.exec(fs.readFileSync(path.join(mobile, "app.config.ts"), "utf8"))?.[1] ?? "1.0.0";
-const dest = path.join(out, `Veekay-Partner-${versionName}-code${versionCode}.apk`);
+const dest = path.join(out, `Aquatrack-${versionName}-code${versionCode}.apk`);
 fs.copyFileSync(apk, dest);
 console.log(`\nDONE: ${dest}\nSize: ${(fs.statSync(dest).size / 1e6).toFixed(1)} MB`);

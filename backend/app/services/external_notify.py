@@ -1,8 +1,9 @@
 """
 Notifications for vendors / POCs: every account linked to a store gets an in-app feed entry, and a push message to
-its registered phones when Firebase is configured (FIREBASE_CREDENTIALS_FILE). Callers add this inside their own
+its registered phones when Firebase is configured (FIREBASE_CREDENTIALS_JSON or _FILE). Callers add this inside their own
 transaction; a failing push never breaks the action that caused it.
 """
+import json
 import logging
 import uuid
 from functools import lru_cache
@@ -17,16 +18,20 @@ from app.models.external_activity import ExternalDevice, ExternalNotification
 log = logging.getLogger("app.external_notify")
 
 
+def push_configured() -> bool:
+    return bool(settings.FIREBASE_CREDENTIALS_JSON or settings.FIREBASE_CREDENTIALS_FILE)
+
+
 @lru_cache(maxsize=1)
 def _firebase():
     """The firebase_admin messaging module, or None when push isn't set up."""
-    if not settings.FIREBASE_CREDENTIALS_FILE:
+    if not push_configured():
         return None
     try:
         import firebase_admin
         from firebase_admin import credentials, messaging
 
-        firebase_admin.initialize_app(credentials.Certificate(settings.FIREBASE_CREDENTIALS_FILE))
+        firebase_admin.initialize_app(credentials.Certificate(json.loads(settings.FIREBASE_CREDENTIALS_JSON) if settings.FIREBASE_CREDENTIALS_JSON else settings.FIREBASE_CREDENTIALS_FILE))
         return messaging
     except Exception:  # missing package / bad file: stay in-app only
         log.exception("Firebase push is not available")
@@ -57,7 +62,7 @@ def notify_store(db: Session, store_id: uuid.UUID, *, kind: str, title: str, bod
     ]
     for account_id in ids:
         db.add(ExternalNotification(account_id=account_id, kind=kind, title=title[:160], body=body[:500], ref_id=str(ref_id) if ref_id else None))
-    if ids and settings.FIREBASE_CREDENTIALS_FILE:
+    if ids and push_configured():
         tokens = list(db.execute(select(ExternalDevice.token).where(ExternalDevice.account_id.in_(ids))).scalars())
         _push(tokens, title, body, {"kind": kind, "ref_id": str(ref_id or "")})
     return len(ids)

@@ -46,7 +46,7 @@ class UserRepository:
             return set(self.db.execute(select(Permission.code)).scalars().all()) | ZERO_PERMISSIONS
         if "admin" in roles:
             everything = set(self.db.execute(select(Permission.code)).scalars().all()) - RESERVED_PERMISSIONS
-            return everything | LEVEL3_TOOL_PERMISSIONS | ZERO_PERMISSIONS
+            return everything | ZERO_PERMISSIONS
         from_roles = (
             select(Permission.code)
             .join(RolePermission, RolePermission.permission_id == Permission.id)

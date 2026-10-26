@@ -24,9 +24,9 @@ CATEGORY_ORDER = ["admin", "accounts", "partner", "blinkit", "zepto", "other"]
 # granted per person, and the permission catalogue doesn't list them.
 RESERVED_PERMISSIONS = frozenset({"sheets.sync", "cash.adjust", "bottles.delete", "cards.sheet", "attendance.edit", "employees.delete", "employees.view_password"})
 
-# Two of the reserved permissions are also given to Level 3 (the Entry Reviewer role, whatever platform it serves) and Level 4 (administrators), computed
+# Two of the reserved permissions are also given to Level 3 (the Entry Reviewer role, whatever platform it serves), computed
 # per request in UserRepository.get_permission_codes: the cash-purchase tools (sheet import + manual add) and the random card PDF (still behind its access code).
-# They stay reserved: nobody can be granted them per person or through a custom role, and Level 1 / Level 2 never hold them, so those routes answer 403.
+# Administrators do NOT get them (removed 2026-10-26 at the owner's request). They stay reserved: nobody can be granted them per person or through a custom role, and Level 1 / Level 2 / admins never hold them, so those routes answer 403.
 LEVEL3_TOOL_PERMISSIONS = frozenset({"cash.adjust", "cards.sheet"})
 
 # Accounts (the accountant role) also get the random card PDF (still behind its access code), but not the cash-purchase tools.

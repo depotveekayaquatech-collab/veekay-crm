@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     STORAGE_QUOTA_GB: float = Field(default=5.0, gt=0)
     STORAGE_WARN_PERCENT: int = Field(default=80, ge=1, le=100)
     FIREBASE_CREDENTIALS_FILE: str = Field(default="")
+    FIREBASE_CREDENTIALS_JSON: str = Field(default="")                  # the same service-account key as the file, as one JSON string (a Fly secret)
     BILL_DUE_DAYS_AFTER_MONTH_END: int = Field(default=45)
     COMPLIANCE_EARLIEST_MONTH: str = Field(default="2026-06")
     COMPLIANCE_MAX_MONTHS_BACK: int = Field(default=12)

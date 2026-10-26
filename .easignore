@@ -1,4 +1,4 @@
-# EAS cloud-build upload filter for the Veekay Partner app (mobile/).
+# EAS cloud-build upload filter for the Aquatrack app (mobile/).
 # This repository also holds the web CRM and the backend; none of that is needed to build the Android app.
 # NOTE: when this file exists EAS uses it INSTEAD of .gitignore, so the secret / dependency rules are repeated here.
 

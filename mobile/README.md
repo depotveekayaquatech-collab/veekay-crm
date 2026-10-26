@@ -1,4 +1,4 @@
-# Veekay Partner (vendor and POC app)
+# Aquatrack (vendor and POC app)
 
 A native Android app built with React Native (Expo SDK 57, Expo Router). It talks to the Veekay API under
 `/api/v1/external/*`; the same API the web version at `/vendor` uses.

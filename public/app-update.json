@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 24,
+    "latestVersionCode": 25,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code24.apk",
-    "notes": "Admin attendance now shows company holidays as days off, and the holiday name appears on today's card.",
-    "apkSizeBytes": 56614701,
-    "apkSha256": "f993f2838a3c374a759aadd39db4526fa3533255bda9eca34dea421c7d5ed995"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code25.apk",
+    "notes": "New app name: Aquatrack. Phone alerts for new tickets and salary credits.",
+    "apkSizeBytes": 56617341,
+    "apkSha256": "1a6eba058158354fc64bf9f99d9c52a1527dae7523e4947cec74c00ad96b30c0"
   }
 }

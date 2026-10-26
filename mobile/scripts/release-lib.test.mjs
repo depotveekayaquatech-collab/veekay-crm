@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildManifest, codeFromFileName, defaultMinCode, looksLikeApk, nextVersionCode } from "./release-lib.mjs";
 
 test("version code comes from the file name and the next one is above everything built or published", () => {
-  assert.equal(codeFromFileName("Veekay-Partner-1.0.1-code8.apk"), 8);
+  assert.equal(codeFromFileName("Aquatrack-1.0.1-code8.apk"), 8);
   assert.equal(codeFromFileName("readme.txt"), 0);
   assert.equal(nextVersionCode([6, 7], 0), 8);
   assert.equal(nextVersionCode([], 9), 10);   // the manifest may be ahead of what is on disk

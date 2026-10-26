@@ -47,11 +47,11 @@ def test_developer_can_reach_every_admin_area(client, dev, db):
 
 
 def test_admin_gets_everything_except_the_reserved_permissions(client, admin, db):
-    from app.core.roles import LEVEL3_TOOL_PERMISSIONS, ZERO_PERMISSIONS
+    from app.core.roles import ZERO_PERMISSIONS
 
     all_codes = {c for (c,) in db.query(Permission.code)}
-    # ... apart from the two cash / card tools that Level 3 and Level 4 share
-    assert set(client.get(f"{API}/auth/me", headers=admin).json()["permissions"]) == (all_codes - RESERVED_PERMISSIONS) | LEVEL3_TOOL_PERMISSIONS | ZERO_PERMISSIONS
+    # the cash / card tools are not an admin's either
+    assert set(client.get(f"{API}/auth/me", headers=admin).json()["permissions"]) == (all_codes - RESERVED_PERMISSIONS) | ZERO_PERMISSIONS
 
 
 def test_no_one_can_grant_the_sheet_permission(client, admin, emp, make_user, db):

@@ -1,4 +1,4 @@
-# Updates for Veekay Partner (private APK distribution)
+# Updates for Aquatrack (private APK distribution)
 
 Two kinds of update, and which to use:
 
@@ -55,12 +55,12 @@ The build page gives an APK link. Test on one phone first (checklist below).
 
 ## Make a new APK available to employees
 1. Host the APK at a stable https link, e.g. a **GitHub Release** asset of this repo (free, stable):
-   `gh release create partner-v1.1.0 .\Veekay-Partner-1.1.0.apk --title "Veekay Partner 1.1.0"` -> use the asset URL.
+   `gh release create partner-v1.1.0 .\Aquatrack-1.1.0.apk --title "Aquatrack 1.1.0"` -> use the asset URL.
    (The EAS build page link also works but expires; do not use it as the permanent link.)
 2. Edit `public/app-update.json` in the CRM repo:
 ```json
 { "android": { "latestVersionCode": 2, "latestVersionName": "1.1.0", "minVersionCode": 0,
-  "downloadUrl": "https://github.com/<owner>/<repo>/releases/download/partner-v1.1.0/Veekay-Partner-1.1.0.apk",
+  "downloadUrl": "https://github.com/<owner>/<repo>/releases/download/partner-v1.1.0/Aquatrack-1.1.0.apk",
   "notes": "What changed." } }
 ```
    `minVersionCode` stays low for an **optional** update; raise it to `latestVersionCode` only when old versions must stop working

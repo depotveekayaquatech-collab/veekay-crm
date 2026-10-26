@@ -50,7 +50,7 @@ def notify_users(
     ids = [i for i in dict.fromkeys(user_ids) if i != skip]
     for uid in ids:
         db.add(StaffNotification(user_id=uid, kind=kind, title=title[:160], body=body[:500], ref_id=str(ref_id) if ref_id else None))
-    if ids and settings.FIREBASE_CREDENTIALS_FILE:
+    if ids and external_notify.push_configured():
         tokens = list(db.execute(select(StaffDevice.token).where(StaffDevice.user_id.in_(ids))).scalars())
         external_notify._push(tokens, title, body, {"kind": kind, "ref_id": str(ref_id or ""), "audience": "staff"})
     return len(ids)

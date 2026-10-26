@@ -280,6 +280,26 @@ def test_webhook_creates_a_ticket_routed_like_any_other(client, admin, emp, webh
         assert t["store"]["code"] == store["external_code"]
 
 
+def test_a_ticket_from_the_google_script_is_pushed_to_the_phones_of_whoever_handles_it(client, admin, emp, webhook, monkeypatch):
+    from app.core.config import settings
+    from app.services import external_notify
+
+    sent = []
+    monkeypatch.setattr(settings, "FIREBASE_CREDENTIALS_JSON", "{}")        # push switched on; the sending itself is captured
+    monkeypatch.setattr(external_notify, "_push", lambda tokens, title, body, data: sent.append((list(tokens), title, body, data)))
+    tok = "fcm-script-" + uuid.uuid4().hex
+    assert client.post(f"{API}/me/devices", json={"token": tok, "platform": "android"}, headers=admin).status_code == 204
+    store = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]
+    r = _intake(client, webhook, external_id="row-push", store_code=store["external_code"], platform="blinkit", title="Cooler leaking", reporter="Store manager")
+    assert r.status_code == 201, r.text
+    pushed = [x for x in sent if tok in x[0]]
+    assert len(pushed) == 1 and pushed[0][1].startswith("New ticket #") and "Cooler leaking" in pushed[0][2]
+    assert pushed[0][3]["kind"] == "ticket" and pushed[0][3]["ref_id"] == r.json()["id"]
+    # a retry of the same row is not announced twice
+    assert _intake(client, webhook, external_id="row-push", store_code=store["external_code"], platform="blinkit").status_code in (200, 201)
+    assert len([x for x in sent if tok in x[0]]) == 1
+
+
 def test_webhook_is_idempotent_so_retries_never_duplicate(client, emp, webhook):
     code = client.get(f"{API}/orders/my-stores", headers=emp).json()[0]["external_code"]
     first = _intake(client, webhook, external_id="row-dup", store_code=code, platform="blinkit")

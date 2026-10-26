@@ -65,7 +65,7 @@ export default function LoginScreen() {
             <Image source={require("../../assets/watr-logo.png")} style={{ width: 84, height: 48 }} resizeMode="contain" accessibilityLabel="WaTR" />
           </View>
           <Text style={{ marginTop: 28, fontSize: 30, fontWeight: "800", color: colors.white, letterSpacing: -0.5 }} accessibilityRole="header">
-            Veekay Partner
+            Aquatrack
           </Text>
           <Text style={{ marginTop: 6, fontSize: 15, lineHeight: 22, color: "rgba(255,255,255,0.72)" }}>
             Orders, deliveries and tickets for your stores, in one place.

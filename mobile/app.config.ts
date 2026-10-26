@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { ExpoConfig } from "expo/config";
 
 /**
- * Veekay Partner (vendor & POC app).
+ * Aquatrack (vendor & POC app).
  *
  * BEFORE THE FIRST PLAY STORE UPLOAD decide `ANDROID_PACKAGE`: it is the app's permanent identity on Google Play and
  * can never be changed afterwards. See PLAY_STORE.md.
@@ -20,7 +20,7 @@ if (process.env.EXPO_PUBLIC_ALLOW_HTTP === "1" && process.env.APP_VARIANT !== "d
 }
 
 const config: ExpoConfig = {
-  name: "Veekay Partner",
+  name: "Aquatrack",
   slug: "veekay-partner",
   scheme: "veekaypartner",
   version: "1.2.0",   // 1.2.0: follows the phone's light / dark setting and has a dark splash (native settings), so it needs a new APK. 1.1.0: adds expo-image-manipulator (a native module)
@@ -67,7 +67,7 @@ const config: ExpoConfig = {
     ],
     [
       "expo-image-picker",
-      { cameraPermission: "Veekay Partner uses the camera so you can photograph a problem or a document.", microphonePermission: false },
+      { cameraPermission: "Aquatrack uses the camera so you can photograph a problem or a document.", microphonePermission: false },
     ],
     ["expo-camera", { cameraPermission: "Veekay uses the camera to read the QR code on a bottle and to photograph bills.", recordAudioAndroid: false }],
     ["expo-location", { locationWhenInUsePermission: "Veekay uses your location only when you check in or out, to record where you were.", isAndroidBackgroundLocationEnabled: false, isAndroidForegroundServiceEnabled: false }],

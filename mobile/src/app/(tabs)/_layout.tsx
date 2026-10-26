@@ -42,7 +42,7 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.surfaceSubtle },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Home", headerTitle: "Veekay Partner", tabBarIcon: icon("home-outline", "home") }} />
+      <Tabs.Screen name="index" options={{ title: "Home", headerTitle: "Aquatrack", tabBarIcon: icon("home-outline", "home") }} />
       <Tabs.Screen name="orders" options={{ title: "Orders", tabBarIcon: icon("cube-outline", "cube") }} />
       <Tabs.Screen name="tickets" options={{ title: "Tickets", tabBarIcon: icon("ticket-outline", "ticket") }} />
       <Tabs.Screen name="documents" options={{ title: "Documents", tabBarIcon: icon("document-text-outline", "document-text") }} />

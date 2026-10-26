@@ -4,7 +4,7 @@
  *   npm run release:check                               the LIVE update file (https://veekay-crm.vercel.app/app-update.json)
  *   npm run release:check -- --manifest ../public/app-update.json      a local file, before you push it
  *   npm run release:check -- --installed 6,8,9          which build numbers to simulate (default: 5 up to the newest)
- *   npm run release:check -- --apk build/apk/Veekay-Partner-1.0.1-code9.apk   check a local APK file instead of downloading
+ *   npm run release:check -- --apk build/apk/Aquatrack-1.0.1-code9.apk   check a local APK file instead of downloading
  *   npm run release:check -- --no-download              only read the update file and test the link, skip the big download
  *   npm run release:check -- --audience staff           what a signed-in EMPLOYEE (or "partner": vendor / POC) would see; default: the shared rules
  *

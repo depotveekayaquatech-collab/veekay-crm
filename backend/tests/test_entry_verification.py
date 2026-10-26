@@ -203,7 +203,7 @@ def test_a_request_for_a_contributor_with_no_team_lead_is_recorded_and_says_so(c
 
 
 # =========================================================================== acceptance 4: Level 3 / 4 tools
-def test_cash_purchase_import_and_the_random_card_pdf_are_for_level_3_and_4_only(client, db, cast):
+def test_cash_purchase_import_and_the_random_card_pdf_are_for_level_3_only(client, db, cast):
     cash = f"{API}/developer/cash-adjustments"
     sheet = f"{API}/developer/card-sheet"
     for who in ("A", "L", "B"):                                       # Level 1 and Level 2: refused by the API, whatever the page shows
@@ -215,10 +215,15 @@ def test_cash_purchase_import_and_the_random_card_pdf_are_for_level_3_and_4_only
         assert client.post(f"{sheet}/random-pdf", headers=cast[who], json={"token": "x", "store_id": str(cast["s1"].id), "rows": []}).status_code == 403
         perms = client.get(f"{API}/auth/me", headers=cast[who]).json()["permissions"]
         assert "cash.adjust" not in perms and "cards.sheet" not in perms
-    for who in ("R", "ADM"):                                          # Level 3 and Level 4
+    for who in ("R",):                                                # Level 3 only
         assert client.get(f"{cash}/stores", headers=cast[who]).status_code == 200, who
         perms = client.get(f"{API}/auth/me", headers=cast[who]).json()["permissions"]
         assert "cash.adjust" in perms and "cards.sheet" in perms
+    # administrators no longer have the tools: not in their permissions, and the API refuses them
+    perms = client.get(f"{API}/auth/me", headers=cast["ADM"]).json()["permissions"]
+    assert "cash.adjust" not in perms and "cards.sheet" not in perms
+    assert client.get(f"{cash}/stores", headers=cast["ADM"]).status_code == 403
+    assert client.post(f"{sheet}/unlock", headers=cast["ADM"], json={"code": "2580"}).status_code == 403
     # the random card PDF keeps its password lock: the Reviewer still has to enter the code
     assert client.post(f"{sheet}/unlock", headers=cast["R"], json={"code": "0000"}).status_code == 403
     assert client.post(f"{sheet}/random-pdf", headers=cast["R"], json={"token": "not-a-token", "store_id": str(cast["s1"].id), "rows": []}).status_code == 403

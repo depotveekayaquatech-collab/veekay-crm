@@ -1,6 +1,6 @@
 /** Pure helpers for the release scripts (no file or network access, so they are unit-tested). */
 
-/** The version code of an APK file name such as Veekay-Partner-1.0.1-code8.apk, or 0. */
+/** The version code of an APK file name such as Aquatrack-1.0.1-code8.apk, or 0. */
 export function codeFromFileName(name) {
   const m = /-code(\d+)\.apk$/i.exec(name);
   return m ? Number(m[1]) : 0;

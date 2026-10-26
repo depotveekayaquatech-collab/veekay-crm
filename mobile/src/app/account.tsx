@@ -46,7 +46,7 @@ export default function Account() {
           onPress: () => {
             const to = extra.supportEmail || "";
             const subject = encodeURIComponent("Account and data deletion request");
-            const body = encodeURIComponent(`Please delete my Veekay Partner login.\n\nLogin: ${account!.email}`);
+            const body = encodeURIComponent(`Please delete my Aquatrack login.\n\nLogin: ${account!.email}`);
             Linking.openURL(`mailto:${to}?subject=${subject}&body=${body}`).catch(() => Alert.alert("No email app", "Please write to Veekay support to request deletion."));
           },
         },
@@ -85,7 +85,7 @@ export default function Account() {
       </Card>
 
       <Button title="Sign out" variant="secondary" onPress={() => Alert.alert("Sign out?", "You will need your login and password to sign in again.", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", style: "destructive", onPress: () => void signOut() }])} style={{ marginTop: 28 }} />
-      <Text style={[font.tiny, { textAlign: "center", marginTop: 16 }]}>Veekay Partner · {versionLabel()}</Text>
+      <Text style={[font.tiny, { textAlign: "center", marginTop: 16 }]}>Aquatrack · {versionLabel()}</Text>
     </Screen>
   );
 }

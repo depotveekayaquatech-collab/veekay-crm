@@ -73,7 +73,7 @@ export async function readLocation(): Promise<LocationResult> {
 export function describeFailure(f: LocationFailure): { title: string; text: string; settings: boolean } {
   switch (f) {
     case "denied":
-      return { title: "Location permission is off", text: "Allow location for Veekay Partner so your check in can record where you are.", settings: false };
+      return { title: "Location permission is off", text: "Allow location for Aquatrack so your check in can record where you are.", settings: false };
     case "blocked":
       return { title: "Location is blocked for this app", text: "Open Settings > Permissions > Location and choose \"Allow only while using the app\".", settings: true };
     case "services_off":
