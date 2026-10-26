@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 22,
+    "latestVersionCode": 23,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code22.apk",
-    "notes": "Admins: attendance today on the home screen, and a button that shows every employee's present dates for any month. Employees: new ticket alerts for the stores you handle.",
-    "apkSizeBytes": 56604301,
-    "apkSha256": "cbd9983a68603b523f88b472454aaae63f0601094c11bfae63f1831ac0b2252e"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Veekay-Partner-1.2.0-code23.apk",
+    "notes": "Admins: new Performance screen (each employee's share of the entries they should have marked this month), plus attendance today and every employee's present dates by month. Employees: new ticket alerts for the stores you handle.",
+    "apkSizeBytes": 56611781,
+    "apkSha256": "c57814cff30a90e0ff930bd236fabd3cc796d4fd39c610b3e0e869099253ac5c"
   }
 }
