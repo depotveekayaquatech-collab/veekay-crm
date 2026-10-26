@@ -154,6 +154,7 @@ export default function AdminOverview() {
       <SectionTitle>Reports</SectionTitle>
       <Card style={{ padding: 0, overflow: "hidden" }}>
         {canOrders && <NavRow icon="clipboard-outline" label="Stores yet to mark" value={pending.data ? String(pending.data.pending) : undefined} onPress={() => router.push("/staff/admin/pending")} />}
+        {canOrders && <NavRow icon="speedometer-outline" label="Employee performance" onPress={() => router.push("/staff/admin/performance" as never)} />}
         {canAttendance && <NavRow icon="people-outline" label="Attendance by employee" value={attendance.data ? `${attendance.data.summary.present}/${attendance.data.summary.expected}` : undefined} onPress={() => router.push("/staff/admin/attendance" as never)} />}
         {canLeave && <NavRow icon="calendar-outline" label="Leave approvals" value={leaves.data ? String(leaves.data.pending) : undefined} onPress={() => router.push("/staff/admin/leaves")} />}
         {canBottles && <NavRow icon="cube-outline" label="Overdue bottles" value={bottles.data ? String(bottles.data.overdue) : undefined} onPress={() => router.push("/staff/admin/bottles")} />}

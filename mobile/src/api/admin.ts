@@ -66,7 +66,19 @@ export interface AttendanceMonthRow {
 }
 export interface AttendanceMonth { month: string; dates: string[]; today: string; weekly_off_weekday: number; rows: AttendanceMonthRow[] }
 
+export interface PerformanceDay { date: string; done: number; expected: number; percent: number; cumulative: number }
+export interface PerformanceRow {
+  employee_id: string; employee_code: string; employee_name: string; region_name: string | null;
+  stores: number; expected: number; done: number; missing: number; percent: number; daily: PerformanceDay[];
+}
+export interface Performance {
+  partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number;
+  summary: { employees: number; expected: number; done: number; percent: number; below_50: number };
+  employees: PerformanceRow[];
+}
+
 export const adminApi = {
+  performance: (partner: string, month: string) => request<Performance>(`/orders/performance${qs({ partner, month })}`),
   attendanceDay: () => request<AttendanceDay>("/attendance/day"),
   attendanceMonth: (month: string) => request<AttendanceMonth>(`/attendance/month-brief${qs({ month })}`),
   syncStatus: () => request<SyncStatus>("/sync/status"),
