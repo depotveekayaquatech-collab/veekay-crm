@@ -77,7 +77,11 @@ export interface Performance {
   employees: PerformanceRow[];
 }
 
+export interface MarkDaysResult { marked: number; already_present: number; removed: number; kept_real_check_ins: string[] }
+
 export const adminApi = {
+  markDays: (userId: string, dates: string[], present: boolean) =>
+    request<MarkDaysResult>("/attendance/mark", { method: "POST", body: { user_id: userId, dates, present } }),
   performance: (partner: string, month: string) => request<Performance>(`/orders/performance${qs({ partner, month })}`),
   attendanceDay: () => request<AttendanceDay>("/attendance/day"),
   attendanceMonth: (month: string) => request<AttendanceMonth>(`/attendance/month-brief${qs({ month })}`),

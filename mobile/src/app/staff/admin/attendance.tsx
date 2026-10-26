@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useAttendanceDay, useAttendanceMonth } from "@/api/adminHooks";
+import { useAttendanceDay, useAttendanceMonth, useMarkDays } from "@/api/adminHooks";
+import { useAuth } from "@/auth/AuthProvider";
 import type { AttendanceDayRow, AttendanceMonth, AttendanceMonthRow, AttendanceStatus } from "@/api/admin";
-import { Badge, Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
+import { Badge, Button, Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
 import { fmtMonth, isoDate } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
@@ -49,9 +50,28 @@ function DayRow({ r }: { r: AttendanceDayRow }) {
 }
 
 function DatesGrid({ month, r }: { month: AttendanceMonth; r: AttendanceMonthRow }) {
+  const { hasPermission } = useAuth();
+  const canMark = hasPermission("attendance.edit");                    // the developer: marks days by hand, backlog days included
+  const mark = useMarkDays();
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const present = new Set(r.present_dates);
   const leave = new Set(r.leave_dates);
   const first = new Date(`${month.dates[0]}T00:00:00`).getDay();
+  const fail = (e: Error) => Alert.alert("Couldn't save", e.message);
+  function markPicked() {
+    const dates = [...picked].sort();
+    Alert.alert("Mark present?", `${r.full_name} will count as present on ${dates.length} day${dates.length === 1 ? "" : "s"}. No times are recorded.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Mark present", onPress: () => mark.mutate({ userId: r.user_id, dates, present: true }, { onSuccess: () => setPicked(new Set()), onError: fail }) },
+    ]);
+  }
+  function removeOne(iso: string) {
+    Alert.alert("Remove this mark?", `${r.full_name}, ${iso}. A day they really checked in on stays as it is.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: () => mark.mutate({ userId: r.user_id, dates: [iso], present: false }, {
+        onSuccess: (res) => { if (res.removed === 0) Alert.alert("Not removed", "This day is a real check-in, so it was left as it is."); }, onError: fail }) },
+    ]);
+  }
   return (
     <View style={{ marginTop: 10 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
@@ -63,16 +83,33 @@ function DatesGrid({ month, r }: { month: AttendanceMonth; r: AttendanceMonthRow
           const future = iso > month.today;
           const kind = present.has(iso) ? "present" : leave.has(iso) ? "leave" : off ? "off" : future ? "future" : "absent";
           const [bg, fg] = kind === "present" ? [colors.successSoft, colors.success] : kind === "leave" ? [colors.warningSoft, colors.warning] : kind === "absent" ? [colors.dangerSoft, colors.danger] : [colors.surfaceMuted, colors.textFaint];
+          const editable = canMark && !future;
+          const on = picked.has(iso);
           return (
             <View key={iso} style={{ width: "14.285%", padding: 2 }}>
-              <View accessibilityLabel={`${iso}: ${kind}`} style={{ height: 34, borderRadius: 8, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+              <Pressable
+                disabled={!editable}
+                onPress={() => (present.has(iso) ? removeOne(iso) : setPicked((s) => { const n = new Set(s); if (n.has(iso)) n.delete(iso); else n.add(iso); return n; }))}
+                accessibilityRole={editable ? "button" : undefined} accessibilityLabel={`${iso}: ${kind}${on ? ", selected" : ""}`}
+                style={{ height: 34, borderRadius: 8, backgroundColor: bg, alignItems: "center", justifyContent: "center", borderWidth: on ? 2 : 0, borderColor: colors.brand600 }}>
                 <Text style={{ color: fg, fontWeight: kind === "present" ? "800" : "600", fontSize: 13 }}>{d.getDate()}</Text>
-              </View>
+              </Pressable>
             </View>
           );
         })}
       </View>
       <Text style={[font.tiny, { marginTop: 8 }]}>Green present · Amber on leave · Red absent · Grey day off / not yet</Text>
+      {canMark && (
+        <View style={{ marginTop: 10, gap: 8 }}>
+          <Text style={font.small}>{picked.size ? `${picked.size} day${picked.size === 1 ? "" : "s"} selected` : "Tap days to select them, then mark them present. Tap a green day to take a hand-made mark away."}</Text>
+          {picked.size > 0 && (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flex: 1 }}><Button title={`Mark ${picked.size} present`} loading={mark.isPending} onPress={markPicked} /></View>
+              <Button title="Clear" variant="ghost" onPress={() => setPicked(new Set())} />
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }

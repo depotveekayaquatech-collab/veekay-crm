@@ -19,6 +19,14 @@ export const useAttendanceDay = (enabled = true) =>
 export const useAttendanceMonth = (month: string, enabled = true) =>
   useQuery({ queryKey: ["a-attendance-month", month], queryFn: () => adminApi.attendanceMonth(month), enabled, placeholderData: keepPreviousData, staleTime: 60_000 });
 
+export function useMarkDays() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { userId: string; dates: string[]; present: boolean }) => adminApi.markDays(v.userId, v.dates, v.present),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["a-attendance-month"] }); void qc.invalidateQueries({ queryKey: ["a-attendance-day"] }); },
+  });
+}
+
 export function useReviewLeave() {
   const qc = useQueryClient();
   return useMutation({

@@ -448,7 +448,7 @@ def test_a_developer_marks_backlog_days_present_by_hand(client, dev, admin, emp,
     assert again["marked"] == 0 and again["already_present"] == 3                      # marking twice changes nothing
     brief = client.get(f"{API}/attendance/month-brief", params={"month": past[0][:7]}, headers=admin).json()
     me = next(x for x in brief["rows"] if str(x["user_id"]) == str(uid))
-    assert set(past) <= set(me["present_dates"])
+    assert {d for d in past if d[:7] == past[0][:7]} <= set(me["present_dates"])
     # only a developer may; the future is refused; a hand-made mark can be taken away
     assert client.post(f"{API}/attendance/mark", headers=admin, json={"user_id": str(uid), "dates": past}).status_code == 403
     assert client.post(f"{API}/attendance/mark", headers=emp, json={"user_id": str(uid), "dates": past}).status_code == 403
