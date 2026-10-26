@@ -73,7 +73,7 @@ export function TeamEntriesPage() {
             {storeId && <b className="mr-2 text-gray-900">Entries audit</b>}
             {search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"}
           </p>
-          <EntryResultsTable rows={search.data.items} onOpen={setOpen} onPickStore={(s) => { setStoreName(s.name); f.pick("store_id", s.id); }} />
+          <EntryResultsTable byStore rows={search.data.items} onOpen={setOpen} onPickStore={(s) => { setStoreName(s.name); f.pick("store_id", s.id); }} />
           <Pagination page={f.page} pageSize={search.data.page_size} total={search.data.total} onPageChange={f.setPage} />
         </>
       )}

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_permissions, get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.entry import EntryCheckRequest, EntryComment, EntryEdit, EntryReview, EntryVerify, StoreVerify
+from app.schemas.entry import EntryCheckRequest, EntryComment, EntryEdit, EntryReview, EntryVerify, StoreVerify, TeamAssign
 from app.services import entry_service
 
 router = APIRouter(prefix="/entries", tags=["entries"])
@@ -92,6 +92,19 @@ def employee_stores(
     """The stores one employee has entered, with the number of their entries in each state (drill-down: employee -> stores -> a store's entries)."""
     response.headers["Cache-Control"] = "no-store"
     return entry_service.employee_stores(db, user, perms, creator_id, {"date_from": date_from, "date_to": date_to, "verification": verification})
+
+
+@router.get("/hierarchy")
+def hierarchy(response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Administrators: per platform, who reviews, which Team Leads there are, who reports to whom, and who has no Team Lead yet."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.hierarchy(db, user)
+
+
+@router.post("/assign-team")
+def assign_team(payload: TeamAssign, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Administrators: put several employees under one Team Lead at once."""
+    return entry_service.assign_team(db, user, payload.team_lead_id, payload.employee_ids)
 
 
 @router.get("/store-review")

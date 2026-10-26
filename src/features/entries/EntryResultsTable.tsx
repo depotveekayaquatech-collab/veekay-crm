@@ -10,7 +10,7 @@ const REVIEW_TONE = { none: "neutral", reviewed: "success", flagged: "danger", n
 const REVIEW_LABEL = { none: "Not reviewed", reviewed: "Reviewed", flagged: "Flagged", needs_correction: "Needs correction" } as const;
 
 /** The one-click actions a person's level allows on a row (the server decides what is allowed; `actions` only mirrors it). */
-function RowActions({ row, onOpen }: { row: EntryRow; onOpen: (id: string) => void }) {
+function RowActions({ row, onOpen, byStore }: { row: EntryRow; onOpen: (id: string) => void; byStore: boolean }) {
   const verify = useVerifyEntry();
   const review = useReviewEntry();
   const request = useRequestCheck();
@@ -20,6 +20,7 @@ function RowActions({ row, onOpen }: { row: EntryRow; onOpen: (id: string) => vo
   const run = (name: string, go: () => void) => { setBusy(name); go(); };
   const settle = { onSettled: () => setBusy(null), onError: fail };
 
+  if (byStore) return <div className="flex justify-end"><Button size="sm" variant="secondary" onClick={() => onOpen(row.entry_id)}>Open</Button></div>;
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
       {a?.verify && <Button size="sm" isLoading={busy === "verify"} onClick={() => run("verify", () => verify.mutate({ entryId: row.entry_id }, settle))}>Verify</Button>}
@@ -36,8 +37,10 @@ function RowActions({ row, onOpen }: { row: EntryRow; onOpen: (id: string) => vo
  * Entries as a date-wise table: the day opens the verification drawer, the store name narrows the list to that store, and each row carries the quick
  * actions the signed-in level may use.
  */
-export function EntryResultsTable({ rows, onOpen, onPickStore, showStore = true }: {
+export function EntryResultsTable({ rows, onOpen, onPickStore, showStore = true, byStore = false }: {
   rows: EntryRow[]; onOpen: (id: string) => void; onPickStore?: (store: { id: string; name: string }) => void; showStore?: boolean;
+  /** Verification is done per store (the store's own button), so a row only offers Open (to read, correct or comment on that one entry). */
+  byStore?: boolean;
 }) {
   return (
     <Table>
@@ -114,7 +117,7 @@ export function EntryResultsTable({ rows, onOpen, onPickStore, showStore = true 
                   <span className="text-gray-400">never changed</span>
                 )}
               </Td>
-              <Td className="text-right"><RowActions row={r} onOpen={onOpen} /></Td>
+              <Td className="text-right"><RowActions row={r} onOpen={onOpen} byStore={byStore} /></Td>
             </tr>
           );
         })}

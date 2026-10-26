@@ -530,3 +530,40 @@ def test_verifying_a_store_once_covers_every_entry_in_view(client, db, cast):
     assert done["changed"] == 2 and done["skipped_flagged"] == 1
     assert {_entry(db, s1, d).verification_status for d in (days[0], days[2])} == {"reviewed_l3"}
     assert _entry(db, s1, days[1]).verification_status == "verified_l2"
+
+
+def test_the_developer_account_is_not_in_the_employee_picker_for_others(client, cast, dev):
+    people = lambda who: {p["code"] for p in client.get(f"{API}/entries/options", headers=who, params={"kind": "person", "limit": 300}).json()}
+    me = client.get(f"{API}/auth/me", headers=dev).json()["employee_code"]
+    assert me not in people(cast["ADM"]) and me not in people(cast["R"])
+    assert me in people(dev)                                          # the developer still finds their own account
+
+
+def test_the_employee_store_list_tells_the_page_what_one_click_does(client, db, cast):
+    _mark(client, cast["A"], cast["s1"], 4)
+    url = f"{API}/entries/employee-stores"
+    team_lead = client.get(url, headers=cast["L"], params={"creator_id": str(cast["ids"]["A"])}).json()
+    reviewer = client.get(url, headers=cast["R"], params={"creator_id": str(cast["ids"]["A"])}).json()
+    assert team_lead["verify_to"] == "verified_l2" and reviewer["verify_to"] == "reviewed_l3"
+
+
+def test_the_hierarchy_lists_each_platform_top_to_bottom_and_assigns_in_bulk(client, db, cast, make_user):
+    ids = cast["ids"]
+    h = client.get(f"{API}/entries/hierarchy", headers=cast["ADM"])
+    assert h.status_code == 200, h.text
+    blinkit = next(p for p in h.json()["platforms"] if p["slug"] == "blinkit")
+    lead = next(t for t in blinkit["team_leads"] if t["id"] == str(ids["L"]))
+    assert {e["id"] for e in lead["employees"]} >= {str(ids["A"]), str(ids["C"])}
+    assert str(ids["B"]) in {e["id"] for e in blinkit["unassigned"]}                       # B reports to nobody
+    assert all(str(ids["L"]) != e["id"] for e in blinkit["unassigned"])
+    assert client.get(f"{API}/entries/hierarchy", headers=cast["L"]).status_code == 403    # administrators only
+
+    # one call puts B under the Team Lead; a Team Lead of another platform is refused
+    assert client.post(f"{API}/entries/assign-team", headers=cast["L"], json={"team_lead_id": str(ids["L"]), "employee_ids": [str(ids["B"])]}).status_code == 403
+    ok = client.post(f"{API}/entries/assign-team", headers=cast["ADM"], json={"team_lead_id": str(ids["L"]), "employee_ids": [str(ids["B"])]})
+    assert ok.status_code == 200 and ok.json()["assigned"] == 1, ok.text
+    db.expire_all()
+    assert db.get(User, ids["B"]).reports_to_user_id == ids["L"]
+    z_code, _pw, z_id = make_user(platform="zepto")
+    bad = client.post(f"{API}/entries/assign-team", headers=cast["ADM"], json={"team_lead_id": str(ids["L"]), "employee_ids": [str(z_id)]})
+    assert bad.status_code == 422 and "another platform" in bad.json()["detail"]

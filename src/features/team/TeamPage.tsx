@@ -17,6 +17,7 @@ import { AdminAccountModal } from "@/features/team/AdminAccountModal";
 import { useAuth } from "@/features/auth/useAuth";
 import { PartnerAccountModal } from "@/features/team/PartnerAccountModal";
 import { LoginsPanel } from "@/features/logins/LoginsPage";
+import { HierarchyPanel } from "@/features/team/HierarchyPanel";
 import { PasswordsPanel } from "@/features/team/PasswordsPanel";
 import { StateBoardPanel } from "@/features/team/StateBoardPanel";
 import { useEmployees, useTeamMutations } from "@/features/team/useTeam";
@@ -41,7 +42,7 @@ export function TeamPage() {
   const [deleting, setDeleting] = useState<Employee | null>(null);
   const canLogins = usePermission("logins.view");
   const canSeePasswords = usePermission("employees.view_password"); // developer only
-  const [view, setView] = useState<"team" | "logins" | "passwords">("team");
+  const [view, setView] = useState<"team" | "logins" | "passwords" | "hierarchy">("team");
   const { deactivate } = useTeamMutations();
   const [category, setCategory] = useState("");
   const { data, isLoading, isError, refetch } = useEmployees(page, q, category);
@@ -98,6 +99,18 @@ export function TeamPage() {
             {label}
           </button>
         ))}
+        {(hasRole("admin") || hasRole("developer")) && (
+          <button
+            role="tab"
+            aria-selected={view === "hierarchy"}
+            onClick={() => setView("hierarchy")}
+            className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
+              view === "hierarchy" ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"
+            }`}
+          >
+            Hierarchy
+          </button>
+        )}
         {canLogins && (
           <button
             role="tab"
@@ -124,6 +137,7 @@ export function TeamPage() {
         )}
       </div>
 
+      {view === "hierarchy" && <HierarchyPanel />}
       {view === "logins" && <LoginsPanel />}
       {view === "passwords" && canSeePasswords && <PasswordsPanel />}
       {view === "team" && (<>

@@ -34,6 +34,11 @@ class StoreVerify(_Strict):
     comment: str | None = Field(default=None, max_length=1000)
 
 
+class TeamAssign(_Strict):
+    team_lead_id: uuid.UUID
+    employee_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
 class EntryCheckRequest(_Strict):
     note: str | None = Field(default=None, max_length=1000)
 

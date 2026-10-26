@@ -150,7 +150,7 @@ export function StoreAuditPage() {
                 {search.data.total.toLocaleString()} entr{search.data.total === 1 ? "y" : "ies"} found
                 {storeId && employeeId && <button type="button" className="font-semibold text-brand-600 hover:underline" onClick={() => f.pick("creator_id", "")}>Show every employee's entries for this store</button>}
               </p>
-              <EntryResultsTable rows={search.data.items} onOpen={setOpen} onPickStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />
+              <EntryResultsTable byStore={Boolean(storeId)} rows={search.data.items} onOpen={setOpen} onPickStore={(st) => { setStoreName(st.name); f.pick("store_id", st.id); }} />
               <Pagination page={page} pageSize={search.data.page_size} total={search.data.total} onPageChange={setPage} />
             </>
           )}

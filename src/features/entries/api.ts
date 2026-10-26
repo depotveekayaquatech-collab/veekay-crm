@@ -214,7 +214,7 @@ export function useEmployeeStores(creatorId: string, filters: Filters) {
   return useQuery({
     queryKey: ["entry-employee-stores", creatorId, filters.date_from, filters.date_to, filters.verification],
     queryFn: () =>
-      apiRequest<{ employee: { id: string; name: string; code: string }; total: number; items: StoreOfEmployee[] }>(
+      apiRequest<{ employee: { id: string; name: string; code: string }; level: string; verify_to: Verification | null; total: number; items: StoreOfEmployee[] }>(
         `/entries/employee-stores?${toQuery({ creator_id: creatorId, date_from: filters.date_from, date_to: filters.date_to, verification: filters.verification }, {})}`, { silent: true }),
     enabled: Boolean(creatorId),
     gcTime: 0,

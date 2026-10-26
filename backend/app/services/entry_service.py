@@ -556,6 +556,8 @@ def filter_options(db: Session, user: User, perms: set[str], kind: str, q: str |
         return [{"id": s.id, "name": s.name, "code": s.external_code, "crm_code": s.crm_code, "platform": p.name, "status": s.status} for s, p in rows]
     if kind == "person":
         stmt = select(User).where(User.organization_id == scope.organization_id, User.is_active.is_(True))
+        if DEVELOPER not in UserRepository(db).get_role_codes(user.id):          # the developer account is not listed for anyone else
+            stmt = stmt.where(User.id.not_in(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code == DEVELOPER)))
         if scope.creator_ids is not None:
             stmt = stmt.where(User.id.in_(list(scope.creator_ids)))
         elif scope.platform_id is not None:
@@ -603,6 +605,7 @@ def employee_stores(db: Session, user: User, perms: set[str], creator_id: uuid.U
     rows = db.execute(stmt.order_by(func.count().filter(v == STATUS_SUBMITTED).desc(), Store.name).limit(1000)).all()
     return {
         "employee": {"id": employee.id, "name": employee.full_name, "code": employee.employee_code},
+        "level": scope.level.value, "verify_to": _verify_target(scope)[0] if (scope.can_review or scope.can_verify) else None,
         "total": len(rows),
         "items": [{
             "store": {"id": s.id, "name": s.name, "crm_code": s.crm_code, "outlet_id": s.external_code, "status": s.status, "entity": s.entity, "platform": p.name},
@@ -923,3 +926,75 @@ def team_members(db: Session, user: User, perms: set[str]) -> list[dict]:
         return []
     rows = db.execute(select(User).where(User.id.in_(list(scope.creator_ids)), User.is_active.is_(True)).order_by(User.full_name)).scalars().all()
     return [{"id": u.id, "name": u.full_name, "code": u.employee_code, "is_me": u.id == user.id} for u in rows]
+
+
+# --------------------------------------------------------------------------
+# who reports to whom
+# --------------------------------------------------------------------------
+
+MAX_ASSIGN = 500
+
+
+def _require_admin(db: Session, user: User) -> None:
+    if not (set(UserRepository(db).get_role_codes(user.id)) & {ADMIN, DEVELOPER}):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an administrator can see this.")
+
+
+def hierarchy(db: Session, user: User) -> dict:
+    """The chain per platform, top to bottom: administrators, the Reviewers, the Team Leads, and the employees under each Team Lead. Employees with no Team Lead
+    (their entries wait for nobody) and employees under a Team Lead of another platform are listed apart, so nobody is left unassigned unnoticed."""
+    _require_admin(db, user)
+    org = user.organization_id
+    roles_of: dict[uuid.UUID, set[str]] = {}
+    for uid, code in db.execute(select(UserRole.user_id, Role.code).join(Role, Role.id == UserRole.role_id).join(User, User.id == UserRole.user_id).where(User.organization_id == org)):
+        roles_of.setdefault(uid, set()).add(code)
+    people = list(db.execute(select(User).where(User.organization_id == org, User.is_active.is_(True)).order_by(User.full_name)).scalars())
+    brief = lambda u: {"id": u.id, "name": u.full_name, "code": u.employee_code}   # noqa: E731
+    admins = [brief(u) for u in people if ADMIN in roles_of.get(u.id, set()) and DEVELOPER not in roles_of.get(u.id, set())]
+    staff = [u for u in people if roles_of.get(u.id, set()) & {"employee", TEAM_LEAD_ROLE, REVIEWER_ROLE} and not roles_of.get(u.id, set()) & {ADMIN, DEVELOPER, PARTNER}]
+    leads_by_id = {u.id: u for u in staff if TEAM_LEAD_ROLE in roles_of[u.id]}
+
+    platforms = []
+    for p in db.execute(select(Organization).where(Organization.kind == "partner", Organization.is_active.is_(True)).order_by(Organization.name)).scalars():
+        here = [u for u in staff if u.platform_organization_id == p.id]
+        team_leads = {u.id: {**brief(u), "employees": []} for u in here if TEAM_LEAD_ROLE in roles_of[u.id]}
+        unassigned, elsewhere = [], []
+        for u in here:
+            r = roles_of[u.id]
+            if TEAM_LEAD_ROLE in r or REVIEWER_ROLE in r:
+                continue
+            lead = leads_by_id.get(u.reports_to_user_id) if u.reports_to_user_id else None
+            if lead is None:
+                unassigned.append(brief(u))
+            elif lead.id in team_leads:
+                team_leads[lead.id]["employees"].append(brief(u))
+            else:
+                elsewhere.append({**brief(u), "team_lead": brief(lead)})
+        platforms.append({
+            "id": p.id, "name": p.name, "slug": p.slug,
+            "reviewers": [brief(u) for u in here if REVIEWER_ROLE in roles_of[u.id]],
+            "team_leads": list(team_leads.values()), "unassigned": unassigned, "under_other_platform_lead": elsewhere,
+            "employees": sum(len(t["employees"]) for t in team_leads.values()) + len(unassigned) + len(elsewhere),
+        })
+    return {
+        "admins": admins, "reviewers_all_platforms": [brief(u) for u in staff if REVIEWER_ROLE in roles_of[u.id] and u.platform_organization_id is None],
+        "platforms": platforms,
+    }
+
+
+def assign_team(db: Session, actor: User, team_lead_id: uuid.UUID, employee_ids: list[uuid.UUID]) -> dict:
+    """Put many employees under one Team Lead in one step (each change is checked and logged exactly like the single assignment)."""
+    _require_admin(db, actor)
+    if not employee_ids:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one employee.")
+    if len(employee_ids) > MAX_ASSIGN:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Assign at most {MAX_ASSIGN} people at a time.")
+    lead = db.get(User, team_lead_id)
+    if lead is None or lead.organization_id != actor.organization_id or TEAM_LEAD_ROLE not in set(UserRepository(db).get_role_codes(lead.id)):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a Team Lead.")
+    for emp_id in dict.fromkeys(employee_ids):
+        emp = db.get(User, emp_id)
+        if emp is not None and emp.platform_organization_id != lead.platform_organization_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{emp.full_name} works on another platform than {lead.full_name}.")
+        set_entry_role(db, actor, emp_id, level=None, reports_to_id=lead.id, set_reports_to=True)
+    return {"assigned": len(set(employee_ids)), "team_lead": {"id": lead.id, "name": lead.full_name}}
