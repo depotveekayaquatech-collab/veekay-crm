@@ -15,7 +15,7 @@ import { AverageCards } from "@/features/capping/AverageCards";
 import { CappingSheetTab } from "@/features/capping/CappingSheetTab";
 import { ChangeCappingTab } from "@/features/capping/ChangeCappingTab";
 import { ReduceCappingBanner } from "@/features/capping/ReduceCappingBanner";
-import { currentMonth, monthRange } from "@/features/capping/helpers";
+import { currentMonth, periodToDate } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
 import {
   getCappingReport, getCappingSummary, importCapsFile, setStoreCap, syncCapsFromSheet,
@@ -216,8 +216,8 @@ export function CappingPage() {
     placeholderData: undefined,
   });
 
-  // The average-vs-limit summary for the chosen month (this month by default): feeds the red banner and the cards.
-  const period = monthRange(month || data?.month || currentMonth());
+  // The average-vs-limit summary for the chosen month (this month by default), from the 1st to today: feeds the red banner and the cards.
+  const period = periodToDate(month || data?.month || currentMonth());
   const summary = useQuery({
     queryKey: ["capping", "summary", period.from, period.to],
     queryFn: () => getCappingSummary(period.from, period.to),

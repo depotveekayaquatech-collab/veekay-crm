@@ -21,6 +21,12 @@ export function monthRange(ym: string): { from: string; to: string } {
   return { from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, "0")}` };
 }
 
+/** The averages' period for a month: the 1st up to today for the month in progress (nothing later has happened), the whole month for a finished one. */
+export function periodToDate(ym: string, today: string = istToday()): { from: string; to: string } {
+  const { from, to } = monthRange(ym);
+  return { from, to: to > today ? today : to };
+}
+
 /** "2026-10-01" -> "01-Oct" (the sheet's column header). */
 export function dayLabel(iso: string): string {
   return `${iso.slice(8, 10)}-${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
@@ -37,8 +43,8 @@ export function isBackdated(effectiveFrom: string, today: string = istToday()): 
 }
 
 /** An average with exactly two decimals ("9.40"); a dash when there is none. */
-export function fmtAvg(v: number | null): string {
-  return v === null ? "—" : v.toFixed(2);
+export function fmtAvg(v: number | null | undefined): string {
+  return v == null ? "—" : v.toFixed(2);
 }
 
 /** Why a store is in alert, in a few words: "entry average 12.50", "capping average 11.50", "13 on 02-Oct". Empty for a store that is not. */

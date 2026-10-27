@@ -43,15 +43,15 @@ function Card({ row, limit }: { row: CapSummaryRow; limit: number }) {
       <p className="truncate text-sm font-bold text-gray-900" title={row.outletName}>{row.outletName}</p>
       <p className="truncate text-[11px] text-gray-500">{[row.outletId, row.city].filter(Boolean).join(" · ")}</p>
       <p className={`mt-1 text-xl font-extrabold tabular-nums ${row.averageBreach ? "text-status-danger" : t.value}`}>
-        {row.average === null ? "No entries" : <>Avg {fmtAvg(row.average)} <span className="text-sm font-semibold text-gray-500">/ Limit {limit}</span></>}
+        {row.average == null ? "No entries" : <>Avg {fmtAvg(row.average)} <span className="text-sm font-semibold text-gray-500">/ Limit {limit}</span></>}
       </p>
       <p className={`text-sm font-bold tabular-nums ${row.cappingBreach ? "text-status-danger" : "text-gray-700"}`}>
-        {row.cappingAverage === null ? "No capping set" : <>Capping avg {fmtAvg(row.cappingAverage)} <span className="text-xs font-semibold text-gray-500">/ Limit {limit}</span></>}
+        {row.cappingAverage == null ? "No capping set" : <>Capping avg {fmtAvg(row.cappingAverage)} <span className="text-xs font-semibold text-gray-500">/ Limit {limit}</span></>}
       </p>
       <p className="text-xs text-gray-600">
         <span className={`font-semibold ${t.value}`}>{t.label}</span>
         {row.average !== null && <> · {row.entryDays} day{row.entryDays === 1 ? "" : "s"} · highest {row.maxDay}</>}
-        {row.currentCapping !== null && <> · capping today {row.currentCapping}</>}
+        {row.currentCapping != null && <> · capping today {row.currentCapping}</>}
       </p>
       {row.alert && <p className="text-xs font-medium text-status-danger">{alertReasons(row).join(" · ")}</p>}
     </li>
@@ -64,6 +64,7 @@ export function AverageCards({ summary, isLoading, error, onRetry }: { summary: 
   const [q, setQ] = useState("");
   const [onlyAlerts, setOnlyAlerts] = useState(false);
   const [shownCount, setShownCount] = useState(PAGE);
+  const [showStores, setShowStores] = useState(false);       // the store-by-store cards stay hidden until asked for
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -78,23 +79,26 @@ export function AverageCards({ summary, isLoading, error, onRetry }: { summary: 
         <div>
           <h3 className="text-sm font-bold text-gray-900">Average against the limit</h3>
           <p className="text-xs text-gray-500">
-            {summary ? `Limit ${summary.limit} bottles a day. The alert is on the collective averages of all stores together; the cards below show each store for reference.` : "Average daily entry and capping for the chosen month."}
+            {summary ? `Limit ${summary.limit} bottles a day. The alert is on the collective averages of all stores together; expand to see each store.` : "Average daily entry and capping for the chosen month."}
           </p>
         </div>
         {summary && summary.rows.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <label className="relative">
+            {showStores && <label className="relative">
               <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input className={`${field} w-56 pl-9`} value={q} onChange={(e) => { setQ(e.target.value); setShownCount(PAGE); }} placeholder="Search store" aria-label="Search the cards" />
-            </label>
-            <button
+            </label>}
+            {showStores && <button
               type="button"
               aria-pressed={onlyAlerts}
               onClick={() => { setOnlyAlerts((v) => !v); setShownCount(PAGE); }}
               className={`h-10 rounded-lg px-3 text-sm font-medium ${onlyAlerts ? "bg-brand-500 text-white" : "bg-surface-subtle text-gray-700 hover:bg-surface-border/60"}`}
             >
               Only red / amber
-            </button>
+            </button>}
+            <Button variant="secondary" aria-expanded={showStores} onClick={() => setShowStores((v) => !v)}>
+              {showStores ? "Hide stores" : `Expand · ${summary.rows.length} stores`}
+            </Button>
           </div>
         )}
       </div>
@@ -103,8 +107,8 @@ export function AverageCards({ summary, isLoading, error, onRetry }: { summary: 
       {error && <ErrorState message={error.message || "Couldn't load the averages."} onRetry={onRetry} />}
       {summary && summary.overall && summary.rows.length > 0 && <Overall o={summary.overall} limit={summary.limit} />}
       {summary && summary.rows.length === 0 && <EmptyState title="No stores yet" description="There are no live Zepto stores to measure." />}
-      {summary && summary.rows.length > 0 && rows.length === 0 && <EmptyState title="No stores match" description="Change the search, or turn off “Only red / amber”." />}
-      {summary && rows.length > 0 && (
+      {showStores && summary && summary.rows.length > 0 && rows.length === 0 && <EmptyState title="No stores match" description="Change the search, or turn off “Only red / amber”." />}
+      {showStores && summary && rows.length > 0 && (
         <>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {rows.slice(0, shownCount).map((r) => <Card key={r.storeId} row={r} limit={summary.limit} />)}

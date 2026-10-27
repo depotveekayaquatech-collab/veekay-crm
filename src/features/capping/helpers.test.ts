@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertReasons, currentMonth, dateLabel, dayLabel, fmtAvg, isBackdated, istToday, monthRange } from "./helpers";
+import { alertReasons, currentMonth, dateLabel, dayLabel, fmtAvg, isBackdated, istToday, monthRange, periodToDate } from "./helpers";
 
 describe("capping dates (Asia/Kolkata)", () => {
   it("takes the day from India, not from the browser's zone", () => {
@@ -11,6 +11,11 @@ describe("capping dates (Asia/Kolkata)", () => {
     expect(monthRange("2026-10")).toEqual({ from: "2026-10-01", to: "2026-10-31" });
     expect(monthRange("2026-02")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
     expect(monthRange("2028-02").to).toBe("2028-02-29");
+  });
+  it("averages run from the 1st to today for this month and the whole month for a finished one", () => {
+    expect(periodToDate("2026-10", "2026-10-27")).toEqual({ from: "2026-10-01", to: "2026-10-27" });
+    expect(periodToDate("2026-10", "2026-10-31")).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+    expect(periodToDate("2026-09", "2026-10-27")).toEqual({ from: "2026-09-01", to: "2026-09-30" });
   });
   it("labels dates like the downloaded sheet", () => {
     expect(dayLabel("2026-10-01")).toBe("01-Oct");
