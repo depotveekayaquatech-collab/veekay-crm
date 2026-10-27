@@ -67,9 +67,12 @@ LEVEL_RANK = {Level.CONTRIBUTOR: 1, Level.TEAM_LEAD: 2, Level.REVIEWER: 3, Level
 
 
 def sees_every_entry(db, user) -> bool:
-    """True when this person was given entries.view_all (re-read from the database on every call, like every permission)."""
+    """True for every Level 1 employee (they all see their colleagues' numbers, read-only: nobody at Level 1 changes an entry once it is entered), and for
+    anyone given entries.view_all. Re-read from the database on every call, like every permission."""
     from app.repositories.user_repository import UserRepository
 
+    if "employee" in _roles(db, user) and viewer_rank(db, user) == 1:
+        return True
     return PERM_VIEW_ALL in UserRepository(db).get_permission_codes(user.id)
 
 

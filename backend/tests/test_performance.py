@@ -42,6 +42,37 @@ def test_late_entries_lift_the_earlier_days(client, db, admin, make_user, make_s
     assert two["done"] == d0 + 2 and two["percent"] > one["percent"] and two["daily"][0]["done"] == d1 + 1
 
 
+def test_someone_with_no_store_is_not_listed(client, db, admin, make_user, make_store):
+    make_store(platform="blinkit", region="NORTH", state="Perf-Land")
+    _, _, with_store = make_user(platform="blinkit", region="NORTH", grants=("orders.view", "orders.mark"))
+    _, _, without = make_user(platform="blinkit", region="SOUTH", grants=("orders.view", "orders.mark"))   # no store in SOUTH
+    r = client.get(f"{API}/orders/performance", params={"partner": "blinkit"}, headers=admin)
+    assert r.status_code == 200, r.text
+    listed = {e["employee_id"] for e in r.json()["employees"]}
+    assert str(with_store) in listed and str(without) not in listed
+    assert all(e["stores"] > 0 for e in r.json()["employees"])
+
+
+def test_an_entry_marked_on_a_holiday_does_not_break_the_page(client, db, admin, make_user, make_store):
+    if TODAY.day < 4:
+        return
+    store = make_store(platform="blinkit", region="NORTH", state="Perf-Land")
+    code, pw, uid = make_user(platform="blinkit", region="NORTH", grants=("orders.view", "orders.mark"))
+    emp = auth(login(client, code, pw).json()["access_token"])
+    first = _month_start()
+    holiday = first + timedelta(days=1)                  # inside the judged days, with a later day after it
+    assert client.post(f"{API}/attendance/holidays", headers=admin, json={"holiday_date": holiday.isoformat(), "name": "Diwali"}).status_code == 200
+    try:
+        for d in (first, holiday):
+            assert client.post(f"{API}/orders/mark", headers=emp, json={"store_id": str(store.id), "order_date": d.isoformat(), "bottle_count": 5}).status_code == 200
+        r = client.get(f"{API}/orders/performance", params={"partner": "blinkit"}, headers=admin)
+        assert r.status_code == 200, r.text
+        mine = next(e for e in r.json()["employees"] if e["employee_id"] == str(uid))
+        assert holiday.isoformat() not in {d["date"] for d in mine["daily"]}
+    finally:
+        client.delete(f"{API}/attendance/holidays/{holiday.isoformat()}", headers=admin)
+
+
 def test_month_parsing_defaults_to_the_month_of_yesterday():
     assert performance_service.parse_month(None, date(2026, 11, 1)) == date(2026, 10, 1)
     assert performance_service.parse_month(None, date(2026, 11, 2)) == date(2026, 11, 1)

@@ -180,7 +180,8 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
 
     stores = assignment_service.visible_stores(db, employee)
     my_rank = viewer_rank(db, employee)
-    counts: dict[tuple[uuid.UUID, date], int] = {}         # the numbers you may see: yours, and those set by someone more senior
+    sees_all = sees_every_entry(db, employee)              # every Level 1 employee: colleagues' numbers too, read-only
+    counts: dict[tuple[uuid.UUID, date], int] = {}         # the numbers you may see: yours, those of colleagues, and those set by someone more senior
     marked_days: set[tuple[uuid.UUID, date]] = set()       # days anybody marked (a state, not a number)
     edited: dict[tuple[uuid.UUID, date], tuple[uuid.UUID, int]] = {}   # the numbers you may see that somebody changed after they were entered: (entry id, cash adjustment)
     if stores:
@@ -198,13 +199,13 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
                 (ROLE_RANK.get((r[9] if r[8] is not None else r[10]) or "", 0) > my_rank)
                 or (my_rank < 4 and not r[11] and r[8] is None and r[5] == "admin")
             )
-            if r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id) or above:
+            if sees_all or r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id) or above:
                 counts[(r[0], r[1])] = int(r[2]) - int(r[3])
                 if r[13] and r[13] > 1:
                     edited[(r[0], r[1])] = (r[12], int(r[3]))
     changes = last_changes_for(db, {eid: adj for eid, adj in edited.values()})
     stats = _month_stats([s.id for s in stores], today)
-    totals = _month_totals(db, [s.id for s in stores], today, net=True, owner=employee.id, rank=my_rank)
+    totals = _month_totals(db, [s.id for s in stores], today, net=True, owner=None if sees_all else employee.id, rank=my_rank)
     return [
         MyStore(
             id=s.id, name=s.name, external_code=s.external_code, crm_code=s.crm_code,

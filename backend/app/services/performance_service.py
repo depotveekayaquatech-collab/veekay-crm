@@ -57,11 +57,14 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
             select(OrderEntry.store_id, OrderEntry.order_date).where(
                 OrderEntry.store_id.in_(all_ids), OrderEntry.order_date >= days[0], OrderEntry.order_date <= days[-1])
         ):
-            covered[day].add(store_id)
+            if day in covered:  # an entry marked on a holiday is not a judged day
+                covered[day].add(store_id)
 
     rows = []
     for emp in employees:
         stores = set(scopes.get(emp.id, []))
+        if not stores:  # nothing to mark (a team lead with no store assigned, a new employee): not part of the performance list
+            continue
         daily, done_total, running_expected = [], 0, 0
         for d in days:
             done = len(stores & covered[d])
