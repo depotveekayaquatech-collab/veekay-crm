@@ -2,10 +2,13 @@ import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { IconCheckCircle, IconDownload, IconUsers } from "@/components/ui/icons";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { downloadCsv } from "@/lib/csv";
+import { pushToast } from "@/lib/toast";
+import { formatReport, pickEmployees, type Who } from "@/lib/performanceReport";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePartners } from "@/features/stores/useStores";
 import { Avatar, FilterChip, Panel, ProgressBar, ProgressRing, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
@@ -40,6 +43,73 @@ function shiftMonth(month: string, by: number): string {
   const [y, m] = month.split("-").map(Number);
   const d = new Date(y, m - 1 + by, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Copy a text to the clipboard; falls back to a hidden textarea where the clipboard API is not allowed (an http page, an old browser). */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const box = document.createElement("textarea");
+    box.value = text;
+    box.style.position = "fixed";
+    box.style.opacity = "0";
+    document.body.appendChild(box);
+    box.select();
+    const ok = document.execCommand("copy");
+    box.remove();
+    return ok;
+  }
+}
+
+/** Pick who to include (everyone, under 50%, under 85%, or one employee), then copy the text or download it to paste into the office group. */
+function GroupReport({ d }: { d: Performance }) {
+  const [who, setWho] = useState<Who>("all");
+  const [show, setShow] = useState(false);
+  const picked = useMemo(() => pickEmployees(d.employees, who), [d.employees, who]);
+  const heading = `${d.partner_label} - Employee performance, ${d.month_label}${d.days ? ` (${shortDay(d.from!)} to ${shortDay(d.as_of!)})` : ""}`;
+  const text = useMemo(() => formatReport(heading, picked), [heading, picked]);
+  const options = [
+    { value: "all", label: `All employees (${d.employees.length})` },
+    { value: "under50", label: `Under 50% (${pickEmployees(d.employees, "under50").length})` },
+    { value: "under85", label: `Under 85% (${pickEmployees(d.employees, "under85").length})` },
+    ...d.employees.map((e) => ({ value: `emp:${e.employee_id}`, label: `${e.employee_name} (${e.employee_code})` })),
+  ];
+
+  async function copy() {
+    const ok = await copyText(text);
+    pushToast(ok ? `Report copied for ${picked.length} employee${picked.length === 1 ? "" : "s"}. Paste it in the group.` : "Couldn't copy. Open the preview and copy it by hand.", ok ? "success" : "error");
+  }
+  function download() {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `performance-report-${d.partner_slug}-${d.month}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Report for the group</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Dropdown aria-label="Who to include" value={who} onValueChange={(v) => setWho(v as Who)} options={options} searchable className="w-full sm:w-72" />
+        <Button size="sm" onClick={() => void copy()} disabled={!picked.length}>Copy report</Button>
+        <Button size="sm" variant="secondary" onClick={download} disabled={!picked.length}>
+          <IconDownload className="h-3.5 w-3.5" aria-hidden="true" />
+          Download .txt
+        </Button>
+        <button type="button" className="text-xs font-semibold text-brand-600 hover:text-brand-700" onClick={() => setShow((v) => !v)} aria-expanded={show}>
+          {show ? "Hide preview" : "Preview"}
+        </button>
+      </div>
+      {!picked.length && <p className="mt-2 text-xs text-gray-500">Nobody matches this choice.</p>}
+      {show && picked.length > 0 && <textarea readOnly value={text} rows={Math.min(14, text.split("\n").length + 1)} className="mt-2 w-full resize-y rounded-lg border border-surface-border bg-surface p-3 font-mono text-xs" aria-label="Report preview" />}
+    </div>
+  );
 }
 
 /**
@@ -102,6 +172,7 @@ export function PerformancePage() {
                     Export CSV
                   </Button>
                 </div>
+                <GroupReport d={d} />
               </div>
             </div>
           </section>
