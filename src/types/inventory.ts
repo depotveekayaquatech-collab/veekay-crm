@@ -8,6 +8,8 @@ export interface InventoryStore {
   state: string | null;
   city: string | null;
   vendorName: string | null;
+  /** LIVE, PENDING or CLOSE: the list also holds a store that left LIVE but has entries this month. */
+  status: string;
   vendorNumber: string | null;
   pocName: string | null;
   pocNumber: string | null;
@@ -45,6 +47,7 @@ export function toInventory(w: any): Inventory {
       state: s.state,
       city: s.city,
       vendorName: s.vendor_name,
+      status: s.status ?? "LIVE",
       vendorNumber: s.vendor_number,
       pocName: s.poc_name,
       pocNumber: s.poc_number,

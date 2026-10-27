@@ -101,7 +101,7 @@ export function AverageCards({ summary, isLoading, error, onRetry }: { summary: 
 
       {isLoading && <Skeleton className="h-40" />}
       {error && <ErrorState message={error.message || "Couldn't load the averages."} onRetry={onRetry} />}
-      {summary && summary.rows.length > 0 && <Overall o={summary.overall} limit={summary.limit} />}
+      {summary && summary.overall && summary.rows.length > 0 && <Overall o={summary.overall} limit={summary.limit} />}
       {summary && summary.rows.length === 0 && <EmptyState title="No stores yet" description="There are no live Zepto stores to measure." />}
       {summary && summary.rows.length > 0 && rows.length === 0 && <EmptyState title="No stores match" description="Change the search, or turn off “Only red / amber”." />}
       {summary && rows.length > 0 && (

@@ -13,7 +13,7 @@ import { usePermission } from "@/hooks/usePermission";
 import { downloadCsv } from "@/lib/csv";
 import { KEYS, NO_FILTERS, applyLocationFilters, hasFilters, optionsFor, pruneFilters, setFilter, type LocationKey } from "@/lib/inventoryFilters";
 import type { InventoryStore } from "@/types/inventory";
-import { BlinkitRegionTable } from "./BlinkitRegionTable";
+import { LiveStoresExplorer } from "./LiveStoresExplorer";
 import { useInventory } from "./useInventory";
 
 type Chip = "all" | "behind" | "uptodate" | "unmarked";
@@ -148,7 +148,13 @@ export function InventoryPage() {
         ))}
       </div>
 
-      <BlinkitRegionTable />
+      <LiveStoresExplorer
+        items={filtered}
+        filterActive={placeActive || chip !== "all" || query.trim() !== ""}
+        isPicked={(path) => path.every((p) => place[p.level].trim().toLowerCase() === p.value.trim().toLowerCase())}
+        onPick={(path) => setLoc(path.reduce((f, p) => setFilter(items, f, p.level, p.value), place))}
+        onClear={() => { setLoc(NO_FILTERS); setChip("all"); setQuery(""); }}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         {CHIPS.map((c) => (

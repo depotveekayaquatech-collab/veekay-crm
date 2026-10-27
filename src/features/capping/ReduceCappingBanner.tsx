@@ -5,8 +5,8 @@ import type { CapSummary } from "@/services/capping";
 /** Red banner at the top of the Zepto Capping page when the COLLECTIVE average entry or the COLLECTIVE average capping (all stores together) is above the limit.
  * A single store above the limit does not raise it. Nothing when both are within the limit. */
 export function ReduceCappingBanner({ summary }: { summary: CapSummary | undefined }) {
-  if (!summary || !summary.overall.alert) return null;
-  const o = summary.overall;
+  const o = summary?.overall;
+  if (!summary || !o || !o.alert) return null;
 
   return (
     <section role="alert" className="rounded-xl border border-status-danger/40 bg-status-danger/5 p-4 shadow-card sm:p-5">

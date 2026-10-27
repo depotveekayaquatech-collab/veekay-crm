@@ -149,7 +149,8 @@ export interface CapSummary {
   limit: number;
   amberMargin: number;
   totals: { stores: number; inAlert: number };
-  overall: CapOverall;
+  /** Absent when the web app is newer than the API (during a deploy): the page then simply shows no collective figures. */
+  overall?: CapOverall;
   rows: CapSummaryRow[];
 }
 
