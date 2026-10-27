@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { downloadCsv } from "@/lib/csv";
 import { pushToast } from "@/lib/toast";
+import { copyText } from "@/lib/clipboard";
 import { formatReport, pickEmployees, type Who } from "@/lib/performanceReport";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePartners } from "@/features/stores/useStores";
@@ -44,24 +45,6 @@ function shiftMonth(month: string, by: number): string {
   const [y, m] = month.split("-").map(Number);
   const d = new Date(y, m - 1 + by, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-/** Copy a text to the clipboard; falls back to a hidden textarea where the clipboard API is not allowed (an http page, an old browser). */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const box = document.createElement("textarea");
-    box.value = text;
-    box.style.position = "fixed";
-    box.style.opacity = "0";
-    document.body.appendChild(box);
-    box.select();
-    const ok = document.execCommand("copy");
-    box.remove();
-    return ok;
-  }
 }
 
 /** Pick who to include (everyone, under 50%, under 85%, or one employee), then copy the text or download it to paste into the office group. */

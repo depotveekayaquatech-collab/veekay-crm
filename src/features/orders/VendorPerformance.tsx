@@ -6,6 +6,9 @@ import { IconCheckCircle, IconDownload, IconUsers } from "@/components/ui/icons"
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { downloadCsv } from "@/lib/csv";
+import { copyText } from "@/lib/clipboard";
+import { pushToast } from "@/lib/toast";
+import { formatVendorReport } from "@/lib/vendorReport";
 import { Panel, SearchBox, StatCard } from "@/features/orders/ui";
 import { apiRequest } from "@/services/api";
 
@@ -31,6 +34,48 @@ const NO_VENDOR = "(No vendor name)";
 const label = (v: Vendor) => v.vendor_name ?? NO_VENDOR;
 const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 const place = (s: VendorStore) => [s.city, s.state].filter(Boolean).join(", ");
+
+/** The text to paste: the chosen vendor, or every vendor in the list when none is chosen. Copy it, download it, or preview it first. */
+function VendorReport({ d, vendors }: { d: VendorPerformanceData; vendors: Vendor[] }) {
+  const [show, setShow] = useState(false);
+  const period = d.from && d.to ? ` (${shortDay(d.from)} to ${shortDay(d.to)})` : "";
+  const text = useMemo(
+    () => formatVendorReport(`${d.partner_label} - Vendor bottle count, ${d.month_label}${period}`, vendors),
+    [d, vendors, period],
+  );
+
+  async function copy() {
+    const ok = await copyText(text);
+    pushToast(ok ? `Copied for ${vendors.length} vendor${vendors.length === 1 ? "" : "s"}. Paste it where you need it.` : "Couldn't copy. Open the preview and copy it by hand.", ok ? "success" : "error");
+  }
+  function download() {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vendor-bottles-${d.partner_slug}-${d.month}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
+  return (
+    <div className="rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Text to paste</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={() => void copy()} disabled={!vendors.length}>Copy text</Button>
+        <Button size="sm" variant="secondary" onClick={download} disabled={!vendors.length}>
+          <IconDownload className="h-3.5 w-3.5" aria-hidden="true" />
+          Download .txt
+        </Button>
+        <button type="button" className="text-xs font-semibold text-brand-600 hover:text-brand-700" onClick={() => setShow((v) => !v)} aria-expanded={show}>
+          {show ? "Hide preview" : "Preview"}
+        </button>
+      </div>
+      {show && vendors.length > 0 && <textarea readOnly value={text} rows={Math.min(14, text.split("\n").length + 1)} className="mt-2 w-full resize-y rounded-lg border border-surface-border bg-surface p-3 font-mono text-xs" aria-label="Text preview" />}
+    </div>
+  );
+}
 
 /** Vendor-wise: pick a vendor to see each of its stores with the bottles marked this month (one row for a vendor with one store). */
 export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerformance> }) {
@@ -70,6 +115,8 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
         </Button>
         <p className="text-xs text-gray-500">Bottles marked {d.month_label}, {period}.</p>
       </div>
+
+      <VendorReport d={d} vendors={vendor ? [vendor] : list} />
 
       {vendor ? (
         <>
