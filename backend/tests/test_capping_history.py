@@ -374,3 +374,32 @@ def test_summary_period_is_checked_and_defaults_to_this_month(client, admin):
     body = client.get(f"{API}/capping/summary", headers=admin).json()
     assert body["from"] == _today().replace(day=1).isoformat()
     assert client.get(f"{API}/capping/summary", params={"from": "2026-10-09", "to": "2026-10-01"}, headers=admin).status_code == 422
+
+
+def test_summary_alerts_on_the_collective_averages_not_on_a_single_store(client, admin, zstore, make_store, db, monkeypatch):
+    other = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru")
+    start = _today().replace(day=1)
+    for i, n in enumerate((20, 20)):
+        plant_entry(db, zstore, start + timedelta(days=i), n)           # this store alone averages 20 ...
+    for i, n in enumerate((2, 2, 2, 2)):
+        plant_entry(db, other, start + timedelta(days=i), n)            # ... and this one 2
+    params = {"from": start.isoformat(), "to": (start + timedelta(days=5)).isoformat()}
+
+    def overall():
+        body = client.get(f"{API}/capping/summary", params=params, headers=admin).json()
+        rows = body["rows"]
+        o = body["overall"]
+        assert o["total"] == sum(r["total"] for r in rows) and o["entry_days"] == sum(r["entry_days"] for r in rows)
+        assert o["entry_average"] == round(o["total"] / o["entry_days"], 2)                           # all bottles / all entry days, not an average of averages
+        return o, _sheet_row(body, zstore)
+
+    monkeypatch.setattr(settings, "MAX_DAILY_LIMIT", 11)
+    o, store_row = overall()
+    assert o["entry_average"] == round((40 + 8) / 6, 2) == 8.0                                        # 8.00 overall: under 11
+    assert o["alert"] is False and o["reasons"] == []
+    assert store_row["average"] == 20.0                                                               # the store keeps its own figure for reference
+    monkeypatch.setattr(settings, "MAX_DAILY_LIMIT", 7)
+    o, _ = overall()
+    assert o["alert"] and o["entry_breach"] and o["reasons"] == ["average"] and o["status"] == "over"
+    monkeypatch.setattr(settings, "MAX_DAILY_LIMIT", 8)
+    assert overall()[0]["alert"] is False                                                             # exactly the limit is fine

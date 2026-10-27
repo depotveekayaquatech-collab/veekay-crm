@@ -9,10 +9,11 @@ Who may do what (re-checked on the server, whatever the app shows):
   * see the history, the sheet and the summary: whoever may see Zepto capping (capping_service.is_eligible).
   * change a capping: holders of capping.change (administrators; a "manager" when it is ticked for them) who are not on another platform.
 
-The alert is separate from the monthly-limit levels in capping_service. Two averages must stay at or under settings.MAX_DAILY_LIMIT: the average
-daily ENTRY (over the days that have an entry; a zero is a real entry, a day with no row is not counted) and the average CAPPING (over the days in the
-period, up to today, on which a capping was in force). A store is IN ALERT when either average is above the limit, or any single day's entry is above it.
-Exactly the limit is fine. Averages are shown to two decimals; the comparison itself uses the exact figures.
+The alert is separate from the monthly-limit levels in capping_service. Two COLLECTIVE averages, across all live Zepto stores together, must stay at or
+under settings.MAX_DAILY_LIMIT: the average daily ENTRY (all bottles / all store-days that have an entry; a zero is a real entry, a day with no row is not
+counted) and the average CAPPING (all capping / all store-days, up to today, on which a capping was in force). The alert (`overall`) is raised when either
+collective average is above the limit; exactly the limit is fine. Every store still gets its own averages and colour for reference, but a single store
+above the limit does not raise the alert. Averages are shown to two decimals; the comparison itself uses the exact figures.
 """
 from __future__ import annotations
 
@@ -353,14 +354,27 @@ def summary(db: Session, user: User, perms: set[str], start: date | None, end: d
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
             "average": round(total / n, 2) if n else None, "entry_days": n, "total": total, "max_day": top,
-            "capping_average": round(cap_total / cap_days, 2) if cap_days else None, "capping_days": cap_days,
+            "capping_average": round(cap_total / cap_days, 2) if cap_days else None, "capping_days": cap_days, "_cap_total": cap_total,
             "current_capping": current if current is not None else legacy,        # store_caps still answers for a 0 / a cap the history cannot hold
             "breach_days": [{"date": d, "value": v} for d, v in breaches.get(sid, [])],
             **a,
         })
+    # the collective figures the alert is based on: every store's bottles / entry days, and every store's capping / capping days
+    entry_total, entry_days = sum(r["total"] for r in rows), sum(r["entry_days"] for r in rows)
+    cap_all, cap_days_all = sum(r["_cap_total"] for r in rows), sum(r["capping_days"] for r in rows)
+    verdict = assess(entry_total, entry_days, [], limit, cap_all, cap_days_all)
+    overall = {
+        "entry_average": round(entry_total / entry_days, 2) if entry_days else None, "entry_days": entry_days, "total": entry_total,
+        "capping_average": round(cap_all / cap_days_all, 2) if cap_days_all else None, "capping_days": cap_days_all,
+        "entry_breach": verdict["average_breach"], "capping_breach": verdict["capping_breach"],
+        "alert": verdict["alert"], "reasons": verdict["reasons"], "status": verdict["status"],
+    }
+    for r in rows:
+        del r["_cap_total"]
     rows.sort(key=lambda r: (not r["alert"], -(r["average"] if r["average"] is not None else -1.0), r["outlet_name"].lower()))
     return {
         "from": start, "to": end, "today": today, "limit": limit, "amber_margin": AMBER_MARGIN,
         "totals": {"stores": len(rows), "in_alert": sum(1 for r in rows if r["alert"])},
+        "overall": overall,
         "rows": rows,
     }

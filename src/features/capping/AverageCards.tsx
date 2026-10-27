@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { IconSearch } from "@/components/ui/icons";
 import { alertReasons, fmtAvg } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
-import type { CapSummary, CapSummaryRow, CapTone } from "@/services/capping";
+import type { CapOverall, CapSummary, CapSummaryRow, CapTone } from "@/services/capping";
 
 const PAGE = 24;
 const TONE: Record<CapTone, { card: string; value: string; label: string }> = {
@@ -15,6 +15,26 @@ const TONE: Record<CapTone, { card: string; value: string; label: string }> = {
   over: { card: "border-status-danger/50 bg-status-danger/5", value: "text-status-danger", label: "Above the limit" },
   none: { card: "border-surface-border bg-surface", value: "text-gray-500", label: "No entries" },
 };
+
+/** All stores together: the two averages the alert is based on. */
+function Overall({ o, limit }: { o: CapOverall; limit: number }) {
+  const t = TONE[o.status];
+  const big = (label: string, v: number | null, breach: boolean, days: number, unit: string) => (
+    <div className={`rounded-xl border p-4 shadow-card ${breach ? TONE.over.card : t.card}`}>
+      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className={`mt-1 text-3xl font-extrabold tabular-nums ${breach ? TONE.over.value : t.value}`}>
+        {v === null ? "—" : fmtAvg(v)} <span className="text-base font-semibold text-gray-500">/ Limit {limit}</span>
+      </p>
+      <p className="text-xs text-gray-600">{v === null ? "Nothing to average yet" : `${days.toLocaleString("en-IN")} ${unit}`}</p>
+    </div>
+  );
+  return (
+    <div className="grid gap-3 sm:grid-cols-2" aria-label="Collective averages">
+      {big("Average entry · all stores", o.entryAverage, o.entryBreach, o.entryDays, "store-days with an entry")}
+      {big("Average capping · all stores", o.cappingAverage, o.cappingBreach, o.cappingDays, "store-days with a capping")}
+    </div>
+  );
+}
 
 function Card({ row, limit }: { row: CapSummaryRow; limit: number }) {
   const t = TONE[row.status];
@@ -58,7 +78,7 @@ export function AverageCards({ summary, isLoading, error, onRetry }: { summary: 
         <div>
           <h3 className="text-sm font-bold text-gray-900">Average against the limit</h3>
           <p className="text-xs text-gray-500">
-            {summary ? `Limit ${summary.limit} bottles a day. A store is in alert when its average entry, its average capping, or any single day's entry is above it.` : "Each store's average daily entry for the chosen month."}
+            {summary ? `Limit ${summary.limit} bottles a day. The alert is on the collective averages of all stores together; the cards below show each store for reference.` : "Average daily entry and capping for the chosen month."}
           </p>
         </div>
         {summary && summary.rows.length > 0 && (
@@ -81,6 +101,7 @@ export function AverageCards({ summary, isLoading, error, onRetry }: { summary: 
 
       {isLoading && <Skeleton className="h-40" />}
       {error && <ErrorState message={error.message || "Couldn't load the averages."} onRetry={onRetry} />}
+      {summary && summary.rows.length > 0 && <Overall o={summary.overall} limit={summary.limit} />}
       {summary && summary.rows.length === 0 && <EmptyState title="No stores yet" description="There are no live Zepto stores to measure." />}
       {summary && summary.rows.length > 0 && rows.length === 0 && <EmptyState title="No stores match" description="Change the search, or turn off “Only red / amber”." />}
       {summary && rows.length > 0 && (

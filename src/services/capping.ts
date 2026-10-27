@@ -126,6 +126,22 @@ export interface CapSummaryRow {
   status: CapTone;
 }
 
+/** The collective figures the alert is based on: all stores together, not store by store. */
+export interface CapOverall {
+  /** All bottles / all days that have an entry, two decimals; null when there are none. */
+  entryAverage: number | null;
+  entryDays: number;
+  total: number;
+  /** All capping / all store-days with a capping in force (up to today), two decimals; null when none. */
+  cappingAverage: number | null;
+  cappingDays: number;
+  entryBreach: boolean;
+  cappingBreach: boolean;
+  alert: boolean;
+  reasons: ("average" | "capping")[];
+  status: CapTone;
+}
+
 export interface CapSummary {
   from: string;
   to: string;
@@ -133,6 +149,7 @@ export interface CapSummary {
   limit: number;
   amberMargin: number;
   totals: { stores: number; inAlert: number };
+  overall: CapOverall;
   rows: CapSummaryRow[];
 }
 
