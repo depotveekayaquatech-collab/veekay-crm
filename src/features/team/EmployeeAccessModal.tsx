@@ -38,6 +38,8 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
   const [excludedCities, setExcludedCities] = useState<string[]>(employee?.excludedCities ?? []);
   const [includedStates, setIncludedStates] = useState<string[]>(employee?.includedStates ?? []);
   const [includedCities, setIncludedCities] = useState<string[]>(employee?.includedCities ?? []);
+  // "*" among the added states = every store of the platform (state-scoped platforms like Zepto have no other way to give someone all states)
+  const [allStores, setAllStores] = useState<boolean>(employee?.includedStates?.includes("*") ?? false);
   const [perms, setPerms] = useState<Set<string>>(
     // New employees start with ticket access for their own region; everything else stays opt-in.
     new Set(employee?.directPermissions ?? ["tickets.view", "tickets.create"]),
@@ -65,7 +67,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
       const picked = isEmployeeModel ? [] : regionIds;
       const skipS = isEmployeeModel ? [] : excludedStates;
       const skipC = isEmployeeModel ? [] : excludedCities;
-      const addS = isEmployeeModel ? [] : includedStates;
+      const addS = isEmployeeModel ? (allStores ? ["*"] : []) : includedStates;
       const addC = isEmployeeModel ? [] : includedCities;
       if (employee) {
         await update.mutateAsync({ id: employee.id, input: { full_name: name, email: email || null } });
@@ -174,6 +176,15 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
             {platformSlug} employees are scoped by <strong>state</strong> — assign states on the
             State assignment panel after creating this employee.
           </p>
+        )}
+        {isEmployeeModel && (
+          <label className="flex items-start gap-2.5 rounded-md border border-surface-border px-3 py-2.5 text-sm text-gray-700">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-500" checked={allStores} onChange={(e) => setAllStores(e.target.checked)} />
+            <span>
+              <strong className="font-semibold">Can mark every {platformSlug} store</strong>
+              <span className="block text-xs text-gray-500">All states, including new ones, in addition to any states assigned above. Marking rules are unchanged.</span>
+            </span>
+          </label>
         )}
 
         <div>

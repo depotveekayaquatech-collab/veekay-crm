@@ -61,16 +61,20 @@ def month_stats(db: Session, store_ids: list[uuid.UUID], today: date) -> dict[uu
     return {r[0]: (r[1], int(r[2]), int(r[3]), bool(r[4])) for r in rows}
 
 
-def _own_month_bottles(db: Session, store_ids: list[uuid.UUID], today: date, uid: uuid.UUID, user: User) -> dict[uuid.UUID, int]:
-    """{store_id: bottles this month in the numbers this person may see: their own, and those set by someone more senior (never a peer's, never a cash adjustment)}."""
+def _own_month_bottles(db: Session, store_ids: list[uuid.UUID], today: date, uid: uuid.UUID, user: User, *, everyone: bool = False) -> dict[uuid.UUID, int]:
+    """{store_id: bottles this month in the numbers this person may see: their own, and those set by someone more senior (never a peer's, never a cash adjustment)}.
+    `everyone` (entries.view_all): every employee's number, still never a cash adjustment."""
     if not store_ids:
         return {}
     from app.core.entry_access import visible_clause, viewer_rank
 
     rank = viewer_rank(db, user)
+    where = [OrderEntry.store_id.in_(store_ids), OrderEntry.order_date >= today.replace(day=1), OrderEntry.order_date <= today]
+    if not everyone:
+        where.append(visible_clause({uid}, rank))
     rows = db.execute(
         select(OrderEntry.store_id, func.coalesce(func.sum(OrderEntry.bottle_count - OrderEntry.cash_adjustment), 0))
-        .where(OrderEntry.store_id.in_(store_ids), OrderEntry.order_date >= today.replace(day=1), OrderEntry.order_date <= today, visible_clause({uid}, rank))
+        .where(*where)
         .group_by(OrderEntry.store_id)
     ).all()
     return {r[0]: int(r[1]) for r in rows}
@@ -107,7 +111,9 @@ def inventory(db: Session, user: User, *, is_admin: bool, partner_slug: str | No
 
     stats = month_stats(db, [r[0] for r in recs], today)
     # An Entry Contributor is shown the bottles THEY entered, never a total that includes a colleague's numbers (or a developer's adjustment).
-    own = _own_month_bottles(db, [r[0] for r in recs], today, user.id, user) if not is_admin else None
+    from app.core.entry_access import sees_every_entry
+
+    own = _own_month_bottles(db, [r[0] for r in recs], today, user.id, user, everyone=sees_every_entry(db, user)) if not is_admin else None
     items: list[InventoryStore] = []
     for sid, name, code, plat, plat_slug, region, state, city, vendor, vendor_no, poc, poc_no, start, store_status in recs:
         last, bottles, entries, marked_today = stats.get(sid, (None, 0, 0, False))

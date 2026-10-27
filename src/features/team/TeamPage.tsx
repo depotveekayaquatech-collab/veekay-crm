@@ -183,14 +183,14 @@ export function TeamPage() {
                     <span>
                       {e.regions.map((r) => r.name).join(", ")}
                       {(e.includedStates.length > 0 || e.includedCities.length > 0) && (
-                        <span className="block text-xs text-status-success">plus {[...e.includedStates, ...e.includedCities].join(", ")}</span>
+                        <span className="block text-xs text-status-success">plus {[...e.includedStates.map((s) => (s === "*" ? "every store" : s)), ...e.includedCities].join(", ")}</span>
                       )}
                       {(e.excludedStates.length > 0 || e.excludedCities.length > 0) && (
                         <span className="block text-xs text-status-danger">except {[...e.excludedStates, ...e.excludedCities].join(", ")}</span>
                       )}
                     </span>
                   ) : e.includedStates.length > 0 || e.includedCities.length > 0 ? (
-                    <span className="text-status-success">{[...e.includedStates, ...e.includedCities].join(", ")}</span>
+                    <span className="text-status-success">{[...e.includedStates.map((s) => (s === "*" ? "Every store" : s)), ...e.includedCities].join(", ")}</span>
                   ) : (e.states.length ? e.states.join(", ") : "—"))}</Td>
                   <Td>{e.adminLevel === "full" ? "Full access" : e.directPermissions.length}</Td>
                   <Td>

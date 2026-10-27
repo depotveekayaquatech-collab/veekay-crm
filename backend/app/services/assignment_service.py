@@ -78,6 +78,10 @@ def employee_exclusions(db: Session, user_id: uuid.UUID) -> tuple[set[str], set[
     return states, cities
 
 
+# An added "state" of "*" means every store of the employee's platform, in any state (including a state that does not exist yet). Skipped places still win.
+ALL_STORES = "*"
+
+
 def employee_additions(db: Session, user_id: uuid.UUID) -> tuple[set[str], set[str]]:
     """(added states, added cities), lower-cased: given on top of the regions, or on their own."""
     states: set[str] = set()
@@ -143,6 +147,8 @@ def visible_stores(db: Session, employee: User, *, include_closed: bool = False)
 
     ex_states, ex_cities = employee_exclusions(db, employee.id)
     add_states, add_cities = employee_additions(db, employee.id)
+    if ALL_STORES in add_states:
+        return _load(db, _drop_excluded(list(db.execute(live).scalars().all()), ex_states, ex_cities))
     added = (
         list(db.execute(live.where(or_(func.lower(Store.state).in_(add_states), func.lower(Store.city).in_(add_cities)))).scalars().all())
         if (add_states or add_cities) else []

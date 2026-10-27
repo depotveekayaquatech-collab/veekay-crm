@@ -48,7 +48,7 @@ from app.schemas.order import (
     TrendPoint,
 )
 from app.core import audit_context
-from app.core.entry_access import ROLE_RANK, EntryScope, owned_clause, owns_value, set_by_someone_above, viewer_rank, visible_clause
+from app.core.entry_access import ROLE_RANK, EntryScope, owned_clause, owns_value, sees_every_entry, set_by_someone_above, viewer_rank, visible_clause
 from app.services import activity_service, assignment_service, order_journal_service, vendor_history_service
 from app.services.entry_changes import last_changes, last_changes_for, status_for_contributor
 
@@ -233,6 +233,7 @@ def get_calendar(
 ) -> OrderCalendar:
     store = _resolve_store(db, user, store_id, is_admin=is_admin)
     rank = viewer_rank(db, user)
+    sees_all = not is_admin and sees_every_entry(db, user)       # entries.view_all: read-only, every entry of a store they can reach
     repo = OrderEntryRepository(db)
     entries = repo.month_map(store.id, year, month)
     who = {
@@ -248,7 +249,7 @@ def get_calendar(
     for d, entry in entries.items():
         mine = entry.created_by_user_id == user.id or (
             entry.source == EntrySource.EMPLOYEE.value and entry.marked_by_user_id == user.id and entry.last_modified_by_user_id == user.id)
-        in_scope = scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids))
+        in_scope = sees_all or (scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids)))
         above = not is_admin and set_by_someone_above(entry, rank)       # a more senior person set it: visible, read-only
         seen[d] = (mine, in_scope, above, is_admin or mine or in_scope or above)
     # What happened to the numbers the caller can see after they were entered: who changed it (name + role), when, old -> new, and the verification state.

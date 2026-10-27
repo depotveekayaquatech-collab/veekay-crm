@@ -110,6 +110,8 @@ export interface CapSummaryRow {
   /** Average capping over the days of the period (up to today) that had one in force, two decimals; null when none. */
   cappingAverage: number | null;
   cappingDays: number;
+  /** Days in the period marked as 0 capping (absent from an older API). */
+  cappingZeroDays?: number;
   entryDays: number;
   total: number;
   maxDay: number | null;
@@ -163,12 +165,22 @@ export interface CapHistoryRow {
   createdAt: string;
 }
 
+export interface CapZeroDay {
+  id: string;
+  day: string;
+  changedBy: string | null;
+  changedByCode: string | null;
+  createdAt: string;
+}
+
 export interface CapHistory {
   storeId: string;
   outletId: string;
   outletName: string;
   today: string;
   rows: CapHistoryRow[];
+  /** Days marked as 0 capping, newest first (absent from an older API). */
+  zeroDays?: CapZeroDay[];
 }
 
 export interface CapSheetRow {
@@ -222,6 +234,16 @@ export async function getCappingSheet(from: string, to: string, storeId?: string
 /** Administrator / manager: a store's capping from a date (today or earlier). */
 export async function changeCapping(storeId: string, capping: number, effectiveFrom: string): Promise<CapChangeResult> {
   return camelize<CapChangeResult>(await apiRequest("/capping/change", { method: "POST", body: { storeId, capping, effectiveFrom } }));
+}
+
+/** Administrator / manager: the store's capping is 0 on these days (the days either side keep theirs). */
+export async function markZeroDays(storeId: string, days: string[]): Promise<{ marked: string[]; already: string[] }> {
+  return camelize(await apiRequest("/capping/zero-days", { method: "POST", body: { storeId, days } }));
+}
+
+/** Take a day marked by mistake back to its normal capping. */
+export async function unmarkZeroDay(storeId: string, day: string): Promise<void> {
+  await apiRequest(`/capping/zero-days?storeId=${encodeURIComponent(storeId)}&day=${encodeURIComponent(day)}`, { method: "DELETE" });
 }
 
 /** Saves the capping sheet as a file. */

@@ -11,12 +11,39 @@ import { dateLabel, isBackdated, istToday } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
 import { usePermission } from "@/hooks/usePermission";
 import { pushToast } from "@/lib/toast";
-import { changeCapping, getCappingHistory, type CapRow } from "@/services/capping";
+import { changeCapping, getCappingHistory, markZeroDays, unmarkZeroDay, type CapRow } from "@/services/capping";
 
 const MAX = 1_000_000;
 const EARLIEST = "2024-01-01";
 
-function History({ storeId }: { storeId: string }) {
+function ZeroDays({ storeId, canChange, days }: { storeId: string; canChange: boolean; days: { id: string; day: string; changedBy: string | null }[] }) {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: (day: string) => unmarkZeroDay(storeId, day),
+    onSuccess: () => {
+      pushToast("Day taken back to its normal capping.", "success");
+      void qc.invalidateQueries({ queryKey: ["capping"] });
+    },
+  });
+  if (days.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
+      <h4 className="text-sm font-bold text-gray-900">Days with 0 capping</h4>
+      <ul className="mt-2 flex flex-wrap gap-2">
+        {days.map((z) => (
+          <li key={z.id} className="flex items-center gap-1.5 rounded-full bg-surface-subtle px-3 py-1 text-sm ring-1 ring-surface-border" title={z.changedBy ? `Marked by ${z.changedBy}` : undefined}>
+            <span className="font-semibold tabular-nums">{dateLabel(z.day)}</span>
+            {canChange && (
+              <button onClick={() => remove.mutate(z.day)} disabled={remove.isPending} aria-label={`Take ${dateLabel(z.day)} back to its normal capping`} className="rounded px-1 text-gray-400 hover:text-status-danger">×</button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function History({ storeId, canChange }: { storeId: string; canChange: boolean }) {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["capping", "history", storeId],
     queryFn: () => getCappingHistory(storeId),
@@ -24,11 +51,20 @@ function History({ storeId }: { storeId: string }) {
   });
   if (isLoading) return <Skeleton className="h-32" />;
   if (isError) return <ErrorState message={error instanceof Error ? error.message : "Couldn't load the history."} onRetry={() => refetch()} />;
-  if (!data || data.rows.length === 0) {
-    return <EmptyState title="No changes recorded yet" description="Once a capping is set for this store, each change appears here with the date it took effect." />;
+  if (!data) return null;
+  const zero = <ZeroDays storeId={storeId} canChange={canChange} days={data.zeroDays ?? []} />;
+  if (data.rows.length === 0) {
+    return (
+      <div className="flex flex-col gap-3">
+        <EmptyState title="No changes recorded yet" description="Once a capping is set for this store, each change appears here with the date it took effect." />
+        {zero}
+      </div>
+    );
   }
   const inForce = data.rows.find((r) => r.effectiveFrom <= data.today)?.id;     // rows are newest first
   return (
+    <div className="flex flex-col gap-3">
+    {zero}
     <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
       <table className="w-full min-w-[520px] border-collapse text-sm">
         <thead>
@@ -50,6 +86,74 @@ function History({ storeId }: { storeId: string }) {
         </tbody>
       </table>
     </div>
+    </div>
+  );
+}
+
+/** Mark a store's capping as 0 on chosen days: pick days one by one, then save. The days either side keep their capping. */
+function ZeroDaysForm({ storeId, storeName }: { storeId: string; storeName: string }) {
+  const qc = useQueryClient();
+  const today = istToday();
+  const [pick, setPick] = useState(today);
+  const [days, setDays] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () => markZeroDays(storeId, days),
+    onSuccess: (r) => {
+      pushToast(`${r.marked.length} day${r.marked.length === 1 ? "" : "s"} marked as 0 capping for ${storeName}${r.already.length ? ` (${r.already.length} already marked)` : ""}.`, "success");
+      setDays([]);
+      setConfirming(false);
+      void qc.invalidateQueries({ queryKey: ["capping"] });
+    },
+    onError: () => setConfirming(false),
+  });
+  const add = () => {
+    if (pick && !days.includes(pick)) setDays([...days, pick].sort());
+  };
+
+  return (
+    <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card" aria-label="Mark 0 capping for specific days">
+      <h3 className="text-sm font-bold text-gray-900">Mark 0 capping for specific days</h3>
+      <p className="mt-1 text-xs text-gray-500">The capping is 0 on the days you add, and counts as 0 in the average. The days before and after keep their normal capping.</p>
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
+          Day
+          <input className={`${field} w-48`} type="date" value={pick} min="2024-01-01" onChange={(e) => setPick(e.target.value)} />
+        </label>
+        <Button variant="secondary" onClick={add} disabled={!pick || days.includes(pick)}>Add day</Button>
+      </div>
+      {days.length > 0 && (
+        <>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {days.map((d) => (
+              <li key={d} className="flex items-center gap-1.5 rounded-full bg-brand-500/10 px-3 py-1 text-sm ring-1 ring-brand-500/25">
+                <span className="font-semibold tabular-nums">{dateLabel(d)}</span>
+                <button onClick={() => setDays(days.filter((x) => x !== d))} aria-label={`Remove ${dateLabel(d)}`} className="rounded px-1 text-gray-500 hover:text-status-danger">×</button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3">
+            <Button onClick={() => setConfirming(true)} isLoading={save.isPending}>Mark 0 capping for {days.length} day{days.length === 1 ? "" : "s"}</Button>
+          </div>
+        </>
+      )}
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title="Mark these days as 0 capping?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button onClick={() => save.mutate()} isLoading={save.isPending}>Yes, mark them</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-700">
+          {storeName} will have a capping of <b>0</b> on {days.map(dateLabel).join(", ")}. The capping sheet and the average capping change for those days. You can take a day back afterwards.
+        </p>
+      </Modal>
+    </section>
   );
 }
 
@@ -122,9 +226,11 @@ export function ChangeCappingTab({ rows }: { rows: CapRow[] }) {
         {canChange && store && store.dailyCap !== null && <p className="mt-2 text-xs text-gray-500">Current capping for {store.outletName}: <b>{store.dailyCap}</b> a day.</p>}
       </section>
 
+      {canChange && storeId && <ZeroDaysForm key={storeId} storeId={storeId} storeName={store?.outletName ?? "The store"} />}
+
       <section className="flex flex-col gap-3" aria-label="Capping history">
         <h3 className="text-sm font-bold text-gray-900">{store ? `History · ${store.outletName}` : "History"}</h3>
-        {storeId ? <History storeId={storeId} /> : <EmptyState title="Choose a store" description="Pick a store above to see when its capping changed and who changed it." />}
+        {storeId ? <History storeId={storeId} canChange={canChange} /> : <EmptyState title="Choose a store" description="Pick a store above to see when its capping changed and who changed it." />}
       </section>
 
       <Modal

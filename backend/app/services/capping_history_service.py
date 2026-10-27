@@ -5,6 +5,9 @@ The capping of a store on day D is the capping of the row with the greatest effe
 days 1-14 and 11 from day 15). Rows are only ever added through the API (no edit, no delete). store_caps stays the "current capping": the capping
 effective today, refreshed in the same transaction as every change. Dates are Asia/Kolkata days.
 
+A store's capping can also be marked 0 for specific days (capping_zero_days): that day is 0 on the sheet and counts as 0 in the capping average, the days
+either side keep their capping. These are per-day marks, kept apart from the timeline above; store_caps is not touched by them.
+
 Who may do what (re-checked on the server, whatever the app shows):
   * see the history, the sheet and the summary: whoever may see Zepto capping (capping_service.is_eligible).
   * change a capping: holders of capping.change (administrators; a "manager" when it is ticked for them) who are not on another platform.
@@ -32,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.capping_history import CappingHistory
+from app.models.capping_history import CappingHistory, CappingZeroDay
 from app.models.order_entry import OrderEntry
 from app.models.store import Store, StoreStatus
 from app.models.store_cap import StoreCap
@@ -41,6 +44,8 @@ from app.services import activity_service, capping_service
 
 IST = ZoneInfo("Asia/Kolkata")
 EARLIEST = date(2024, 1, 1)         # same floor as capping_service.parse_month
+MAX_ZERO_DAYS = 62                 # days that can be marked in one request
+ZERO_DAYS_AHEAD = 60                # a day can be marked up to this far ahead
 MAX_SHEET_DAYS = 365                # one year of columns at most (and no repeated dd-MMM header)
 AMBER_MARGIN = 1                    # the card turns amber when the average is within this of the limit
 SHEET_MEDIA = {
@@ -83,6 +88,19 @@ def capping_totals(history: Sequence[tuple[date, int]], start: date, end: date) 
         if nxt is None:
             return total, days
         seg_start, current, i = nxt, history[i][1], i + 1
+
+
+def with_zero_days(total: int, days: int, history: Sequence[tuple[date, int]], zero_days: Sequence[date], start: date, end: date) -> tuple[int, int]:
+    """capping_totals() with the marked zero days applied: a marked day inside start..end counts as 0 (taking away the capping that was in force that
+    day, or adding the day when none was)."""
+    for z in set(zero_days):
+        if start <= z <= end:
+            current = effective_capping(history, z)
+            if current is None:
+                days += 1
+            else:
+                total -= current
+    return total, days
 
 
 def assess(total: int, days: int, breaches: Sequence[tuple[date, int]], limit: int, capping_total: int = 0, capping_days: int = 0) -> dict:
@@ -147,6 +165,18 @@ def _history_by_store(db: Session, store_ids: list[uuid.UUID], up_to: date) -> d
     )
     for sid, eff, cap in rows:
         out[sid].append((eff, cap))
+    return out
+
+
+def _zero_days_by_store(db: Session, store_ids: list[uuid.UUID], start: date, end: date) -> dict[uuid.UUID, set[date]]:
+    """One query: the marked zero days of these stores within start..end."""
+    out: dict[uuid.UUID, set[date]] = defaultdict(set)
+    if not store_ids:
+        return out
+    for sid, day in db.execute(
+        select(CappingZeroDay.store_id, CappingZeroDay.day).where(CappingZeroDay.store_id.in_(store_ids), CappingZeroDay.day >= start, CappingZeroDay.day <= end)
+    ):
+        out[sid].add(day)
     return out
 
 
@@ -227,13 +257,67 @@ def history(db: Session, user: User, perms: set[str], store_id: uuid.UUID) -> di
         .where(CappingHistory.store_id == store_id)
         .order_by(CappingHistory.effective_from.desc())
     ).all()
+    zero = db.execute(
+        select(CappingZeroDay, User.full_name, User.employee_code)
+        .outerjoin(User, User.id == CappingZeroDay.created_by)
+        .where(CappingZeroDay.store_id == store_id)
+        .order_by(CappingZeroDay.day.desc())
+    ).all()
     return {
         "store_id": store_id, "outlet_id": store.external_code, "outlet_name": store.name, "today": today_ist(),
         "rows": [
             {"id": h.id, "capping": h.capping, "effective_from": h.effective_from, "changed_by": name, "changed_by_code": code, "created_at": h.created_at}
             for h, name, code in rows
         ],
+        "zero_days": [{"id": z.id, "day": z.day, "changed_by": name, "changed_by_code": code, "created_at": z.created_at} for z, name, code in zero],
     }
+
+def mark_zero_days(db: Session, user: User, perms: set[str], store_id: uuid.UUID, days: Sequence[date]) -> dict:
+    """Mark a store's capping as 0 on these days. A day already marked is reported, not an error. Past days, today and up to ZERO_DAYS_AHEAD days ahead."""
+    _require_change(user, perms)
+    partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
+    store = _store(db, user, partner.id, store_id)
+    wanted = sorted(set(days))
+    if not wanted:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose at least one day.")
+    if len(wanted) > MAX_ZERO_DAYS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Mark at most {MAX_ZERO_DAYS} days at a time.")
+    today = today_ist()
+    if wanted[0] < EARLIEST or wanted[-1] > today + timedelta(days=ZERO_DAYS_AHEAD):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Choose days from {EARLIEST:%d-%b-%Y} to {ZERO_DAYS_AHEAD} days from today.")
+    have = set(db.execute(select(CappingZeroDay.day).where(CappingZeroDay.store_id == store_id, CappingZeroDay.day.in_(wanted))).scalars())
+    new = [d for d in wanted if d not in have]
+    for d in new:
+        db.add(CappingZeroDay(store_id=store_id, day=d, created_by=user.id))
+    try:
+        db.flush()
+    except IntegrityError:                  # the same day marked by someone else at the same moment: it is marked either way
+        db.rollback()
+        return {"store_id": store_id, "marked": [], "already": wanted}
+    if new:
+        activity_service.record(
+            db, actor=user, action="store.capping_zero_marked", entity_type="store", entity_id=store_id,
+            metadata={"outlet": store.external_code, "name": store.name, "days": [d.isoformat() for d in new]},
+        )
+    db.commit()
+    return {"store_id": store_id, "marked": new, "already": sorted(have)}
+
+
+def unmark_zero_day(db: Session, user: User, perms: set[str], store_id: uuid.UUID, day: date) -> dict:
+    """Take a marked day back to the capping the timeline gives it (for a mark made by mistake). Recorded in the activity log."""
+    _require_change(user, perms)
+    partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
+    store = _store(db, user, partner.id, store_id)
+    row = db.execute(select(CappingZeroDay).where(CappingZeroDay.store_id == store_id, CappingZeroDay.day == day)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That day is not marked as zero capping.")
+    db.delete(row)
+    activity_service.record(
+        db, actor=user, action="store.capping_zero_unmarked", entity_type="store", entity_id=store_id,
+        metadata={"outlet": store.external_code, "name": store.name, "day": day.isoformat()},
+    )
+    db.commit()
+    return {"store_id": store_id, "removed": day}
 
 
 # ---------------------------------------------------------------- legacy writers (the older "set a cap" and the sheet upload)
@@ -270,11 +354,12 @@ def sheet(db: Session, user: User, perms: set[str], start: date | None, end: dat
         _store(db, user, partner.id, store_id)
     stores = _stores(db, user, partner.id, store_id)
     hist = _history_by_store(db, [s[0] for s in stores], end)
+    zero = _zero_days_by_store(db, [s[0] for s in stores], start, end)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     rows = []
     for sid, code, name, state, city, _ in stores:
-        h = hist.get(sid, [])
-        rows.append({"store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city, "cells": [effective_capping(h, d) for d in days]})
+        h, z = hist.get(sid, []), zero.get(sid, set())
+        rows.append({"store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city, "cells": [0 if d in z else effective_capping(h, d) for d in days]})
     return {"from": start, "to": end, "dates": days, "rows": rows}
 
 
@@ -344,17 +429,19 @@ def summary(db: Session, user: User, perms: set[str], start: date | None, end: d
         breaches[sid].append((day, int(value)))
     capping_end = min(end, today)               # no capping average for days that have not happened yet
     hist = _history_by_store(db, ids, today)
+    zero = _zero_days_by_store(db, ids, start, capping_end)
 
     rows = []
     for sid, code, name, state, city, legacy in stores:
         total, n, top = totals.get(sid, (0, 0, None))
         cap_total, cap_days = capping_totals(hist.get(sid, []), start, capping_end)
+        cap_total, cap_days = with_zero_days(cap_total, cap_days, hist.get(sid, []), zero.get(sid, ()), start, capping_end)
         a = assess(total, n, breaches.get(sid, []), limit, cap_total, cap_days)
         current = effective_capping(hist.get(sid, []), today)
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
             "average": round(total / n, 2) if n else None, "entry_days": n, "total": total, "max_day": top,
-            "capping_average": round(cap_total / cap_days, 2) if cap_days else None, "capping_days": cap_days, "_cap_total": cap_total,
+            "capping_average": round(cap_total / cap_days, 2) if cap_days else None, "capping_days": cap_days, "capping_zero_days": len(zero.get(sid, ())), "_cap_total": cap_total,
             "current_capping": current if current is not None else legacy,        # store_caps still answers for a 0 / a cap the history cannot hold
             "breach_days": [{"date": d, "value": v} for d, v in breaches.get(sid, [])],
             **a,

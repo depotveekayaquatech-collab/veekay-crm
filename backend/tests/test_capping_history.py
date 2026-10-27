@@ -403,3 +403,72 @@ def test_summary_alerts_on_the_collective_averages_not_on_a_single_store(client,
     assert o["alert"] and o["entry_breach"] and o["reasons"] == ["average"] and o["status"] == "over"
     monkeypatch.setattr(settings, "MAX_DAILY_LIMIT", 8)
     assert overall()[0]["alert"] is False                                                             # exactly the limit is fine
+
+
+# ---------------------------------------------------------------- zero capping on specific days
+
+def _zero(client, headers, store, *days):
+    return client.post(f"{API}/capping/zero-days", json={"storeId": str(store.id), "days": [d.isoformat() for d in days]}, headers=headers)
+
+
+def test_with_zero_days_a_marked_day_counts_as_zero_in_the_capping_average():
+    hist = [(date(2026, 10, 1), 10)]
+    base = svc.capping_totals(hist, date(2026, 10, 1), date(2026, 10, 10))
+    assert base == (100, 10)
+    assert svc.with_zero_days(*base, hist, [date(2026, 10, 4), date(2026, 10, 5)], date(2026, 10, 1), date(2026, 10, 10)) == (80, 10)    # two days at 0: 8.0 on average
+    assert svc.with_zero_days(*base, hist, [date(2026, 11, 1)], date(2026, 10, 1), date(2026, 10, 10)) == (100, 10)                    # outside the period: ignored
+    assert svc.with_zero_days(0, 0, [], [date(2026, 10, 4)], date(2026, 10, 1), date(2026, 10, 10)) == (0, 1)                         # no capping that day: it still counts, as 0
+    assert svc.with_zero_days(*base, hist, [date(2026, 10, 4), date(2026, 10, 4)], date(2026, 10, 1), date(2026, 10, 10)) == (90, 10)  # the same day twice is one day
+
+
+def test_marking_zero_days_shows_on_the_sheet_and_lowers_the_capping_average(client, admin, zstore, db):
+    today = _today()
+    start = today.replace(day=1)
+    _seed(db, zstore, (start - timedelta(days=3), 12))
+    d1, d2 = start + timedelta(days=0), start + timedelta(days=1)
+    r = _zero(client, admin, zstore, d2, d1)
+    assert r.status_code == 201, r.text
+    assert r.json()["marked"] == [d1.isoformat(), d2.isoformat()] and r.json()["already"] == []
+    sheet = client.get(f"{API}/capping/sheet", params={"from": start.isoformat(), "to": (start + timedelta(days=3)).isoformat(), "storeId": str(zstore.id)}, headers=admin).json()
+    assert _sheet_row(sheet, zstore)["cells"] == [0, 0, 12, 12]                         # the days either side keep their capping
+    body = client.get(f"{API}/capping/summary", params={"from": start.isoformat(), "to": today.isoformat()}, headers=admin).json()
+    row = _sheet_row(body, zstore)
+    n = (today - start).days + 1
+    expected = round((12 * (n - 2)) / n, 2) if n >= 2 else 0.0
+    assert row["capping_zero_days"] == (2 if n >= 2 else 1) and row["capping_average"] == expected
+
+
+def test_marking_the_same_day_again_is_reported_not_an_error_and_the_store_cap_is_untouched(client, admin, zstore, db):
+    day = _today() - timedelta(days=2)
+    assert _change(client, admin, zstore, 11, day - timedelta(days=5)).status_code == 201
+    assert _zero(client, admin, zstore, day).json()["marked"] == [day.isoformat()]
+    again = _zero(client, admin, zstore, day).json()
+    assert again["marked"] == [] and again["already"] == [day.isoformat()]
+    db.expire_all()
+    assert db.query(StoreCap).filter_by(store_id=zstore.id).one().daily_cap == 11        # the store's own capping is not changed by a zero day
+    assert db.query(CappingHistory).filter_by(store_id=zstore.id).count() == 1
+
+
+def test_a_marked_day_is_listed_in_the_history_and_can_be_taken_back(client, admin, zstore):
+    day = _today() - timedelta(days=1)
+    _zero(client, admin, zstore, day)
+    h = client.get(f"{API}/capping/history", params={"storeId": str(zstore.id)}, headers=admin).json()
+    assert [z["day"] for z in h["zero_days"]] == [day.isoformat()] and h["zero_days"][0]["changed_by"]
+    assert client.delete(f"{API}/capping/zero-days", params={"storeId": str(zstore.id), "day": day.isoformat()}, headers=admin).status_code == 200
+    assert client.get(f"{API}/capping/history", params={"storeId": str(zstore.id)}, headers=admin).json()["zero_days"] == []
+    assert client.delete(f"{API}/capping/zero-days", params={"storeId": str(zstore.id), "day": day.isoformat()}, headers=admin).status_code == 404
+
+
+def test_zero_days_need_capping_change_and_sensible_dates(client, admin, zepto_emp, emp, zstore, make_store):
+    day = _today()
+    assert _zero(client, zepto_emp, zstore, day).status_code == 403
+    assert _zero(client, emp, zstore, day).status_code == 403
+    assert client.delete(f"{API}/capping/zero-days", params={"storeId": str(zstore.id), "day": day.isoformat()}, headers=zepto_emp).status_code == 403
+    assert _zero(client, admin, zstore, _today() + timedelta(days=svc.ZERO_DAYS_AHEAD + 1)).status_code == 422
+    assert _zero(client, admin, zstore, date(2020, 1, 1)).status_code == 422
+    assert _zero(client, admin, zstore, _today() + timedelta(days=5)).status_code == 201                     # a planned day ahead is fine
+    assert client.post(f"{API}/capping/zero-days", json={"storeId": str(zstore.id), "days": []}, headers=admin).status_code == 422
+    too_many = [(_today() - timedelta(days=i)).isoformat() for i in range(svc.MAX_ZERO_DAYS + 1)]
+    assert client.post(f"{API}/capping/zero-days", json={"storeId": str(zstore.id), "days": too_many}, headers=admin).status_code == 422
+    assert client.post(f"{API}/capping/zero-days", json={"storeId": str(uuid.uuid4()), "days": [day.isoformat()]}, headers=admin).status_code == 404
+    assert _zero(client, admin, make_store(platform="blinkit"), day).status_code == 404

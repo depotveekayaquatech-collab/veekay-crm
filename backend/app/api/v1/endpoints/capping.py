@@ -41,6 +41,14 @@ class CappingChangeIn(BaseModel):
     effective_from: date = Field(alias="effectiveFrom", description="today or an earlier date (Asia/Kolkata)")
 
 
+class ZeroDaysIn(BaseModel):
+    """Days on which a store's capping is 0. camelCase (storeId); snake_case works too."""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    store_id: uuid.UUID = Field(alias="storeId")
+    days: list[date] = Field(min_length=1, max_length=capping_history_service.MAX_ZERO_DAYS)
+
+
 @router.get("")
 def get_report(
     month: str | None = Query(None, description="2026-10; this month by default"),
@@ -151,3 +159,21 @@ def get_summary(
 ) -> dict:
     """Per store: average daily entry, highest day, the capping in force today and the days above MAX_DAILY_LIMIT, with the alert and why."""
     return capping_history_service.summary(db, user, perms, from_, to)
+
+
+@router.post("/zero-days", status_code=status.HTTP_201_CREATED)
+def mark_zero_days(
+    payload: ZeroDaysIn,
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Administrator / manager (capping.change): the store's capping is 0 on these days. The days either side keep their capping."""
+    return capping_history_service.mark_zero_days(db, user, perms, payload.store_id, payload.days)
+
+
+@router.delete("/zero-days")
+def unmark_zero_day(
+    store_id: uuid.UUID = Query(alias="storeId"), day: date = Query(),
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Administrator / manager: take a day marked by mistake back to its normal capping."""
+    return capping_history_service.unmark_zero_day(db, user, perms, store_id, day)

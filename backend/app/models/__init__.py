@@ -7,7 +7,7 @@ from app.models.region import Region
 from app.models.store import Store, StoreStatus
 from app.models.store_vendor_period import StoreVendorPeriod
 from app.models.store_cap import StoreCap
-from app.models.capping_history import CappingHistory
+from app.models.capping_history import CappingHistory, CappingZeroDay
 from app.models.vendor_rate import VendorRate
 from app.models.state_assignment import StateAssignment
 from app.models.idempotency_key import IdempotencyKey

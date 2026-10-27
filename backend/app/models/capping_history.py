@@ -29,3 +29,15 @@ class CappingHistory(Base, UUIDPrimaryKeyMixin):
     # Null only when the person's account was deleted later, or for a backfilled row whose cap had no known author.
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CappingZeroDay(Base, UUIDPrimaryKeyMixin):
+    """A single day on which a store's capping is 0, whatever its capping history says (the days either side are unaffected).
+    Kept apart from CappingHistory, which is a "from this date on" timeline and cannot express one day. `store_caps` is not touched by these."""
+    __tablename__ = "capping_zero_days"
+    __table_args__ = (UniqueConstraint("store_id", "day", name="uq_capping_zero_day_store_day"),)
+
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

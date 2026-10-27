@@ -52,6 +52,7 @@ function Card({ row, limit }: { row: CapSummaryRow; limit: number }) {
         <span className={`font-semibold ${t.value}`}>{t.label}</span>
         {row.average !== null && <> · {row.entryDays} day{row.entryDays === 1 ? "" : "s"} · highest {row.maxDay}</>}
         {row.currentCapping != null && <> · capping today {row.currentCapping}</>}
+        {!!row.cappingZeroDays && <> · {row.cappingZeroDays} zero-capping day{row.cappingZeroDays === 1 ? "" : "s"}</>}
       </p>
       {row.alert && <p className="text-xs font-medium text-status-danger">{alertReasons(row).join(" · ")}</p>}
     </li>

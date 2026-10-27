@@ -42,6 +42,9 @@ STATUS_REVIEWED = "reviewed_l3"
 PERM_TEAM = "entries.team"
 PERM_AUDIT = "entries.audit"
 PERM_REVIEW = "entries.review"
+# Per-person, read-only: a Level 1 employee who ticks this still marks like any Level 1 employee (own stores' scope, one entry per store and day, no
+# corrections) but SEES every entry of the stores they can mark: the calendar numbers and the month's bottles. No history, no Store Audit, no edits.
+PERM_VIEW_ALL = "entries.view_all"
 
 
 class Level(StrEnum):
@@ -61,6 +64,13 @@ ROLE_RANK = {
     "administrator": 4, "developer": 4,
 }
 LEVEL_RANK = {Level.CONTRIBUTOR: 1, Level.TEAM_LEAD: 2, Level.REVIEWER: 3, Level.ADMINISTRATOR: 4}
+
+
+def sees_every_entry(db, user) -> bool:
+    """True when this person was given entries.view_all (re-read from the database on every call, like every permission)."""
+    from app.repositories.user_repository import UserRepository
+
+    return PERM_VIEW_ALL in UserRepository(db).get_permission_codes(user.id)
 
 
 def roles_above(rank: int) -> list[str]:
