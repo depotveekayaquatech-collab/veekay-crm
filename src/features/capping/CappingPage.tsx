@@ -11,13 +11,16 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { IconEdit, IconRefresh, IconSearch, IconUpload } from "@/components/ui/icons";
 import { useAuth } from "@/features/auth/useAuth";
 import { pushToast } from "@/lib/toast";
+import { AverageCards } from "@/features/capping/AverageCards";
+import { CappingSheetTab } from "@/features/capping/CappingSheetTab";
+import { ChangeCappingTab } from "@/features/capping/ChangeCappingTab";
+import { ReduceCappingBanner } from "@/features/capping/ReduceCappingBanner";
+import { currentMonth, monthRange } from "@/features/capping/helpers";
+import { field } from "@/features/capping/styles";
 import {
-  getCappingReport, importCapsFile, setStoreCap, syncCapsFromSheet,
+  getCappingReport, getCappingSummary, importCapsFile, setStoreCap, syncCapsFromSheet,
   type CapImportResult, type CapLevel, type CapRow,
 } from "@/services/capping";
-
-const field =
-  "h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20";
 
 const LEVEL: Record<CapLevel, { label: string; tone: "danger" | "warning" | "success" | "neutral" }> = {
   OVER: { label: "Over cap", tone: "danger" },
@@ -28,6 +31,12 @@ const LEVEL: Record<CapLevel, { label: string; tone: "danger" | "warning" | "suc
 };
 type Filter = "ALL" | CapLevel | "ATTENTION";
 type Sort = "level" | "percent" | "used" | "name";
+type Tab = "usage" | "change" | "sheet";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "usage", label: "Usage" },
+  { id: "change", label: "Change capping" },
+  { id: "sheet", label: "Download capping sheet" },
+];
 const PAGE = 100;
 const n = (v: number | null) => (v === null ? "—" : v.toLocaleString("en-IN"));
 
@@ -196,6 +205,7 @@ export function CappingPage() {
   const [sort, setSort] = useState<Sort>("level");
   const [editing, setEditing] = useState<CapRow | "pick" | null>(null);
   const [limit, setLimit] = useState({ n: PAGE, sig: "" });
+  const [tab, setTab] = useState<Tab>("usage");
   const qc = useQueryClient();
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
@@ -204,6 +214,14 @@ export function CappingPage() {
     staleTime: 30_000,
     // never show the previous month's rows as if they were the chosen month's
     placeholderData: undefined,
+  });
+
+  // The average-vs-limit summary for the chosen month (this month by default): feeds the red banner and the cards.
+  const period = monthRange(month || data?.month || currentMonth());
+  const summary = useQuery({
+    queryKey: ["capping", "summary", period.from, period.to],
+    queryFn: () => getCappingSummary(period.from, period.to),
+    staleTime: 30_000,
   });
 
   const rows = useMemo(() => data?.rows ?? [], [data]);
@@ -252,14 +270,32 @@ export function CappingPage() {
         }
       />
 
-      {(hasPermission("sheets.sync") || hasPermission("orders.correct")) && (
+      <ReduceCappingBanner summary={summary.data} />
+
+      <div role="tablist" aria-label="Capping" className="flex flex-wrap gap-1.5">
+        {TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+            className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${tab === t.id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "sheet" && <CappingSheetTab rows={rows} />}
+      {tab === "change" && (data ? <ChangeCappingTab rows={rows} /> : isError ? null : <Skeleton className="h-64" />)}
+
+      {tab === "usage" && (hasPermission("sheets.sync") || hasPermission("orders.correct")) && (
         <LoadCaps canSyncSheet={hasPermission("sheets.sync")} onDone={() => void qc.invalidateQueries({ queryKey: ["capping"] })} />
       )}
 
-      {isLoading && <Skeleton className="h-64" />}
+      {tab === "usage" && (
+        <AverageCards summary={summary.data} isLoading={summary.isLoading} error={summary.isError ? (summary.error as Error) : null} onRetry={() => void summary.refetch()} />
+      )}
+
+      {isLoading && tab === "usage" && <Skeleton className="h-64" />}
       {isError && <ErrorState message={error instanceof Error ? error.message : "Couldn't load the capping report."} onRetry={() => refetch()} />}
 
-      {data && s && (
+      {tab === "usage" && data && s && (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Stat label="Over cap" value={s.over} tone="text-status-danger" active={filter === "OVER"} onClick={() => toggle("OVER")} />

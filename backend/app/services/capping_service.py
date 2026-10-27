@@ -247,6 +247,10 @@ def set_cap(db: Session, user: User, perms: set[str], store_id: uuid.UUID, cap: 
         db.add(StoreCap(store_id=store_id, daily_cap=cap, source="manual", updated_by_user_id=user.id))
     else:
         row.daily_cap, row.source, row.updated_by_user_id = cap, "manual", user.id
+    if cap is not None:
+        from app.services import capping_history_service    # the history is the record of when each value took effect
+
+        capping_history_service.record_current_many(db, {store_id: cap}, user.id)
     activity_service.record(
         db, actor=user, action="store.cap_changed", entity_type="store", entity_id=store_id,
         metadata={"outlet": store.external_code, "name": store.name, "from": before, "to": cap},
@@ -471,6 +475,7 @@ def import_grids(db: Session, actor: User, grids: list[list[list[str]]], *, over
     res["read_as"] = f"stores matched by {by}; columns found from {'what they contain' if lay.get('guessed') else 'their headings'}"
 
     existing = {c.store_id: c for c in db.execute(select(StoreCap).where(StoreCap.store_id.in_([s.id for s in all_stores] or [uuid.uuid4()]))).scalars()}
+    changed: dict[uuid.UUID, int] = {}          # caps this upload added or replaced, for the capping history
     seen: set[tuple[str, str]] = set()
     bad_rows: list[int] = []
     unknown_first: str | None = None
@@ -503,11 +508,13 @@ def import_grids(db: Session, actor: User, grids: list[list[list[str]]], *, over
             row_new = StoreCap(store_id=store.id, daily_cap=cap, source=source, updated_by_user_id=actor.id)
             db.add(row_new)
             existing[store.id] = row_new
+            changed[store.id] = cap
             res["added"] += 1
         elif cur.daily_cap == cap:
             res["kept"] += 1
         elif overwrite:
             cur.daily_cap, cur.source, cur.updated_by_user_id = cap, source, actor.id
+            changed[store.id] = cap
             res["updated"] += 1
         else:
             res["kept"] += 1
@@ -519,6 +526,9 @@ def import_grids(db: Session, actor: User, grids: list[list[list[str]]], *, over
         res["warnings"].append(f"{res['ambiguous']} store name(s) match more than one store and were skipped, add an Outlet ID column to settle them: {', '.join(ambiguous_names)}.")
     if res["kept"] and not overwrite:
         res["warnings"].append("Caps already set in the CRM were kept (turn on Overwrite to replace them with the sheet's values).")
+    from app.services import capping_history_service
+
+    capping_history_service.record_current_many(db, changed, actor.id)
     activity_service.record(
         db, actor=actor, action="store.caps_imported", entity_type="store", entity_id=partner.id,
         metadata={"source": source, "overwrite": overwrite, "added": res["added"], "updated": res["updated"], "kept": res["kept"]},

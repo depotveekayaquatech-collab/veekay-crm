@@ -79,6 +79,7 @@ PERMISSIONS = [
     ("logins.view", "View and export the vendor / POC logins prepared for the mobile app"),
     ("cards.sheet", "Cards from an uploaded sheet, behind an access code (developer only for now)"),
     ("capping.alerts", "See capping alerts for your stores (over the monthly cap, or ahead of its pace)"),
+    ("capping.change", "Change a store's capping with an effective date, and see the history of changes"),
     ("tickets.view", "View tickets for your stores"),
     ("tickets.create", "Raise tickets"),
     ("tickets.manage", "Manage every ticket: assign, change status, see all regions and insights"),

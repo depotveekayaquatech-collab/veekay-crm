@@ -1,5 +1,5 @@
 import { camelize } from "@/lib/camel";
-import { apiRequest } from "@/services/api";
+import { apiBlob, apiRequest } from "@/services/api";
 
 /** AHEAD: more bottles than the cap pro-rated to today (current month only), still under the cap. */
 export type CapLevel = "OVER" | "AHEAD" | "NEAR" | "OK" | "NO_CAP";
@@ -87,4 +87,134 @@ export async function importCapsFile(file: File, overwrite: boolean): Promise<Ca
   form.append("file", file);
   form.append("overwrite", String(overwrite));
   return camelize<CapImportResult>(await apiRequest("/capping/import", { method: "POST", body: form }));
+}
+
+// ---------------------------------------------------------------- capping history, the capping sheet and the average-vs-limit summary
+
+export type CapTone = "ok" | "warn" | "over" | "none";
+
+export interface BreachDay {
+  date: string;
+  value: number;
+}
+
+/** One store over the chosen period: its average daily entry against the limit, and why it is (or is not) in alert. */
+export interface CapSummaryRow {
+  storeId: string;
+  outletId: string;
+  outletName: string;
+  state: string | null;
+  city: string | null;
+  /** Average of the days that have an entry (a zero counts), two decimals; null when there are none. */
+  average: number | null;
+  /** Average capping over the days of the period (up to today) that had one in force, two decimals; null when none. */
+  cappingAverage: number | null;
+  cappingDays: number;
+  entryDays: number;
+  total: number;
+  maxDay: number | null;
+  /** The capping in force today. */
+  currentCapping: number | null;
+  breachDays: BreachDay[];
+  alert: boolean;
+  /** Which conditions put the store in alert: the entry average, the capping average, a single day. */
+  reasons: ("average" | "capping" | "day")[];
+  averageBreach: boolean;
+  cappingBreach: boolean;
+  dayBreach: boolean;
+  /** Card colour: over = in alert (red), warn = within the margin of the limit (amber), ok = green, none = no entries. */
+  status: CapTone;
+}
+
+export interface CapSummary {
+  from: string;
+  to: string;
+  today: string;
+  limit: number;
+  amberMargin: number;
+  totals: { stores: number; inAlert: number };
+  rows: CapSummaryRow[];
+}
+
+export interface CapHistoryRow {
+  id: string;
+  capping: number;
+  effectiveFrom: string;
+  changedBy: string | null;
+  changedByCode: string | null;
+  createdAt: string;
+}
+
+export interface CapHistory {
+  storeId: string;
+  outletId: string;
+  outletName: string;
+  today: string;
+  rows: CapHistoryRow[];
+}
+
+export interface CapSheetRow {
+  storeId: string;
+  outletId: string;
+  outletName: string;
+  state: string | null;
+  city: string | null;
+  /** The capping in force on each date of `dates`; null before the store's first change. */
+  cells: (number | null)[];
+}
+
+export interface CapSheet {
+  from: string;
+  to: string;
+  dates: string[];
+  rows: CapSheetRow[];
+}
+
+export interface CapChangeResult {
+  id: string;
+  storeId: string;
+  capping: number;
+  effectiveFrom: string;
+  /** True when the date is in the past. */
+  backdated: boolean;
+  /** The capping in force today, after this change. */
+  currentCapping: number | null;
+}
+
+export type SheetFormat = "csv" | "xlsx";
+
+function sheetQuery(from: string, to: string, storeId?: string): string {
+  const q = new URLSearchParams({ from, to });
+  if (storeId) q.set("storeId", storeId);
+  return q.toString();
+}
+
+export async function getCappingSummary(from: string, to: string): Promise<CapSummary> {
+  return camelize<CapSummary>(await apiRequest(`/capping/summary?${sheetQuery(from, to)}`));
+}
+
+export async function getCappingHistory(storeId: string): Promise<CapHistory> {
+  return camelize<CapHistory>(await apiRequest(`/capping/history?storeId=${encodeURIComponent(storeId)}`));
+}
+
+export async function getCappingSheet(from: string, to: string, storeId?: string): Promise<CapSheet> {
+  return camelize<CapSheet>(await apiRequest(`/capping/sheet?${sheetQuery(from, to, storeId)}`));
+}
+
+/** Administrator / manager: a store's capping from a date (today or earlier). */
+export async function changeCapping(storeId: string, capping: number, effectiveFrom: string): Promise<CapChangeResult> {
+  return camelize<CapChangeResult>(await apiRequest("/capping/change", { method: "POST", body: { storeId, capping, effectiveFrom } }));
+}
+
+/** Saves the capping sheet as a file. */
+export async function downloadCappingSheet(from: string, to: string, storeId: string | undefined, format: SheetFormat): Promise<void> {
+  const blob = await apiBlob(`/capping/sheet/download?${sheetQuery(from, to, storeId)}&format=${format}`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `zepto-capping-sheet_${from}_to_${to}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }

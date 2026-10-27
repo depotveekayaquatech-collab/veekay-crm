@@ -234,6 +234,8 @@ class Settings(BaseSettings):
     ORDER_SYNC_SHEETS: list[str] = Field(default_factory=list)
     # The Capping tab of the Zepto workbook, one entry: zepto=SHEET_ID:GID. Read only when a developer asks.
     CAPPING_SYNC_SHEETS: list[str] = Field(default_factory=list)
+    # Zepto capping alerts: a store is in alert when its average daily entry, or any single day's entry, is ABOVE this. The one place the number lives.
+    MAX_DAILY_LIMIT: int = Field(default=11, ge=1)
     ORDER_SYNC_ENABLED: bool = Field(default=True)
     ORDER_SYNC_OVERWRITE: bool = Field(default=False)
 
