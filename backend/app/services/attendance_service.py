@@ -229,8 +229,6 @@ def correct_record(
     """Developer correction of one person's day: check-in / check-out time (local HH:MM), office vs away, late or not, half day or not.
     A new time recomputes lateness; an explicit `late` wins over that. `clear_check_out` undoes a check-out made by mistake (the
     person can check out again). A person with no record on that day is marked present by giving a check-in time (backlog days too)."""
-    from app.services import activity_service
-
     rec = db.execute(
         select(AttendanceRecord).where(
             AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date == day
@@ -245,7 +243,6 @@ def correct_record(
 
     new_in = _local_moment(day, check_in_time, "check-in") if check_in_time is not None else None
     new_out = _local_moment(day, check_out_time, "check-out") if check_out_time is not None else None
-    created = rec is None
     if rec is None:
         target = db.get(User, user_id)
         if target is None or target.organization_id != actor.organization_id:
@@ -303,9 +300,6 @@ def correct_record(
         rec.half_day = half_day
 
     rec.source = "edited"
-    if created:
-        activity_service.record(db, actor=actor, action="attendance.marked_by_hand", entity_type="employee", entity_id=user_id,
-                                metadata={"present": True, "dates": [day.isoformat()], "marked": 1, "check_in_time": check_in_time, "check_out_time": check_out_time})
     db.commit()
     return _entry(rec, _now())
 
