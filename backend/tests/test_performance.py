@@ -73,6 +73,57 @@ def test_an_entry_marked_on_a_holiday_does_not_break_the_page(client, db, admin,
         client.delete(f"{API}/attendance/holidays/{holiday.isoformat()}", headers=admin)
 
 
+def _vendors(client, admin, **params):
+    r = client.get(f"{API}/orders/performance/vendors", params={"partner": "blinkit", "month": TODAY.strftime("%Y-%m"), **params}, headers=admin)
+    assert r.status_code == 200, r.text
+    return {v["vendor_name"]: v for v in r.json()["vendors"]}
+
+
+def test_vendor_wise_lists_each_vendors_stores_with_their_bottles(client, db, admin, make_store):
+    from .conftest import plant_entry
+
+    a = make_store(vendor="Zed Aqua Vendor", name="Zed Store One")
+    b = make_store(vendor="  zed aqua   vendor ", name="Zed Store Two")        # the same vendor, typed differently
+    c = make_store(vendor="Solo Vendor Co", name="Solo Store")
+    quiet = make_store(vendor="Zed Aqua Vendor", name="Zed Store Quiet")       # live, nothing marked yet
+    plant_entry(db, a, TODAY, 12)
+    plant_entry(db, b, TODAY, 8)
+    plant_entry(db, c, TODAY, 5)
+
+    got = _vendors(client, admin)
+    zed = got["Zed Aqua Vendor"]
+    assert zed["store_count"] == 3 and zed["bottles"] == 20
+    assert [(s["store_name"], s["bottles"]) for s in zed["stores"]] == [("Zed Store One", 12), ("Zed Store Two", 8), ("Zed Store Quiet", 0)]
+    solo = got["Solo Vendor Co"]
+    assert solo["store_count"] == 1 and solo["bottles"] == 5 and solo["stores"][0]["store_name"] == "Solo Store" and solo["stores"][0]["bottles"] == 5
+
+    assert client.get(f"{API}/orders/performance/vendors", params={"partner": "nope"}, headers=admin).status_code == 404
+    emp = client.get(f"{API}/orders/performance/vendors", params={"partner": "blinkit"})
+    assert emp.status_code in (401, 403)
+
+
+def test_vendor_wise_splits_a_store_that_changed_vendor_by_the_dates_each_supplied_it(client, db, admin, make_store):
+    from datetime import timedelta
+    from app.models.store_vendor_period import StoreVendorPeriod
+    from .conftest import plant_entry
+
+    if TODAY.day < 2:
+        return                                          # needs yesterday in the same month
+    yesterday = TODAY - timedelta(days=1)
+    s = make_store(vendor="New Switch Vendor", name="Switch Store")
+    db.add(StoreVendorPeriod(store_id=s.id, vendor_name="Old Switch Vendor", start_date=None, end_date=yesterday))
+    db.add(StoreVendorPeriod(store_id=s.id, vendor_name="New Switch Vendor", start_date=TODAY, end_date=None))
+    db.commit()
+    plant_entry(db, s, yesterday, 5)
+    plant_entry(db, s, TODAY, 7)
+
+    got = _vendors(client, admin)
+    assert got["Old Switch Vendor"]["bottles"] == 5 and got["Old Switch Vendor"]["stores"][0]["store_name"] == "Switch Store"
+    assert got["New Switch Vendor"]["bottles"] == 7
+    db.query(StoreVendorPeriod).filter(StoreVendorPeriod.store_id == s.id).delete()
+    db.commit()
+
+
 def test_month_parsing_defaults_to_the_month_of_yesterday():
     assert performance_service.parse_month(None, date(2026, 11, 1)) == date(2026, 10, 1)
     assert performance_service.parse_month(None, date(2026, 11, 2)) == date(2026, 11, 1)

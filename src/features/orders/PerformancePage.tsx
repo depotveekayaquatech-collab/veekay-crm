@@ -13,6 +13,7 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePartners } from "@/features/stores/useStores";
 import { Avatar, FilterChip, Panel, ProgressBar, ProgressRing, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
 import { apiRequest } from "@/services/api";
+import { useVendorPerformance, VendorPerformance } from "@/features/orders/VendorPerformance";
 
 interface Day { date: string; done: number; expected: number; percent: number; cumulative: number }
 interface Row {
@@ -25,11 +26,11 @@ interface Performance {
   employees: Row[];
 }
 
-function usePerformance(partner: string, month: string) {
+function usePerformance(partner: string, month: string, enabled = true) {
   return useQuery({
     queryKey: ["performance", partner, month],
     queryFn: () => apiRequest<Performance>(`/orders/performance?partner=${encodeURIComponent(partner)}${month ? `&month=${month}` : ""}`),
-    enabled: Boolean(partner),
+    enabled: enabled && Boolean(partner),
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
@@ -121,7 +122,9 @@ export function PerformancePage() {
   const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const [month, setMonth] = useState("");                         // "" = the server's default (the month of yesterday)
   const partner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
-  const q = usePerformance(partner, month);
+  const [view, setView] = usePersistentState<"employees" | "vendors">("performance.view", "employees");
+  const q = usePerformance(partner, month, view === "employees");
+  const vq = useVendorPerformance(partner, month, view === "vendors");
   const [query, setQuery] = useState("");
   const [behindOnly, setBehindOnly] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
@@ -132,24 +135,28 @@ export function PerformancePage() {
     return (d?.employees ?? []).filter((e) => (!behindOnly || e.percent < 50) && (!needle || e.employee_name.toLowerCase().includes(needle) || e.employee_code.toLowerCase().includes(needle) || (e.region_name ?? "").toLowerCase().includes(needle)));
   }, [d, query, behindOnly]);
 
-  const current = d?.month ?? month;
+  const shown = view === "vendors" ? vq.data : d;                 // whichever list is on screen decides the month label
+  const current = shown?.month ?? month;
   const thisMonth = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; })();
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedControl label="Platform" value={partner} onChange={(v) => { setPartner(v); setOpen(null); }} options={partners.map((p) => ({ value: p.slug, label: p.name }))} />
+        <SegmentedControl label="View" value={view} onChange={(v) => setView(v as "employees" | "vendors")} options={[{ value: "employees", label: "Employees" }, { value: "vendors", label: "Vendors" }]} />
         <div className="ml-auto flex items-center gap-1">
           <Button size="sm" variant="secondary" aria-label="Previous month" disabled={!current} onClick={() => setMonth(shiftMonth(current, -1))}>‹</Button>
-          <span className="min-w-[8rem] text-center text-sm font-extrabold text-heading">{d?.month_label ?? "…"}</span>
+          <span className="min-w-[8rem] text-center text-sm font-extrabold text-heading">{shown?.month_label ?? "…"}</span>
           <Button size="sm" variant="secondary" aria-label="Next month" disabled={!current || current >= thisMonth} onClick={() => setMonth(shiftMonth(current, 1))}>›</Button>
         </div>
       </div>
 
-      {q.isLoading && <Skeleton className="h-64 !rounded-2xl" />}
-      {q.isError && <ErrorState message="Couldn't load the performance." onRetry={() => q.refetch()} />}
+      {view === "vendors" && <VendorPerformance q={vq} />}
 
-      {d && (
+      {view === "employees" && q.isLoading && <Skeleton className="h-64 !rounded-2xl" />}
+      {view === "employees" && q.isError && <ErrorState message="Couldn't load the performance." onRetry={() => q.refetch()} />}
+
+      {view === "employees" && d && (
         <>
           <section className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-4 shadow-card sm:p-6">
             <span aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-gradient-to-br from-brand-500/15 to-aqua-400/10 blur-2xl" />

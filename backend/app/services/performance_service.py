@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import calendar
 import uuid
+from collections import Counter
 from datetime import date, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.order_entry import OrderEntry
 from app.models.organization import Organization, OrganizationKind
+from app.models.store import Store, StoreStatus
+from app.models.store_vendor_period import StoreVendorPeriod
 from app.models.user import User
 from app.repositories.employee_repository import EmployeeRepository
 from app.services import assignment_service, holiday_service
@@ -90,4 +93,68 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
         "summary": {"employees": len(rows), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
                     "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50)},
         "employees": rows,
+    }
+
+
+def _vendor_key(name: str | None) -> str:
+    return " ".join((name or "").split()).lower()
+
+
+def vendors(db: Session, admin: User, partner_slug: str, month: date, today: date) -> dict:
+    """Vendor-wise: for each vendor of a platform, its stores and the bottles marked at each store this month (1st to today, as the inventory page counts).
+    A store that changed vendor part-way through the month counts each vendor's bottles only for the dates that vendor supplied it (store_vendor_periods);
+    an entry no period covers goes to the store's current vendor. A vendor with one store simply has one row."""
+    partner = db.execute(select(Organization).where(Organization.slug == partner_slug)).scalar_one_or_none()
+    if partner is None or partner.kind != OrganizationKind.PARTNER.value:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"{partner_slug} is not a configured platform.")
+
+    last = min(today, date(month.year, month.month, calendar.monthrange(month.year, month.month)[1]))
+    P = StoreVendorPeriod
+    org = admin.organization_id
+    stores = {s.id: s for s in db.execute(select(Store).where(Store.organization_id == org, Store.partner_organization_id == partner.id)).scalars()}
+
+    vendor_name = func.coalesce(P.vendor_name, Store.vendor_name)
+    vendor_number = func.coalesce(P.vendor_number, Store.vendor_number)
+    in_period = and_(P.store_id == OrderEntry.store_id, OrderEntry.order_date >= func.coalesce(P.start_date, date(1900, 1, 1)),
+                     or_(P.end_date.is_(None), OrderEntry.order_date <= P.end_date))
+    entries = [] if last < month else db.execute(
+        select(OrderEntry.store_id, vendor_name, vendor_number, func.coalesce(func.sum(OrderEntry.bottle_count), 0), func.count(OrderEntry.id))
+        .join(Store, Store.id == OrderEntry.store_id).outerjoin(P, in_period)
+        .where(Store.organization_id == org, Store.partner_organization_id == partner.id, OrderEntry.order_date >= month, OrderEntry.order_date <= last)
+        .group_by(OrderEntry.store_id, vendor_name, vendor_number)
+    ).all()
+
+    groups: dict[str, dict] = {}
+
+    def row(name: str | None, number: str | None, sid: uuid.UUID) -> dict:
+        g = groups.setdefault(_vendor_key(name), {"spellings": Counter(), "vendor_number": number, "stores": {}, "bottles": 0})
+        g["vendor_number"] = g["vendor_number"] or number
+        st = stores[sid]
+        if sid not in g["stores"]:
+            g["spellings"][" ".join((name or "").split())] += 1
+        return g["stores"].setdefault(sid, {
+            "store_id": sid, "store_name": st.name, "external_code": st.external_code, "state": st.state, "city": st.city,
+            "live": st.status == StoreStatus.LIVE.value, "bottles": 0, "days_marked": 0,
+        })
+
+    for sid, name, number, bottles, days in entries:
+        r = row(name, number, sid)
+        r["bottles"] += int(bottles)
+        r["days_marked"] += int(days)
+        groups[_vendor_key(name)]["bottles"] += int(bottles)
+    for sid, st in stores.items():  # a live store with no entries yet still belongs to its vendor
+        if st.status == StoreStatus.LIVE.value:
+            row(st.vendor_name, st.vendor_number, sid)
+
+    out = []
+    for g in groups.values():
+        rows = sorted(g["stores"].values(), key=lambda r: (-r["bottles"], r["store_name"].lower()))
+        label = min(g["spellings"].items(), key=lambda kv: (-kv[1], kv[0]))[0] or None      # the spelling most stores use
+        out.append({"vendor_name": label, "vendor_number": g["vendor_number"], "store_count": len(rows), "bottles": g["bottles"], "stores": rows})
+    out.sort(key=lambda v: (v["vendor_name"] or "~").lower())
+    return {
+        "partner_slug": partner.slug, "partner_label": partner.name, "month": f"{month:%Y-%m}", "month_label": month.strftime("%B %Y"),
+        "from": month if last >= month else None, "to": last if last >= month else None,
+        "summary": {"vendors": len(out), "stores": sum(v["store_count"] for v in out), "bottles": sum(v["bottles"] for v in out)},
+        "vendors": out,
     }

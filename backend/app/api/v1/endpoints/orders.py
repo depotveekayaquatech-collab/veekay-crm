@@ -241,6 +241,19 @@ def performance(
     return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today)
 
 
+@router.get("/performance/vendors", dependencies=[Depends(require_permission("orders.overview"))])
+def performance_vendors(
+    response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Vendor-wise: each vendor's stores with the bottles marked at each one this month (1st to today). A vendor with one store has one row. Never cached."""
+    from app.services import performance_service
+
+    response.headers["Cache-Control"] = "no-store"
+    today = order_service._today()
+    return performance_service.vendors(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today)
+
+
 @router.get(
     "/report", response_model=SalesReport,
     dependencies=[Depends(require_permission("orders.overview"))],
