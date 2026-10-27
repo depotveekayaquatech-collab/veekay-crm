@@ -203,41 +203,81 @@ def check_out(db: Session, user: User, lat: float | None, lng: float | None, acc
     return today_status(db, user)
 
 
+def _local_moment(day: date, value: str, what: str) -> datetime:
+    """A local HH:MM on `day` as a UTC moment; never in the future."""
+    try:
+        h, m = (int(x) for x in value.split(":"))
+        moment = datetime.combine(day, time(h, m), tzinfo=_tz()).astimezone(timezone.utc)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Time must look like 10:30.") from exc
+    if moment > _now():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The {what} time can't be in the future.")
+    return moment
+
+
+def _salary_paid(db: Session, user_id: uuid.UUID, month: date) -> bool:
+    return db.execute(
+        select(Payslip.id).join(PayrollPeriod, PayrollPeriod.id == Payslip.period_id).where(Payslip.user_id == user_id, PayrollPeriod.month == month)
+    ).first() is not None
+
+
 def correct_record(
     db: Session, actor: User, user_id: uuid.UUID, day: date, check_in_time: str | None, presence: str | None,
     office_id: uuid.UUID | None = None, late: bool | None = None, half_day: bool | None = None,
-    clear_check_out: bool = False,
+    clear_check_out: bool = False, check_out_time: str | None = None,
 ) -> dict:
-    """Developer correction of one person's day: check-in time (local HH:MM), office vs away, late or not, half day or not.
+    """Developer correction of one person's day: check-in / check-out time (local HH:MM), office vs away, late or not, half day or not.
     A new time recomputes lateness; an explicit `late` wins over that. `clear_check_out` undoes a check-out made by mistake (the
-    person can check out again)."""
+    person can check out again). A person with no record on that day is marked present by giving a check-in time (backlog days too)."""
+    from app.services import activity_service
+
     rec = db.execute(
         select(AttendanceRecord).where(
             AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date == day
         )
     ).scalar_one_or_none()
+    if rec is None and check_in_time is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person has no check-in on this day. Give a check-in time to mark them present.")
+    if check_in_time is None and check_out_time is None and presence is None and late is None and half_day is None and not clear_check_out:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time, check-out time, office / away, late, half day or check-out.")
+    if check_out_time is not None and clear_check_out:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Set a check-out time or undo the check-out, not both.")
+
+    new_in = _local_moment(day, check_in_time, "check-in") if check_in_time is not None else None
+    new_out = _local_moment(day, check_out_time, "check-out") if check_out_time is not None else None
+    created = rec is None
     if rec is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person has no check-in on this day to correct.")
-    if check_in_time is None and presence is None and late is None and half_day is None and not clear_check_out:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Change the check-in time, office / away, late, half day or check-out.")
+        target = db.get(User, user_id)
+        if target is None or target.organization_id != actor.organization_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found.")
+        if not attends(db, target):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Attendance is not tracked for this account (admins and partner logins never check in).")
+        if _salary_paid(db, user_id, day.replace(day=1)):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{day:%B %Y}'s salary is already paid, so its days are locked.")
+        rec = AttendanceRecord(organization_id=actor.organization_id, user_id=user_id, work_date=day, check_in_at=new_in, check_in_status="unknown",
+                               late=_is_late(new_in), half_day=False, source="edited")
+        db.add(rec)
+    elif new_out is not None and new_in is None and rec.source in ("sheet", MANUAL):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "This day has no check-in time yet. Give the check-in time too.")
+
     if clear_check_out:
         if rec.check_out_at is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "That person hasn't checked out on this day.")
         rec.check_out_at = rec.check_out_status = rec.check_out_label = None
         rec.check_out_lat = rec.check_out_lng = rec.check_out_accuracy_m = rec.check_out_distance_m = None
 
-    if check_in_time is not None:
-        try:
-            h, m = (int(x) for x in check_in_time.split(":"))
-            new_in = datetime.combine(day, time(h, m), tzinfo=_tz()).astimezone(timezone.utc)
-        except (ValueError, TypeError) as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Time must look like 10:30.") from exc
-        if new_in > _now():
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The check-in time can't be in the future.")
-        if rec.check_out_at is not None and new_in >= rec.check_out_at:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The check-in must be before the check-out at {_fmt_time(rec.check_out_at)}.")
+    end = new_out or rec.check_out_at
+    start = new_in or rec.check_in_at
+    if (new_in is not None or new_out is not None) and end is not None and start >= end:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The check-in must be before the check-out ({_fmt_time(start)} to {_fmt_time(end)}).")
+    if new_in is not None:
         rec.check_in_at = new_in
         rec.late = _is_late(new_in)
+    if new_out is not None:
+        if rec.check_out_at is None:  # a check-out made by hand has no position; one the person made keeps theirs
+            rec.check_out_status, rec.check_out_label = "unknown", None
+            rec.check_out_lat = rec.check_out_lng = rec.check_out_accuracy_m = rec.check_out_distance_m = None
+        rec.check_out_at = new_out
 
     if presence == "office":
         q = select(Office).where(Office.organization_id == actor.organization_id, Office.is_active.is_(True))
@@ -263,6 +303,9 @@ def correct_record(
         rec.half_day = half_day
 
     rec.source = "edited"
+    if created:
+        activity_service.record(db, actor=actor, action="attendance.marked_by_hand", entity_type="employee", entity_id=user_id,
+                                metadata={"present": True, "dates": [day.isoformat()], "marked": 1, "check_in_time": check_in_time, "check_out_time": check_out_time})
     db.commit()
     return _entry(rec, _now())
 

@@ -42,7 +42,8 @@ class RecordCorrection(BaseModel):
     """Developer fix for one person's day. Send only what changes."""
     user_id: uuid.UUID
     work_date: date
-    check_in_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # local HH:MM
+    check_in_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # local HH:MM; also marks a person with no check-in present
+    check_out_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # local HH:MM
     presence: Literal["office", "away"] | None = None
     office_id: uuid.UUID | None = None
     late: bool | None = None
@@ -138,9 +139,10 @@ async def import_sheet(
 
 @router.patch("/record", dependencies=[Depends(require_permission("attendance.edit"))])
 def correct_record(payload: RecordCorrection, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
-    """Developer only: fix a day's check-in time and / or whether the person was at the office or away. Lateness is recomputed."""
+    """Developer only: fix a day's check-in / check-out time and / or whether the person was at the office or away. Lateness is recomputed.
+    A person who never checked in that day is marked present by sending a check-in time (a check-out time is optional)."""
     return attendance_service.correct_record(db, user, payload.user_id, payload.work_date, payload.check_in_time, payload.presence, payload.office_id,
-                                           payload.late, payload.half_day, payload.clear_check_out)
+                                           payload.late, payload.half_day, payload.clear_check_out, payload.check_out_time)
 
 
 class HolidayIn(BaseModel):

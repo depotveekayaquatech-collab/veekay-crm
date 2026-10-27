@@ -375,6 +375,58 @@ def test_correction_rules(client, dev, office, make_user, clock):
     assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "18:00"}).status_code == 422  # not before check-out
 
 
+def test_developer_marks_someone_present_with_times_though_they_never_checked_in(client, dev, admin, emp, make_user, clock):
+    from datetime import timedelta
+
+    clock(12, 0)
+    h, uid = _fresh_employee(client, make_user)
+    today = datetime.now(IST).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    base = {"user_id": str(uid), "work_date": yesterday}
+
+    # only a developer may
+    for who in (admin, emp, h):
+        assert client.patch(f"{API}/attendance/record", headers=who, json={**base, "check_in_time": "10:00"}).status_code == 403
+
+    # a check-out alone can't create a day; neither can a future time
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_out_time": "18:00"}).status_code == 404
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": today.isoformat(), "check_in_time": "13:00"}).status_code == 422
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "18:00", "check_out_time": "10:00"}).status_code == 422
+
+    r = client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_in_time": "10:40", "check_out_time": "18:15"})
+    assert r.status_code == 200, r.text
+    e = r.json()
+    assert e["status"] == "CHECKED_OUT" and e["late"] is True and e["source"] == "edited" and e["minutes"] == 455
+    assert datetime.fromisoformat(e["check_in_at"]).astimezone(IST).strftime("%H:%M") == "10:40"
+    assert datetime.fromisoformat(e["check_out_at"]).astimezone(IST).strftime("%H:%M") == "18:15"
+
+    # the day views show it as a real day with times; it can then be edited and its check-out moved or undone
+    rows = {x["user_id"]: x for x in client.get(f"{API}/attendance/day", params={"date": yesterday}, headers=dev).json()["rows"]}
+    assert rows[str(uid)]["status"] == "CHECKED_OUT"
+    e = client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_out_time": "19:00"}).json()
+    assert datetime.fromisoformat(e["check_out_at"]).astimezone(IST).strftime("%H:%M") == "19:00"
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_out_time": "19:00", "clear_check_out": True}).status_code == 422
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "check_out_time": "10:00"}).status_code == 422   # before the check-in
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**base, "clear_check_out": True}).json()["check_out_at"] is None
+
+    # a check-in only (no check-out) also marks them present; the person's own check-in still works on another day
+    other = (today - timedelta(days=2)).isoformat()
+    e = client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": other, "check_in_time": "09:30"}).json()
+    assert e["status"] == "NO_CHECKOUT" and e["late"] is False
+
+
+def test_a_hand_marked_day_takes_its_times_when_the_developer_adds_them(client, dev, make_user):
+    from datetime import timedelta
+
+    h, uid = _fresh_employee(client, make_user)
+    day = (date.today() - timedelta(days=3)).isoformat()
+    assert client.post(f"{API}/attendance/mark", headers=dev, json={"user_id": str(uid), "dates": [day]}).json()["marked"] == 1
+    body = {"user_id": str(uid), "work_date": day}
+    assert client.patch(f"{API}/attendance/record", headers=dev, json={**body, "check_out_time": "18:00"}).status_code == 422   # needs the check-in too
+    e = client.patch(f"{API}/attendance/record", headers=dev, json={**body, "check_in_time": "09:30", "check_out_time": "18:00"}).json()
+    assert e["status"] == "CHECKED_OUT" and e["source"] == "edited" and e["minutes"] == 510
+
+
 def test_developer_can_force_late_and_half_day_and_payroll_counts_the_half(client, dev, make_user, clock):
     from app.services import payroll_service
 

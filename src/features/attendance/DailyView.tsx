@@ -42,20 +42,27 @@ const STATUS_OPTIONS = [
   { value: "ABSENT", label: "Absent" },
 ];
 
+function isPresent(r: DayRow): boolean {
+  return r.status === "CHECKED_IN" || r.status === "CHECKED_OUT" || r.status === "NO_CHECKOUT" || r.status === "PRESENT";
+}
+
 function hhmm(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-/** Developer-only fix for one person's day: when they checked in, and whether that counts as at the office or away. */
+/** Developer-only fix for one person's day: when they checked in and out, and whether that counts as at the office or away.
+ *  For someone with no check-in that day it marks them present instead, with the times you give. */
 function EditRecordModal({ row, date, onClose }: { row: DayRow | null; date: string; onClose: () => void }) {
   return row ? <EditRecordForm key={row.userId} row={row} date={date} onClose={onClose} /> : null;
 }
 
 function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onClose: () => void }) {
   const correct = useCorrectRecord();
+  const isNew = !isPresent(row);
   const [time, setTime] = useState(hhmm(row.checkInAt));
+  const [outTime, setOutTime] = useState(hhmm(row.checkOutAt));
   const [presence, setPresence] = useState(row.location.status === "office" ? "office" : "away");
   const [late, setLate] = useState(row.late ? "yes" : "no");
   const [half, setHalf] = useState(row.halfDay ? "yes" : "no");
@@ -63,31 +70,41 @@ function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onC
 
   const body: RecordCorrection = { user_id: row.userId, work_date: date };
   if (time && time !== hhmm(row.checkInAt)) body.check_in_time = time;
+  if (outTime && outTime !== hhmm(row.checkOutAt) && checkOut !== "undo") body.check_out_time = outTime;
   if (presence !== (row.location.status === "office" ? "office" : "away")) body.presence = presence as "office" | "away";
   if ((late === "yes") !== row.late) body.late = late === "yes";
   if ((half === "yes") !== Boolean(row.halfDay)) body.half_day = half === "yes";
   if (checkOut === "undo") body.clear_check_out = true;
   // Late follows the time unless you set it yourself; if the time moves and you didn't touch Late, the server works it out again.
-  const changed = Object.keys(body).length > 2;
+  const changed = isNew ? Boolean(time) : Object.keys(body).length > 2;
+  // A day with no clock times yet (marked from a sheet or by hand) needs the check-in whenever a check-out is given.
+  const needsCheckIn = !row.checkInAt && Boolean(body.check_out_time) && !time;
 
   return (
     <Modal
       open
       onClose={onClose}
       size="sm"
-      title={`Edit attendance — ${row.fullName}`}
-      description={`${row.employeeCode} · ${date}. Developer correction; lateness is worked out again from the new time.`}
+      title={`${isNew ? "Mark present" : "Edit attendance"} — ${row.fullName}`}
+      description={
+        isNew
+          ? `${row.employeeCode} · ${date}. ${row.fullName} didn't check in. Enter the times to mark them present; salary counts the day.`
+          : `${row.employeeCode} · ${date}. Developer correction; lateness is worked out again from the new time.`
+      }
       footer={
         <>
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={!changed || correct.isPending} onClick={() => correct.mutate(body, { onSuccess: onClose })}>
-            {correct.isPending ? "Saving…" : "Save"}
+          <Button size="sm" disabled={!changed || needsCheckIn || correct.isPending} onClick={() => correct.mutate(body, { onSuccess: onClose })}>
+            {correct.isPending ? "Saving…" : isNew ? "Mark present" : "Save"}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        <Input label="Check-in time" type="time" value={time} onChange={(e) => setTime(e.target.value)} hint="Moving the time works out Late again, unless you set Late below as well." />
+        <Input label="Check-in time" type="time" value={time} onChange={(e) => setTime(e.target.value)} hint={isNew ? "Required. Late is worked out from this time." : "Moving the time works out Late again, unless you set Late below as well."} />
+        {checkOut !== "undo" && (
+          <Input label="Check-out time" type="time" value={outTime} onChange={(e) => setOutTime(e.target.value)} hint={needsCheckIn ? "Add the check-in time too." : "Optional."} />
+        )}
         <Select
           label="Where"
           value={presence}
@@ -259,7 +276,7 @@ export function DailyView() {
               )}
               {rows.map((r, i) => {
                 const newGroup = i === 0 || rows[i - 1].category !== r.category;
-                const present = r.status === "CHECKED_IN" || r.status === "CHECKED_OUT" || r.status === "NO_CHECKOUT" || r.status === "PRESENT";
+                const present = isPresent(r);
                 return (
                   <Fragment key={r.userId}>
                     {newGroup && <GroupRow colSpan={6} label={r.categoryLabel} count={rows.filter((x) => x.category === r.category).length} />}
@@ -297,8 +314,8 @@ export function DailyView() {
                       <td className="px-4 py-3">
                         <div className="flex items-start justify-between gap-2">
                           {present ? <LocationBadge location={r.location} /> : <span className="text-gray-300">—</span>}
-                          {canEdit && present && (
-                            <Button variant="secondary" size="sm" onClick={() => setEditing(r)}>Edit</Button>
+                          {canEdit && (
+                            <Button variant="secondary" size="sm" onClick={() => setEditing(r)}>{present ? "Edit" : "Mark present"}</Button>
                           )}
                         </div>
                       </td>

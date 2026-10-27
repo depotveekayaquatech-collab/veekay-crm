@@ -61,7 +61,8 @@ export interface DayRow extends Person {
 export interface RecordCorrection {
   user_id: string;
   work_date: string;
-  check_in_time?: string;
+  check_in_time?: string; // also marks someone with no check-in present on that day
+  check_out_time?: string;
   presence?: "office" | "away";
   late?: boolean;
   half_day?: boolean;
