@@ -199,7 +199,7 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
                 (ROLE_RANK.get((r[9] if r[8] is not None else r[10]) or "", 0) > my_rank)
                 or (my_rank < 4 and not r[11] and r[8] is None and r[5] == "admin")
             )
-            if sees_all or r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id) or above:
+            if (sees_all and (int(r[3]) == 0 or r[5] == "employee")) or r[4] == employee.id or (r[5] == "employee" and r[6] == employee.id and r[7] == employee.id) or above:
                 counts[(r[0], r[1])] = int(r[2]) - int(r[3])
                 if r[13] and r[13] > 1:
                     edited[(r[0], r[1])] = (r[12], int(r[3]))
@@ -250,9 +250,11 @@ def get_calendar(
     for d, entry in entries.items():
         mine = entry.created_by_user_id == user.id or (
             entry.source == EntrySource.EMPLOYEE.value and entry.marked_by_user_id == user.id and entry.last_modified_by_user_id == user.id)
-        in_scope = sees_all or (scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids)))
+        # a colleague's number is shown, but never a day that holds only a developer's cash adjustment
+        peer_visible = sees_all and (not entry.cash_adjustment or entry.source == EntrySource.EMPLOYEE.value)
+        in_scope = scope is not None and (scope.creator_ids is None or owns_value(entry, scope.creator_ids))
         above = not is_admin and set_by_someone_above(entry, rank)       # a more senior person set it: visible, read-only
-        seen[d] = (mine, in_scope, above, is_admin or mine or in_scope or above)
+        seen[d] = (mine, in_scope, above, is_admin or mine or in_scope or above or peer_visible)
     # What happened to the numbers the caller can see after they were entered: who changed it (name + role), when, old -> new, and the verification state.
     visible_entries = [entries[d] for d, v in seen.items() if v[3]]
     changes = last_changes(db, visible_entries)

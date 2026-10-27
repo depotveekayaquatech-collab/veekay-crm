@@ -97,7 +97,7 @@ export default function MarkMany() {
     if (!d || !d.marked) return;
     Haptics.selectionAsync().catch(() => undefined);
     if (d.masked) {
-      Alert.alert("Already marked by a colleague", "Someone else marked this day. You can't see or change their number. If it looks wrong, tell your Team Lead.");
+      Alert.alert("Already marked by a colleague", "Someone else marked this day. You can't change it. If it looks wrong, tell your Team Lead.");
       return;
     }
     if (d.by_higher) {
@@ -238,7 +238,7 @@ export default function MarkMany() {
                 <Text style={[font.small, { marginTop: 2 }]}>Another store has exactly this name, so your entries may not show on the other copy. Tell your admin before you keep marking it.</Text>
               </View>
             ) : null}
-            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. {canFixOwn ? "Tap a green number to correct what you marked." : "A green number is yours and saved on the server; a grey number was entered by someone more senior (you can see it, not change it); a dot means a colleague at your level marked that day."}</Text>
+            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. {canFixOwn ? "Tap a green number to correct what you marked." : "A green number is yours and saved on the server; a grey number was entered by someone else (you can see it, not change it); a dot means a day whose number is not shown to you."}</Text>
             {lastOpenUntil ? (
               <View style={{ marginTop: 12, gap: 8 }}>
                 <Chips<"this" | "last"> options={[{ label: "This month", value: "this" }, { label: "Last month", value: "last" }]} value={period} onChange={switchPeriod} />

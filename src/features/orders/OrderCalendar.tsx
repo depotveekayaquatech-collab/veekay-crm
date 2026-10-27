@@ -370,7 +370,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 type="button"
                 onClick={() => pick(d)}
                 disabled={!isClickable}
-                title={d.masked ? "Marked by a colleague. Only the person who entered a number (and their Team Lead) can see it." : d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}${d.changed ? ` · changed by ${d.changed.byName ?? "a senior colleague"} (${d.changed.byRoleLabel}), ${d.changed.oldCount} to ${d.changed.newCount}` : ""}${d.verification ? ` · ${d.verification.label}` : ""}` : d.isFuture ? undefined : "Not marked"}
+                title={d.masked ? "Marked by a colleague. This number is not shown to you." : d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}${d.changed ? ` · changed by ${d.changed.byName ?? "a senior colleague"} (${d.changed.byRoleLabel}), ${d.changed.oldCount} to ${d.changed.newCount}` : ""}${d.verification ? ` · ${d.verification.label}` : ""}` : d.isFuture ? undefined : "Not marked"}
                 style={
                   !isPicked && d.marked && !d.masked && d.source !== "admin"
                     ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` }

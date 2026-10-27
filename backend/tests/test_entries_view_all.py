@@ -38,8 +38,8 @@ def test_a_view_all_employee_sees_a_colleagues_number_and_a_plain_one_does_not(c
 
     seen = _day(client, viewer, a)
     assert seen["marked"] and not seen["masked"] and seen["count"] == 7 and seen["mine"] is False        # she sees the colleague's number
-    hidden = _day(client, plain, a)
-    assert hidden["marked"] and hidden["masked"] and hidden["count"] is None                              # an ordinary Level 1 employee does not
+    ordinary = _day(client, plain, a)
+    assert ordinary["marked"] and not ordinary["masked"] and ordinary["count"] == 7                       # every Level 1 employee does now (read-only)
 
     # she marks like any Level 1 employee: another store of her scope, and the response already shows what she may see
     r = _mark(client, viewer, b, 5)
@@ -72,7 +72,7 @@ def test_the_months_bottles_in_vendors_count_everyones_entries_for_her_only(clie
         items = client.get(f"{API}/orders/inventory", headers=who).json()["items"]
         return next(i["month_bottles"] for i in items if i["id"] == str(a.id))
 
-    assert bottles(viewer) == 7 and bottles(plain) == 0
+    assert bottles(viewer) == 7 and bottles(plain) == 7
 
 
 def test_the_permission_exists_for_an_administrator_to_tick(client, admin):

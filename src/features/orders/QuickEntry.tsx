@@ -105,7 +105,7 @@ function Row({
           )}
         </div>
       ) : lockedByOther ? (
-        <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-gray-600" title="A colleague already marked this day. You cannot see or change their number; ask your Team Lead if it looks wrong.">
+        <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-gray-600" title="A colleague already marked this day. You cannot change it; ask your Team Lead if it looks wrong.">
           Already marked by a colleague
         </span>
       ) : !live ? (

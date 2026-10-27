@@ -88,7 +88,7 @@ def test_a_creator_sent_by_the_client_is_ignored(client, db, cast):
     assert _entry(db, cast["s1"]).created_by_user_id == cast["ids"]["A"]
 
 
-def test_a_contributor_sees_only_their_own_entries(client, db, cast):
+def test_a_contributor_sees_their_own_entries_as_theirs_and_a_colleagues_read_only(client, db, cast):
     _mark(client, cast["A"], cast["s1"], 11)
     _mark(client, cast["B"], cast["s2"], 22)
     mine = client.get(f"{API}/orders/my-entries", headers=cast["A"]).json()["items"]
@@ -97,15 +97,17 @@ def test_a_contributor_sees_only_their_own_entries(client, db, cast):
 
     cal_b = client.get(f"{API}/orders/calendar", headers=cast["B"], params={"store_id": str(cast["s1"].id)}).json()["days"]
     day = next(d for d in cal_b if d["date"] == TODAY.isoformat())
-    assert day["marked"] is True and day["masked"] is True and day["mine"] is False
-    assert day["count"] is None and day["entered_by"] is None and day["entered_at"] is None and day["entry_id"] is None
+    assert day["marked"] is True and day["masked"] is False and day["mine"] is False             # a colleague's number is visible...
+    assert day["count"] == 11 and day["entry_id"] is None and day["version"] is None               # ...without the audit details
 
     stores = {s["external_code"]: s for s in client.get(f"{API}/orders/my-stores", headers=cast["B"]).json()}
-    assert stores["HX-1"]["today_marked"] is True and stores["HX-1"]["today_count"] is None and stores["HX-1"]["month_bottles"] == 0
+    assert stores["HX-1"]["today_marked"] is True and stores["HX-1"]["today_count"] == 11 and stores["HX-1"]["month_bottles"] == 11
     assert stores["HX-2"]["today_count"] == 22 and stores["HX-2"]["month_bottles"] == 22
-    # and the day cannot be marked a second time by someone else (no information beyond "already marked")
-    again = _mark(client, cast["B"], cast["s1"], 99)
-    assert again.status_code == 409 and "11" not in again.text
+    # but it is read-only: the day cannot be marked a second time, and nobody at Level 1 can change it
+    assert _mark(client, cast["B"], cast["s1"], 99).status_code == 409
+    for path in ("my-entry", "entry"):
+        assert client.patch(f"{API}/orders/{path}", headers=cast["B"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
+    assert _entry(db, cast["s1"]).bottle_count == 11
 
 
 def test_the_calendar_follows_the_same_scope_as_the_audit_pages(client, db, cast):
@@ -116,7 +118,7 @@ def test_the_calendar_follows_the_same_scope_as_the_audit_pages(client, db, cast
     assert day(cast["A"])["count"] == 11 and day(cast["A"])["mine"] is True
     assert day(cast["L"])["count"] == 11 and day(cast["L"])["masked"] is False         # the Team Lead sees their team's number
     b = day(cast["B"])
-    assert b["marked"] is True and b["masked"] is True and b["count"] is None           # a colleague outside the team sees only "marked"
+    assert b["marked"] is True and b["masked"] is False and b["count"] == 11            # a colleague outside the team sees the number too (read-only)
 
 
 def _day(client, who, store, day=None):
@@ -149,11 +151,11 @@ def test_a_contributor_sees_what_someone_more_senior_entered_but_cannot_touch_it
     assert not client.get(f"{API}/orders/my-entries", headers=cast["A"]).json()["items"]      # "My entries" stays the things YOU entered
 
 
-def test_a_peer_stays_hidden_but_a_team_leads_number_is_visible_to_contributors(client, db, cast):
+def test_a_peers_number_and_a_team_leads_number_are_both_visible_to_contributors(client, db, cast):
     _mark(client, cast["A"], cast["s1"], 11)                      # a contributor
     _mark(client, cast["L"], cast["s2"], 30)                      # the Team Lead
     b_sees_a, b_sees_lead = _day(client, cast["B"], cast["s1"]), _day(client, cast["B"], cast["s2"])
-    assert b_sees_a["masked"] is True and b_sees_a["count"] is None and b_sees_a["by_higher"] is False        # same level: hidden
+    assert b_sees_a["masked"] is False and b_sees_a["count"] == 11 and b_sees_a["by_higher"] is False        # same level: visible, read-only
     assert b_sees_lead["count"] == 30 and b_sees_lead["by_higher"] is True and b_sees_lead["masked"] is False  # more senior: visible
     assert _day(client, cast["A"], cast["s2"])["count"] == 30
     # a Team Lead does not see a more senior person's number hidden from them either
@@ -167,11 +169,11 @@ def test_a_days_cash_adjustment_stays_hidden_from_everyone_below_the_developer(c
     plant_entry(db, cast["s1"], TODAY, 8, creator=cast["ids"]["A"], cash_adjustment=5)         # A's 8, with a developer's 5 on top
     plant_entry(db, cast["s2"], TODAY, 0, creator=None, source="admin", cash_adjustment=7)      # a day holding only an adjustment
     b1, b2 = _day(client, cast["B"], cast["s1"]), _day(client, cast["B"], cast["s2"])
-    assert b1["marked"] and b1["masked"] and b1["count"] is None                               # A's number is still A's
-    assert b2["marked"] and b2["masked"] and b2["count"] is None                               # never shows the adjustment
+    assert b1["marked"] and not b1["masked"] and b1["count"] == 8                              # A's own number shows, without the 5 on top
+    assert b2["marked"] and b2["masked"] and b2["count"] is None                               # a day holding only an adjustment never shows it
 
 
-def test_old_entries_last_set_by_an_administrator_are_visible_old_employee_ones_are_not(client, db, cast):
+def test_old_entries_last_set_by_an_administrator_or_an_employee_are_both_visible(client, db, cast):
     from datetime import timedelta
     yesterday = TODAY - timedelta(days=1)
     if yesterday.month != TODAY.month:
@@ -180,13 +182,13 @@ def test_old_entries_last_set_by_an_administrator_are_visible_old_employee_ones_
     plant_entry(db, cast["s1"], yesterday, 41, creator=None, source="employee", marked_by=cast["ids"]["A"])  # legacy: an employee's number
     assert _day(client, cast["B"], cast["s1"])["count"] == 40 and _day(client, cast["B"], cast["s1"])["by_higher"] is True
     old = _day(client, cast["B"], cast["s1"], yesterday)
-    assert old["masked"] is True and old["count"] is None
+    assert old["masked"] is False and old["count"] == 41 and old["by_higher"] is False
 
 
-def test_the_vendors_page_never_totals_a_colleagues_numbers_for_an_employee(client, db, cast):
+def test_the_vendors_page_totals_a_colleagues_numbers_for_an_employee_too(client, db, cast):
     _mark(client, cast["A"], cast["s1"], 11)
     inv_b = {i["external_code"]: i for i in client.get(f"{API}/orders/inventory", headers=cast["B"]).json()["items"]}
-    assert inv_b["HX-1"]["month_bottles"] == 0 and inv_b["HX-1"]["marked_today"] is True          # B sees that it is done, not A's number
+    assert inv_b["HX-1"]["month_bottles"] == 11 and inv_b["HX-1"]["marked_today"] is True         # B sees A's number too (read-only)
     inv_a = {i["external_code"]: i for i in client.get(f"{API}/orders/inventory", headers=cast["A"]).json()["items"]}
     assert inv_a["HX-1"]["month_bottles"] == 11
     inv_adm = {i["external_code"]: i for i in client.get(f"{API}/orders/inventory", headers=cast["ADM"]).json()["items"]}
@@ -418,7 +420,7 @@ def test_legacy_entries_are_unverified_and_never_given_to_whoever_opens_the_stor
     assert legacy.creator_verified is False and legacy.created_by_user_id is None and legacy.created_via == "no_actor"
     assert not client.get(f"{API}/orders/my-entries", headers=cast["A"]).json()["items"]                   # not "theirs", even though the old marker says A
     day = next(d for d in client.get(f"{API}/orders/calendar", headers=cast["A"], params={"store_id": str(cast["s1"].id)}).json()["days"] if d["date"] == TODAY.isoformat())
-    assert day["marked"] and day["masked"] and day["count"] is None
+    assert day["marked"] and not day["masked"] and day["count"] == 40 and day["mine"] is False     # visible, but never "theirs" to correct
     found = client.get(SEARCH, headers=cast["ADM"], params={"unverified": "true", "store_id": str(cast["s1"].id)}).json()["items"]
     assert len(found) == 1 and found[0]["creator"]["verified"] is False and found[0]["creator"]["last_recorded_marker"]
     assert "unverified_creator" in found[0]["flags"]
