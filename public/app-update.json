@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 25,
+    "latestVersionCode": 26,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code25.apk",
-    "notes": "New app name: Aquatrack. Phone alerts for new tickets and salary credits.",
-    "apkSizeBytes": 56617341,
-    "apkSha256": "1a6eba058158354fc64bf9f99d9c52a1527dae7523e4947cec74c00ad96b30c0"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code26.apk",
+    "notes": "Everyone can now see their colleagues' entries (view only). Entries cannot be changed once saved.",
+    "apkSizeBytes": 56617337,
+    "apkSha256": "61563a7a6d91274882e42c914c67e9e504250acefe8741a9346fee11709cc0a0"
   }
 }
