@@ -453,12 +453,7 @@ def day_overview(db: Session, admin: User, day: date) -> dict:
     ).scalars()}
     leaves = leave_service.approved_between(db, org, day, day)
 
-    people = {u.id: u for u in _attendees(db, org, roles)}
-    for uid in records:  # someone who checked in but is no longer 'active' still shows for that day — never an admin
-        if uid not in people and ADMIN not in roles.get(uid, []) and ATTENDING_ROLES & set(roles.get(uid, [])):
-            u = db.get(User, uid)
-            if u is not None:
-                people[uid] = u
+    people = {u.id: u for u in _attendees(db, org, roles)}  # deactivated and deleted accounts never show, even for days they worked
 
     holiday = holiday_service.between(db, org, day, day).get(day)
     off = day.weekday() == WEEKLY_OFF or holiday is not None
@@ -534,12 +529,7 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
     if only_user:
         people = {only_user: db.get(User, only_user)}
     else:
-        people = {u.id: u for u in _attendees(db, org_id, roles)}
-        for uid in grouped:
-            if uid not in people and ADMIN not in roles.get(uid, []) and ATTENDING_ROLES & set(roles.get(uid, [])):
-                u = db.get(User, uid)
-                if u is not None:
-                    people[uid] = u
+        people = {u.id: u for u in _attendees(db, org_id, roles)}  # deactivated and deleted accounts never show, even for days they worked
 
     n_days = calendar.monthrange(month.year, month.month)[1]
     all_dates = [date(month.year, month.month, i) for i in range(1, n_days + 1)]

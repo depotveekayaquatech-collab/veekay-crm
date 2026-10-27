@@ -415,6 +415,23 @@ def test_developer_marks_someone_present_with_times_though_they_never_checked_in
     assert e["status"] == "NO_CHECKOUT" and e["late"] is False
 
 
+def test_deactivated_accounts_leave_the_attendance_views(client, dev, admin, make_user, clock):
+    clock(10, 0)
+    h, uid = _fresh_employee(client, make_user)
+    client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE))
+    month = datetime.now(IST).strftime("%Y-%m")
+
+    def shown() -> tuple[bool, bool, bool]:
+        day = {x["user_id"] for x in client.get(f"{API}/attendance/day", headers=dev).json()["rows"]}
+        grid = {x["user_id"] for x in client.get(f"{API}/attendance/month", params={"month": month}, headers=dev).json()["rows"]}
+        brief = {x["user_id"] for x in client.get(f"{API}/attendance/month-brief", params={"month": month}, headers=dev).json()["rows"]}
+        return str(uid) in day, str(uid) in grid, str(uid) in brief
+
+    assert shown() == (True, True, True)
+    assert client.post(f"{API}/employees/{uid}/deactivate", headers=admin).status_code == 204
+    assert shown() == (False, False, False)                                  # even though they checked in today
+
+
 def test_a_hand_marked_day_takes_its_times_when_the_developer_adds_them(client, dev, make_user):
     from datetime import timedelta
 
