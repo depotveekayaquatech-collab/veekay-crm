@@ -218,6 +218,9 @@ Location is required to check in.`,
         {hasPermission("bottles.scan") && (
           <Action icon="qr-code-outline" label="Scan bottles" sub={queue.pending.length ? "Waiting to send" : "Bottles in and out"} badge={queue.pending.length ? `${queue.pending.length} waiting` : undefined} onPress={() => router.push("/staff/scan")} tone={[colors.successSoft, colors.success]} />
         )}
+        {hasPermission("orders.view") && (
+          <Action icon="business-outline" label="Vendor performance" sub="Bottles per vendor, send on WhatsApp" onPress={() => router.push("/staff/vendors" as never)} tone={[colors.brand50, colors.brand700]} />
+        )}
         {hasPermission("cash.add") && (
           <Action icon="wallet-outline" label="Add expense" sub="Record a cash purchase" onPress={() => router.push("/staff/expense/new")} tone={[colors.warningSoft, colors.warning]} />
         )}

@@ -14,6 +14,8 @@ export const useDueBills = (enabled = true) => useQuery({ queryKey: ["a-bills"],
 
 export const usePerformance = (partner: string, month: string, enabled = true) =>
   useQuery({ queryKey: ["a-performance", partner, month], queryFn: () => adminApi.performance(partner, month), enabled: enabled && Boolean(partner), placeholderData: keepPreviousData, staleTime: 0 });
+export const useVendorPerformance = (partner: string, month: string, enabled = true) =>
+  useQuery({ queryKey: ["a-vendor-performance", partner, month], queryFn: () => adminApi.vendorPerformance(partner, month), enabled: enabled && Boolean(partner), placeholderData: keepPreviousData, staleTime: 0 });
 export const useAttendanceDay = (enabled = true) =>
   useQuery({ queryKey: ["a-attendance-day"], queryFn: adminApi.attendanceDay, enabled, staleTime: 30_000, refetchInterval: 120_000 });
 export const useAttendanceMonth = (month: string, enabled = true) =>

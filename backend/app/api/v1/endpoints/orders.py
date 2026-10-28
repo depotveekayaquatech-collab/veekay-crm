@@ -241,17 +241,23 @@ def performance(
     return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today)
 
 
-@router.get("/performance/vendors", dependencies=[Depends(require_permission("orders.overview"))])
+@router.get("/performance/vendors", dependencies=[Depends(require_permission("orders.view"))])
 def performance_vendors(
     response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
-    """Vendor-wise: each vendor's stores with the bottles marked at each one this month (1st to today). A vendor with one store has one row. Never cached."""
-    from app.services import performance_service
+    """Vendor-wise: each vendor's stores with the bottles marked at each one this month (1st to today). A vendor with one store has one row. Never cached.
+    An administrator or anyone with the daily overview sees the whole platform; an employee or Team Lead sees the vendors of their own stores only.
+    Platform logins (a Blinkit or Zepto account) are not shown another company's vendors."""
+    from app.services import assignment_service, performance_service
 
+    if assignment_service.is_partner_account(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendor performance is for Veekay staff.")
     response.headers["Cache-Control"] = "no-store"
     today = order_service._today()
-    return performance_service.vendors(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today)
+    full = _is_admin(perms) or "orders.overview" in perms
+    return performance_service.vendors(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today, full=full)
 
 
 @router.get(

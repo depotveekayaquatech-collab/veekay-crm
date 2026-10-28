@@ -15,6 +15,10 @@ export interface ReportRow {
   expected: number;
   done: number;
   percent: number;
+  /** Everything this person entered on the platform this month, in any store. */
+  entries_made?: number;
+  /** No store of their own: there is no percentage, only how many entries they made. */
+  no_stores?: boolean;
 }
 
 /** Who the report is for: everyone, a performance band, or one employee ("emp:<id>"). */
@@ -22,8 +26,8 @@ export type Who = "all" | "under50" | "under85" | `emp:${string}`;
 
 export function pickEmployees<T extends ReportRow>(rows: T[], who: Who): T[] {
   if (who === "all") return rows;
-  if (who === "under50") return rows.filter((r) => r.percent < 50);
-  if (who === "under85") return rows.filter((r) => r.percent < 85);
+  if (who === "under50") return rows.filter((r) => !r.no_stores && r.percent < 50);
+  if (who === "under85") return rows.filter((r) => !r.no_stores && r.percent < 85);
   const id = who.slice(4);
   return rows.filter((r) => r.employee_id === id);
 }
@@ -32,6 +36,7 @@ const n = (v: number) => v.toLocaleString("en-IN");
 
 /** One employee's four lines. */
 export function formatEmployee(r: ReportRow): string {
+  if (r.no_stores) return [`Employee name - ${r.employee_name}`, `Entries made - ${n(r.entries_made ?? 0)}`, "No. of stores - 0"].join("\n");
   return [`Employee name - ${r.employee_name}`, `Entries - ${n(r.done)} / ${n(r.expected)}`, `Percentage - ${r.percent}%`, `No. of stores - ${n(r.stores)}`].join("\n");
 }
 

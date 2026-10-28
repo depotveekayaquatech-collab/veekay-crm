@@ -11,13 +11,16 @@ interface OrderTab {
   permission: string;
   blurb: string;
   end?: boolean;
+  /** Not for a platform login (a Blinkit / Zepto account). */
+  staffOnly?: boolean;
 }
 
 const ORDER_TABS: OrderTab[] = [
   { label: "Mark orders", to: "/orders", icon: IconClipboard, permission: "orders.view", end: true, blurb: "Log each store's daily bottle count." },
   { label: "Daily overview", to: "/orders/overview", icon: IconChart, permission: "orders.overview", blurb: "See how every employee is tracking today." },
   { label: "Pending entries", to: "/orders/pending", icon: IconAlertTriangle, permission: "orders.overview", blurb: "Live stores that still have no entry." },
-  { label: "Performance", to: "/orders/performance", icon: IconActivity, permission: "orders.overview", blurb: "Each employee's share of the entries they should have marked this month." },
+  // Everyone who marks sees the vendors of their own stores; the employee-by-employee view needs the daily overview (see PerformancePage).
+  { label: "Performance", to: "/orders/performance", icon: IconActivity, permission: "orders.view", staffOnly: true, blurb: "Each employee's share of the entries they should have marked this month, and the bottles at each vendor's stores." },
   { label: "Correct entries", to: "/orders/correct", icon: IconEdit, permission: "orders.correct", blurb: "Fix or clear any past day for any store." },
 ];
 
@@ -34,12 +37,14 @@ function PendingCount() {
 
 /** One home for everything order-related: a hero header plus tabs (only the ones the user may open). */
 export function OrdersLayout() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasRole } = useAuth();
   const navigate = useNavigate();
   const dataEntryOnly = hasPermission("orders.mark") && !hasPermission("orders.overview") && !hasPermission("orders.correct");
   // People who can only look (e.g. partner accounts) get "Store entries" instead of "Mark orders".
-  const tabs = ORDER_TABS.filter((t) => hasPermission(t.permission)).map((t) =>
-    t.to === "/orders" && !hasPermission("orders.mark") ? { ...t, label: "Store entries", blurb: "Browse each store's daily entries." } : t,
+  const tabs = ORDER_TABS.filter((t) => hasPermission(t.permission) && !(t.staffOnly && hasRole("partner"))).map((t) =>
+    t.to === "/orders" && !hasPermission("orders.mark") ? { ...t, label: "Store entries", blurb: "Browse each store's daily entries." }
+    : t.to === "/orders/performance" && !hasPermission("orders.overview") ? { ...t, label: "Vendor performance", blurb: "Bottles marked at each of your vendors' stores this month." }
+    : t,
   );
 
   // Press 1–4 to jump between tabs (ignored while typing).

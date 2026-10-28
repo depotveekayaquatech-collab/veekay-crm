@@ -39,4 +39,11 @@ describe("pickEmployees", () => {
     expect(pickEmployees(rows, "emp:c").map((r) => r.employee_id)).toEqual(["c"]);
     expect(pickEmployees(rows, "emp:zzz")).toEqual([]);
   });
+
+  it("reports a person with no store of their own by the entries they made, and keeps them out of the percentage bands", () => {
+    const helper = row({ employee_id: "e2", employee_name: "Vishwanjali", stores: 0, expected: 0, done: 0, percent: 0, entries_made: 312, no_stores: true });
+    expect(formatEmployee(helper)).toBe("Employee name - Vishwanjali\nEntries made - 312\nNo. of stores - 0");
+    expect(pickEmployees([row(), helper], "under50")).toEqual([]);
+    expect(pickEmployees([row(), helper], "emp:e2")).toEqual([helper]);
+  });
 });

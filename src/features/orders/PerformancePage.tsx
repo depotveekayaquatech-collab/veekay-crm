@@ -11,6 +11,8 @@ import { pushToast } from "@/lib/toast";
 import { copyText } from "@/lib/clipboard";
 import { formatReport, pickEmployees, type Who } from "@/lib/performanceReport";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/features/auth/useAuth";
 import { usePartners } from "@/features/stores/useStores";
 import { Avatar, FilterChip, Panel, ProgressBar, ProgressRing, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
 import { apiRequest } from "@/services/api";
@@ -20,6 +22,10 @@ interface Day { date: string; done: number; expected: number; percent: number; c
 interface Row {
   employee_id: string; employee_code: string; employee_name: string; region_name: string | null;
   stores: number; expected: number; done: number; missing: number; percent: number; yesterday_percent: number | null; daily: Day[];
+  /** Everything this person entered on the platform this month, in any store. */
+  entries_made: number;
+  /** No store of their own: no percentage, only the entries they made. */
+  no_stores: boolean;
 }
 interface Performance {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number; today: string;
@@ -101,11 +107,25 @@ function GroupReport({ d }: { d: Performance }) {
  * that they have marked. It is recounted from the entries on every look, from the 1st to yesterday, so days marked late lift the days before them.
  */
 export function PerformancePage() {
-  const { data: partners = [] } = usePartners();
+  const { hasRole } = useAuth();
+  // A platform login (Blinkit / Zepto account) is not shown Veekay's vendors.
+  return hasRole("partner") ? <Navigate to="/orders" replace /> : <PerformanceBody />;
+}
+
+/**
+ * Everyone who marks entries sees the Vendors view for their own stores. Only people with the daily overview also get the Employees view and the
+ * platform switch (employees cannot list the platforms, so they use the one on their profile).
+ */
+function PerformanceBody() {
+  const { user, hasPermission } = useAuth();
+  const overview = hasPermission("orders.overview");
+  const { data: fetched = [] } = usePartners(overview);
+  const partners = overview ? fetched : user?.platformSlug ? [{ slug: user.platformSlug, name: user.platformLabel ?? user.platformSlug }] : [];
   const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const [month, setMonth] = useState("");                         // "" = the server's default (the month of yesterday)
   const partner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
-  const [view, setView] = usePersistentState<"employees" | "vendors">("performance.view", "employees");
+  const [chosenView, setView] = usePersistentState<"employees" | "vendors">("performance.view", "employees");
+  const view = overview ? chosenView : "vendors";
   const q = usePerformance(partner, month, view === "employees");
   const vq = useVendorPerformance(partner, month, view === "vendors");
   const [query, setQuery] = useState("");
@@ -115,7 +135,7 @@ export function PerformancePage() {
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return (d?.employees ?? []).filter((e) => (!behindOnly || e.percent < 50) && (!needle || e.employee_name.toLowerCase().includes(needle) || e.employee_code.toLowerCase().includes(needle) || (e.region_name ?? "").toLowerCase().includes(needle)));
+    return (d?.employees ?? []).filter((e) => (!behindOnly || (!e.no_stores && e.percent < 50)) && (!needle || e.employee_name.toLowerCase().includes(needle) || e.employee_code.toLowerCase().includes(needle) || (e.region_name ?? "").toLowerCase().includes(needle)));
   }, [d, query, behindOnly]);
 
   const shown = view === "vendors" ? vq.data : d;                 // whichever list is on screen decides the month label
@@ -125,8 +145,8 @@ export function PerformancePage() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <SegmentedControl label="Platform" value={partner} onChange={(v) => { setPartner(v); setOpen(null); }} options={partners.map((p) => ({ value: p.slug, label: p.name }))} />
-        <SegmentedControl label="View" value={view} onChange={(v) => setView(v as "employees" | "vendors")} options={[{ value: "employees", label: "Employees" }, { value: "vendors", label: "Vendors" }]} />
+        {partners.length > 1 && <SegmentedControl label="Platform" value={partner} onChange={(v) => { setPartner(v); setOpen(null); }} options={partners.map((p) => ({ value: p.slug, label: p.name }))} />}
+        {overview && <SegmentedControl label="View" value={view} onChange={(v) => setView(v as "employees" | "vendors")} options={[{ value: "employees", label: "Employees" }, { value: "vendors", label: "Vendors" }]} />}
         <div className="ml-auto flex items-center gap-1">
           <Button size="sm" variant="secondary" aria-label="Previous month" disabled={!current} onClick={() => setMonth(shiftMonth(current, -1))}>‹</Button>
           <span className="min-w-[8rem] text-center text-sm font-extrabold text-heading">{shown?.month_label ?? "…"}</span>
@@ -156,8 +176,8 @@ export function PerformancePage() {
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="secondary" disabled={!rows.length} onClick={() =>
                     downloadCsv(`performance-${d.partner_slug}-${d.month}.csv`,
-                      ["Employee code", "Employee", "Region", "Stores", "Should mark", "Marked", "Missing", "Performance %", ...(d.employees[0]?.daily ?? []).map((x) => x.date)],
-                      rows.map((e) => [e.employee_code, e.employee_name, e.region_name, e.stores, e.expected, e.done, e.missing, e.percent, ...e.daily.map((x) => x.percent)]))}>
+                      ["Employee code", "Employee", "Region", "Stores", "Should mark", "Marked", "Missing", "Performance %", "Entries made (all stores)", ...(d.employees.find((x) => x.daily.length)?.daily ?? []).map((x) => x.date)],
+                      rows.map((e) => [e.employee_code, e.employee_name, e.region_name, e.stores, e.expected, e.done, e.missing, e.no_stores ? "" : e.percent, e.entries_made, ...e.daily.map((x) => x.percent)]))}>
                     <IconDownload className="h-3.5 w-3.5" aria-hidden="true" />
                     Export CSV
                   </Button>
@@ -209,18 +229,28 @@ export function PerformancePage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 tabular-nums">{e.stores}</td>
-                        <td className="px-4 py-3 tabular-nums">{e.done.toLocaleString()} <span className="text-gray-400">/ {e.expected.toLocaleString()}</span></td>
-                        <td className="px-4 py-3 font-bold tabular-nums">{e.missing.toLocaleString()}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <ProgressBar percent={e.percent} className="min-w-[6rem] flex-1" />
-                            <Badge tone={tone(e.percent)}>{e.percent}%</Badge>
-                          </div>
-                        </td>
+                        {e.no_stores ? (
+                          <td colSpan={3} className="px-4 py-3">
+                            <span className="font-bold tabular-nums text-heading">{e.entries_made.toLocaleString()}</span> entries made this month
+                            <span className="ml-2 text-xs text-gray-500">No store of their own, so there is no percentage.</span>
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-4 py-3 tabular-nums">{e.done.toLocaleString()} <span className="text-gray-400">/ {e.expected.toLocaleString()}</span></td>
+                            <td className="px-4 py-3 font-bold tabular-nums">{e.missing.toLocaleString()}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <ProgressBar percent={e.percent} className="min-w-[6rem] flex-1" />
+                                <Badge tone={tone(e.percent)}>{e.percent}%</Badge>
+                              </div>
+                            </td>
+                          </>
+                        )}
                       </tr>
-                      {open === e.employee_id && (
+                      {open === e.employee_id && !e.no_stores && (
                         <tr className="border-b border-surface-border bg-surface-subtle/50">
                           <td colSpan={5} className="px-5 py-4">
+                            <p className="mb-2 text-xs font-semibold text-gray-700">Entered by {e.employee_name} this month, in any store of {d.partner_label}: <span className="tabular-nums">{e.entries_made.toLocaleString()}</span></p>
                             <p className="mb-2 text-xs font-semibold text-gray-500">Each day: the share of this employee's stores that have an entry for that day today. The small number is their average from the 1st up to that day.</p>
                             <div className="flex flex-wrap gap-1.5">
                               {e.daily.map((x) => (

@@ -49,7 +49,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/lib/scanOwnership.test.ts src/lib/connectivityCore.test.ts src/lib/versionPolicy.test.ts src/lib/compliance.test.ts src/theme.test.ts scripts/release-lib.test.mjs scripts/release-audience.test.mjs",
+    "test": "node --test src/lib/scanOwnership.test.ts src/lib/connectivityCore.test.ts src/lib/versionPolicy.test.ts src/lib/compliance.test.ts src/lib/vendorReport.test.ts src/theme.test.ts scripts/release-lib.test.mjs scripts/release-audience.test.mjs",
     "doctor": "expo-doctor",
     "build:aab": "eas build --platform android --profile production",
     "build:apk": "eas build --platform android --profile preview",

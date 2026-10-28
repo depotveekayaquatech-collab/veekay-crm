@@ -27,11 +27,17 @@ function EmployeeCard({ r }: { r: PerformanceRow }) {
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{r.employee_name}</Text>
           <Text numberOfLines={1} style={font.small}>{r.employee_code}{r.region_name ? ` · ${r.region_name}` : ""} · {r.stores} stores</Text>
         </View>
-        <Badge tone={tone(r.percent)}>{r.percent}%</Badge>
+        {r.no_stores ? <Badge tone="neutral">No stores</Badge> : <Badge tone={tone(r.percent)}>{r.percent}%</Badge>}
       </View>
-      <ProgressBar value={r.percent / 100} tone={bar(r.percent)} />
-      <Text style={font.small}>{r.done.toLocaleString("en-IN")} of {r.expected.toLocaleString("en-IN")} marked · {r.missing.toLocaleString("en-IN")} missing</Text>
-      {open && (
+      {r.no_stores ? (
+        <Text style={font.small}>{(r.entries_made ?? 0).toLocaleString("en-IN")} entries made this month · no store of their own, so no percentage</Text>
+      ) : (
+        <>
+          <ProgressBar value={r.percent / 100} tone={bar(r.percent)} />
+          <Text style={font.small}>{r.done.toLocaleString("en-IN")} of {r.expected.toLocaleString("en-IN")} marked · {r.missing.toLocaleString("en-IN")} missing · {(r.entries_made ?? 0).toLocaleString("en-IN")} entered by them</Text>
+        </>
+      )}
+      {open && !r.no_stores && (
         <View style={{ marginTop: 4 }}>
           <Text style={[font.tiny, { marginBottom: 6 }]}>Each day: the share of their stores marked for that day as of now, and their average from the 1st up to it.</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -48,7 +54,7 @@ function EmployeeCard({ r }: { r: PerformanceRow }) {
           </View>
         </View>
       )}
-      <View style={{ alignSelf: "flex-end" }}><Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.textFaint} /></View>
+      {!r.no_stores && <View style={{ alignSelf: "flex-end" }}><Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.textFaint} /></View>}
     </Pressable>
   );
 }
@@ -69,7 +75,7 @@ export default function Performance() {
 
   const rows = useMemo(() => {
     const n = needle.trim().toLowerCase();
-    return (d?.employees ?? []).filter((e) => (!behind || e.percent < 50) && (!n || `${e.employee_name} ${e.employee_code} ${e.region_name ?? ""}`.toLowerCase().includes(n)));
+    return (d?.employees ?? []).filter((e) => (!behind || (!e.no_stores && e.percent < 50)) && (!n || `${e.employee_name} ${e.employee_code} ${e.region_name ?? ""}`.toLowerCase().includes(n)));
   }, [d, needle, behind]);
 
   const header = (

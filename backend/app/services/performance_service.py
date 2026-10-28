@@ -63,10 +63,29 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
             if day in covered:  # an entry marked on a holiday is not a judged day
                 covered[day].add(store_id)
 
-    rows = []
+    # What each person entered themselves anywhere on this platform, 1st of the month to today (any store, live or not, in scope or not).
+    # An employee with no store of their own still shows up with this number, so their work is not invisible.
+    made: dict[uuid.UUID, int] = {}
+    if employees and last_of_month >= month:
+        who = func.coalesce(OrderEntry.created_by_user_id, OrderEntry.marked_by_user_id)
+        made = dict(db.execute(
+            select(who, func.count(OrderEntry.id)).join(Store, Store.id == OrderEntry.store_id)
+            .where(Store.organization_id == admin.organization_id, Store.partner_organization_id == partner.id,
+                   OrderEntry.order_date >= month, OrderEntry.order_date <= min(today, last_of_month), who.in_([e.id for e in employees]))
+            .group_by(who)
+        ).all())
+
+    rows, storeless = [], []
     for emp in employees:
         stores = set(scopes.get(emp.id, []))
-        if not stores:  # nothing to mark (a team lead with no store assigned, a new employee): not part of the performance list
+        if not stores:  # nothing to mark (a team lead with no store assigned, a new employee): no percentage, listed only if they entered something
+            if made.get(emp.id):
+                storeless.append({
+                    "employee_id": emp.id, "employee_code": emp.employee_code, "employee_name": emp.full_name,
+                    "region_name": emp.region.name if emp.region else None,
+                    "stores": 0, "expected": 0, "done": 0, "missing": 0, "percent": 0.0, "yesterday_percent": None, "daily": [],
+                    "entries_made": made[emp.id], "no_stores": True,
+                })
             continue
         daily, done_total, running_expected = [], 0, 0
         for d in days:
@@ -80,9 +99,10 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
             "region_name": emp.region.name if emp.region else None,
             "stores": len(stores), "expected": expected, "done": done_total, "missing": expected - done_total, "percent": _pct(done_total, expected),
             "yesterday_percent": daily[-1]["percent"] if daily and daily[-1]["date"] == today - timedelta(days=1) else None,
-            "daily": daily,
+            "daily": daily, "entries_made": made.get(emp.id, 0), "no_stores": False,
         })
     rows.sort(key=lambda r: (r["percent"], r["employee_name"].lower()))
+    storeless.sort(key=lambda r: (-r["entries_made"], r["employee_name"].lower()))
 
     expected_all = sum(r["expected"] for r in rows)
     done_all = sum(r["done"] for r in rows)
@@ -92,7 +112,7 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
         "holidays": {d.isoformat(): n for d, n in holidays.items() if d <= as_of},
         "summary": {"employees": len(rows), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
                     "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50)},
-        "employees": rows,
+        "employees": rows + storeless,      # people with no store of their own come last, and are not part of the summary
     }
 
 
@@ -100,27 +120,35 @@ def _vendor_key(name: str | None) -> str:
     return " ".join((name or "").split()).lower()
 
 
-def vendors(db: Session, admin: User, partner_slug: str, month: date, today: date) -> dict:
+def vendors(db: Session, user: User, partner_slug: str, month: date, today: date, *, full: bool = True) -> dict:
     """Vendor-wise: for each vendor of a platform, its stores and the bottles marked at each store this month (1st to today, as the inventory page counts).
     A store that changed vendor part-way through the month counts each vendor's bottles only for the dates that vendor supplied it (store_vendor_periods);
-    an entry no period covers goes to the store's current vendor. A vendor with one store simply has one row."""
+    an entry no period covers goes to the store's current vendor. A vendor with one store simply has one row.
+
+    `full` (an administrator or anyone with the daily overview): every store of the platform, bottles as entered. Otherwise (an employee, a Team Lead):
+    only the stores in the person's own scope, and the bottles they are allowed to see (never a developer's cash adjustment)."""
     partner = db.execute(select(Organization).where(Organization.slug == partner_slug)).scalar_one_or_none()
     if partner is None or partner.kind != OrganizationKind.PARTNER.value:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{partner_slug} is not a configured platform.")
 
     last = min(today, date(month.year, month.month, calendar.monthrange(month.year, month.month)[1]))
     P = StoreVendorPeriod
-    org = admin.organization_id
-    stores = {s.id: s for s in db.execute(select(Store).where(Store.organization_id == org, Store.partner_organization_id == partner.id)).scalars()}
+    org = user.organization_id
+    if full:
+        stores = {s.id: s for s in db.execute(select(Store).where(Store.organization_id == org, Store.partner_organization_id == partner.id)).scalars()}
+    else:
+        stores = {s.id: s for s in assignment_service.visible_stores(db, user) if s.partner_organization_id == partner.id}
 
     vendor_name = func.coalesce(P.vendor_name, Store.vendor_name)
     vendor_number = func.coalesce(P.vendor_number, Store.vendor_number)
     in_period = and_(P.store_id == OrderEntry.store_id, OrderEntry.order_date >= func.coalesce(P.start_date, date(1900, 1, 1)),
                      or_(P.end_date.is_(None), OrderEntry.order_date <= P.end_date))
-    entries = [] if last < month else db.execute(
-        select(OrderEntry.store_id, vendor_name, vendor_number, func.coalesce(func.sum(OrderEntry.bottle_count), 0), func.count(OrderEntry.id))
+    amount = OrderEntry.bottle_count if full else OrderEntry.bottle_count - OrderEntry.cash_adjustment
+    entries = [] if last < month or not stores else db.execute(
+        select(OrderEntry.store_id, vendor_name, vendor_number, func.coalesce(func.sum(amount), 0), func.count(OrderEntry.id))
         .join(Store, Store.id == OrderEntry.store_id).outerjoin(P, in_period)
-        .where(Store.organization_id == org, Store.partner_organization_id == partner.id, OrderEntry.order_date >= month, OrderEntry.order_date <= last)
+        .where(Store.organization_id == org, Store.partner_organization_id == partner.id, OrderEntry.order_date >= month, OrderEntry.order_date <= last,
+               *([] if full else [OrderEntry.store_id.in_(list(stores))]))
         .group_by(OrderEntry.store_id, vendor_name, vendor_number)
     ).all()
 

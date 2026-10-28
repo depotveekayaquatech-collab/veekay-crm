@@ -14,6 +14,7 @@ export interface StaffMe {
   employee_code: string;
   full_name: string;
   email: string | null;
+  platform_slug?: string | null;
   platform_label: string | null;
   region_name: string | null;
   permissions: string[];

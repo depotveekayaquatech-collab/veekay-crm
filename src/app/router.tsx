@@ -108,7 +108,7 @@ export function AppRoutes() {
         <Route path="/orders" element={<OrdersLayout />}>
           <Route index element={<OrdersIndex><MarkOrdersPage /></OrdersIndex>} />
           <Route path="overview" element={<Require permission="orders.overview"><DailyOverviewPage /></Require>} />
-          <Route path="performance" element={<Require permission="orders.overview"><PerformancePage /></Require>} />
+          <Route path="performance" element={<Require permission="orders.view"><PerformancePage /></Require>} />
           <Route path="pending" element={<Require permission="orders.overview"><PendingPage /></Require>} />
           <Route path="correct" element={<Require permission="orders.correct"><CorrectEntriesPage /></Require>} />
         </Route>

@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 26,
+    "latestVersionCode": 27,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code26.apk",
-    "notes": "Everyone can now see their colleagues' entries (view only). Entries cannot be changed once saved.",
-    "apkSizeBytes": 56617337,
-    "apkSha256": "61563a7a6d91274882e42c914c67e9e504250acefe8741a9346fee11709cc0a0"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code27.apk",
+    "notes": "New: Vendor performance. See the bottles marked at each of your vendors' stores this month and send them to the vendor on WhatsApp.",
+    "apkSizeBytes": 56627009,
+    "apkSha256": "f6350bd9d1d2e3388893073404414f21f07884b72cf61c2825dd7438cd757fb7"
   }
 }

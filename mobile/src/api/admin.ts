@@ -70,11 +70,23 @@ export interface PerformanceDay { date: string; done: number; expected: number; 
 export interface PerformanceRow {
   employee_id: string; employee_code: string; employee_name: string; region_name: string | null;
   stores: number; expected: number; done: number; missing: number; percent: number; daily: PerformanceDay[];
+  /** Everything this person entered on the platform this month, in any store. */
+  entries_made?: number;
+  /** No store of their own: no percentage, only the entries they made. */
+  no_stores?: boolean;
 }
 export interface Performance {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number;
   summary: { employees: number; expected: number; done: number; percent: number; below_50: number };
   employees: PerformanceRow[];
+}
+
+export interface VendorStoreRow { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; live: boolean; bottles: number; days_marked: number }
+export interface VendorRow { vendor_name: string | null; vendor_number: string | null; store_count: number; bottles: number; stores: VendorStoreRow[] }
+export interface VendorPerformance {
+  partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; to: string | null;
+  summary: { vendors: number; stores: number; bottles: number };
+  vendors: VendorRow[];
 }
 
 export interface MarkDaysResult { marked: number; already_present: number; removed: number; kept_real_check_ins: string[] }
@@ -83,6 +95,7 @@ export const adminApi = {
   markDays: (userId: string, dates: string[], present: boolean) =>
     request<MarkDaysResult>("/attendance/mark", { method: "POST", body: { user_id: userId, dates, present } }),
   performance: (partner: string, month: string) => request<Performance>(`/orders/performance${qs({ partner, month })}`),
+  vendorPerformance: (partner: string, month: string) => request<VendorPerformance>(`/orders/performance/vendors${qs({ partner, month })}`),
   attendanceDay: () => request<AttendanceDay>("/attendance/day"),
   attendanceMonth: (month: string) => request<AttendanceMonth>(`/attendance/month-brief${qs({ month })}`),
   syncStatus: () => request<SyncStatus>("/sync/status"),

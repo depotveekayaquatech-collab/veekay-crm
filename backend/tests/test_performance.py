@@ -53,6 +53,28 @@ def test_someone_with_no_store_is_not_listed(client, db, admin, make_user, make_
     assert all(e["stores"] > 0 for e in r.json()["employees"])
 
 
+def test_someone_with_no_store_who_made_entries_is_listed_with_how_many(client, db, admin, make_user, make_store):
+    from .conftest import plant_entry
+
+    store = make_store(platform="blinkit", region="NORTH", state="Perf-Land")
+    _, _, helper = make_user(platform="blinkit", region="SOUTH", grants=("orders.view", "orders.mark"))    # no store in SOUTH of their own
+    _, _, idle = make_user(platform="blinkit", region="SOUTH", grants=("orders.view", "orders.mark"))      # no store, no entries
+    first = TODAY.replace(day=1)
+    plant_entry(db, store, first, 7, creator=helper)
+    if TODAY.day > 1:
+        plant_entry(db, store, first + timedelta(days=1), 3, creator=helper)
+
+    r = client.get(f"{API}/orders/performance", params={"partner": "blinkit", "month": first.strftime("%Y-%m")}, headers=admin)
+    assert r.status_code == 200, r.text
+    got = {e["employee_id"]: e for e in r.json()["employees"]}
+    assert str(idle) not in got                                                  # still hidden when they entered nothing
+    me = got[str(helper)]
+    assert me["no_stores"] is True and me["stores"] == 0 and me["entries_made"] == (2 if TODAY.day > 1 else 1)
+    assert me["expected"] == 0 and me["done"] == 0 and me["daily"] == []
+    assert r.json()["employees"][-1]["employee_id"] in {k for k, v in got.items() if v["no_stores"]}   # listed after everyone who has stores
+    assert r.json()["summary"]["employees"] == sum(1 for e in got.values() if not e["no_stores"])      # and not counted in the summary
+
+
 def test_an_entry_marked_on_a_holiday_does_not_break_the_page(client, db, admin, make_user, make_store):
     if TODAY.day < 4:
         return
@@ -100,6 +122,35 @@ def test_vendor_wise_lists_each_vendors_stores_with_their_bottles(client, db, ad
     assert client.get(f"{API}/orders/performance/vendors", params={"partner": "nope"}, headers=admin).status_code == 404
     emp = client.get(f"{API}/orders/performance/vendors", params={"partner": "blinkit"})
     assert emp.status_code in (401, 403)
+
+
+def test_an_employee_sees_only_the_vendors_of_their_own_stores_and_not_the_employee_performance(client, db, admin, make_user, make_store):
+    from .conftest import plant_entry
+
+    code, pw, uid = make_user(platform="blinkit", region="NORTH", grants=("orders.view", "orders.mark"))
+    emp = auth(login(client, code, pw).json()["access_token"])
+    mine = make_store(region="NORTH", vendor="Near Aqua Vendor", name="Near Store")
+    far = make_store(region="SOUTH", vendor="Far Aqua Vendor", name="Far Store")
+    plant_entry(db, mine, TODAY, 9, cash_adjustment=4)                      # 9 entered, a developer's 4 on top
+    plant_entry(db, far, TODAY, 6)
+
+    r = client.get(f"{API}/orders/performance/vendors", params={"partner": "blinkit", "month": TODAY.strftime("%Y-%m")}, headers=emp)
+    assert r.status_code == 200, r.text
+    got = {v["vendor_name"]: v for v in r.json()["vendors"]}
+    assert "Near Aqua Vendor" in got and "Far Aqua Vendor" not in got        # only the stores in their scope
+    assert got["Near Aqua Vendor"]["bottles"] == 9                           # never the developer's adjustment
+    assert [s["store_name"] for s in got["Near Aqua Vendor"]["stores"]] == ["Near Store"]
+    # the administrator sees the whole platform, adjustment included, as the other pages do
+    full = _vendors(client, admin)
+    assert "Far Aqua Vendor" in full and full["Near Aqua Vendor"]["bottles"] == 13
+    # and the employee-by-employee performance stays closed to them
+    assert client.get(f"{API}/orders/performance", params={"partner": "blinkit"}, headers=emp).status_code == 403
+
+
+def test_a_platform_login_is_not_shown_the_vendors(client, db, make_user):
+    code, pw, uid = make_user(role="partner", platform="blinkit", grants=("orders.view",))
+    who = auth(login(client, code, pw).json()["access_token"])
+    assert client.get(f"{API}/orders/performance/vendors", params={"partner": "blinkit"}, headers=who).status_code == 403
 
 
 def test_vendor_wise_splits_a_store_that_changed_vendor_by_the_dates_each_supplied_it(client, db, admin, make_store):
