@@ -26,6 +26,9 @@ interface Row {
   entries_made: number;
   /** No store of their own: no percentage, only the entries they made. */
   no_stores: boolean;
+  /** Entries whose number this person changed this month (a Team Lead's job). */
+  corrected: number;
+  is_team_lead: boolean;
 }
 interface Performance {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number; today: string;
@@ -176,8 +179,8 @@ function PerformanceBody() {
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="secondary" disabled={!rows.length} onClick={() =>
                     downloadCsv(`performance-${d.partner_slug}-${d.month}.csv`,
-                      ["Employee code", "Employee", "Region", "Stores", "Should mark", "Marked", "Missing", "Performance %", "Entries made (all stores)", ...(d.employees.find((x) => x.daily.length)?.daily ?? []).map((x) => x.date)],
-                      rows.map((e) => [e.employee_code, e.employee_name, e.region_name, e.stores, e.expected, e.done, e.missing, e.no_stores ? "" : e.percent, e.entries_made, ...e.daily.map((x) => x.percent)]))}>
+                      ["Employee code", "Employee", "Region", "Stores", "Should mark", "Marked", "Missing", "Performance %", "Entries made (all stores)", "Entries corrected", ...(d.employees.find((x) => x.daily.length)?.daily ?? []).map((x) => x.date)],
+                      rows.map((e) => [e.employee_code, e.employee_name, e.region_name, e.stores, e.expected, e.done, e.missing, e.no_stores ? "" : e.percent, e.entries_made, e.corrected, ...e.daily.map((x) => x.percent)]))}>
                     <IconDownload className="h-3.5 w-3.5" aria-hidden="true" />
                     Export CSV
                   </Button>
@@ -224,7 +227,8 @@ function PerformanceBody() {
                             <Avatar name={e.employee_name} />
                             <div className="min-w-0">
                               <div className="truncate font-semibold text-gray-900">{e.employee_name}</div>
-                              <div className="text-xs text-gray-500">{e.employee_code}{e.region_name ? ` · ${e.region_name}` : ""}</div>
+                              <div className="text-xs text-gray-500">{e.employee_code}{e.region_name ? ` · ${e.region_name}` : ""}{e.is_team_lead ? " · Team Lead" : ""}</div>
+                              {(e.is_team_lead || e.corrected > 0) && <div className="text-xs font-semibold text-brand-700">{e.corrected.toLocaleString()} {e.corrected === 1 ? "entry" : "entries"} corrected</div>}
                             </div>
                           </div>
                         </td>

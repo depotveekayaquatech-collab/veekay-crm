@@ -75,6 +75,33 @@ def test_someone_with_no_store_who_made_entries_is_listed_with_how_many(client, 
     assert r.json()["summary"]["employees"] == sum(1 for e in got.values() if not e["no_stores"])      # and not counted in the summary
 
 
+def test_a_team_lead_shows_how_many_entries_they_corrected(client, db, admin, make_user, make_store):
+    from app.models.role import Role
+    from app.models.user import User, UserRole
+
+    store = make_store(platform="blinkit", region="NORTH", state="Perf-Land")
+    _, _, lead = make_user(platform="blinkit", region="SOUTH", grants=("orders.view", "orders.mark"))       # no store of their own
+    db.add(UserRole(user_id=lead, role_id=db.query(Role).filter_by(code="team_lead").one().id))
+    code, pw, member = make_user(platform="blinkit", region="NORTH", grants=("orders.view", "orders.mark"))
+    db.query(User).filter(User.id == member).update({"reports_to_user_id": lead})
+    db.commit()
+    lead_code = db.query(User).filter(User.id == lead).one().employee_code
+    emp = auth(login(client, code, pw).json()["access_token"])
+    boss = auth(login(client, lead_code, "Pass@123").json()["access_token"])
+
+    other = make_store(platform="blinkit", region="NORTH", state="Perf-Land")
+    for st in (store, other):
+        r = client.post(f"{API}/orders/mark", headers=emp, json={"store_id": str(st.id), "order_date": TODAY.isoformat(), "bottle_count": 11})
+        assert r.status_code == 200, r.text
+    for item in client.get(f"{API}/entries/search", headers=boss).json()["items"]:                       # the Team Lead corrects both entries
+        c = client.patch(f"{API}/entries/{item['entry_id']}", headers=boss, json={"bottle_count": 14, "reason": "delivery note", "expected_version": 1})
+        assert c.status_code == 200, c.text
+
+    rows = {e["employee_id"]: e for e in client.get(f"{API}/orders/performance", params={"partner": "blinkit", "month": TODAY.strftime("%Y-%m")}, headers=admin).json()["employees"]}
+    assert rows[str(lead)]["corrected"] == 2 and rows[str(lead)]["is_team_lead"] is True and rows[str(lead)]["no_stores"] is True   # listed for the corrections alone
+    assert rows[str(member)]["corrected"] == 0 and rows[str(member)]["is_team_lead"] is False and rows[str(member)]["entries_made"] == 2
+
+
 def test_an_entry_marked_on_a_holiday_does_not_break_the_page(client, db, admin, make_user, make_store):
     if TODAY.day < 4:
         return

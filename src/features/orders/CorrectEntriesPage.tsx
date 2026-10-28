@@ -29,7 +29,8 @@ export function CorrectEntriesPage() {
   const correct = useCorrectEntry();
   const { data: calendar, isLoading, isError, refetch } = useCalendar(storeId || null, period.year, period.month);
 
-  const ofPartner = useMemo(() => stores.filter((s) => s.partnerSlug === partner), [stores, partner]);
+  // Only live stores: a closed or pending store has no business holding entries, so it is not offered here (the list was 640+ with them, about 605 live).
+  const ofPartner = useMemo(() => stores.filter((s) => s.partnerSlug === partner && s.status === "LIVE"), [stores, partner]);
   const regions = useMemo(
     () => distinctOptions(ofPartner, (s) => (s.regionId ? { value: s.regionId, label: s.regionName ?? "Region" } : null)),
     [ofPartner],

@@ -404,3 +404,32 @@ def test_the_delivery_matrix_never_drops_a_store_that_has_entries_in_the_period(
     assert any(r["code"] == "MX-1" if "code" in r else r.get("external_code") == "MX-1" or "MX-1" in str(r) for r in m["rows"])
     rep = client.get(f"{API}/orders/report", params={"start": params["start"], "end": params["end"], "group_by": "partner", "partner": "blinkit"}, headers=admin).json()
     assert m["grand_total_bottles"] == rep["total_bottles"]                      # the matrix and the report add up to the same number
+
+
+def test_a_store_that_is_not_live_never_gets_an_entry_from_a_sheet_or_an_admin(client, dev, admin, db, make_store):
+    from app.models.order_entry import OrderEntry
+
+    live = make_store(code="NL-LIVE-1", name="Blinkit - Live Mart NL")
+    closed = make_store(code="NL-CLOSED-1", name="Blinkit - Closed Mart NL", status="CLOSE")
+    day = date.today() - timedelta(days=1)
+    csv = f"Outlet ID,Outlet Name,{day}\nNL-LIVE-1,Blinkit - Live Mart NL,12\nNL-CLOSED-1,Blinkit - Closed Mart NL,7\n".encode()
+    r = client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"}, files={"file": ("o.csv", csv, "text/csv")})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["created"] == 1 and out["not_live_stores"] == 1 and any("not live" in w for w in out["warnings"])
+    db.expire_all()
+    assert db.query(OrderEntry).filter_by(store_id=live.id).count() == 1
+    assert db.query(OrderEntry).filter_by(store_id=closed.id).count() == 0
+
+    # an administrator cannot add one either...
+    add = client.patch(f"{API}/orders/entry", headers=admin, json={"store_id": str(closed.id), "order_date": day.isoformat(), "bottle_count": 5})
+    assert add.status_code == 409 and "not live" in add.text
+    assert db.query(OrderEntry).filter_by(store_id=closed.id).count() == 0
+
+    # ...but an entry already sitting on a store that is not live can still be cleared
+    from .conftest import plant_entry
+    plant_entry(db, closed, day, 9)
+    cleared = client.patch(f"{API}/orders/entry", headers=admin, json={"store_id": str(closed.id), "order_date": day.isoformat(), "bottle_count": None})
+    assert cleared.status_code == 200, cleared.text
+    db.expire_all()
+    assert db.query(OrderEntry).filter_by(store_id=closed.id).count() == 0

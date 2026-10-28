@@ -530,6 +530,8 @@ def admin_set_entry(db: Session, admin: User, payload: AdminEntryRequest) -> Ord
             existing.source = EntrySource.ADMIN.value
             existing.marked_by_user_id = admin.id
         else:
+            if store.status != StoreStatus.LIVE.value:    # an entry only ever belongs to a live store (existing ones can still be corrected or cleared)
+                raise HTTPException(status.HTTP_409_CONFLICT, "This store is not live, so a new entry can't be added to it.")
             repo.add(OrderEntry(
                 organization_id=admin.organization_id,
                 store_id=store.id,

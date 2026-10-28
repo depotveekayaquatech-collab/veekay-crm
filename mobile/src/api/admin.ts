@@ -74,6 +74,9 @@ export interface PerformanceRow {
   entries_made?: number;
   /** No store of their own: no percentage, only the entries they made. */
   no_stores?: boolean;
+  /** Entries whose number this person changed this month (a Team Lead's job). */
+  corrected?: number;
+  is_team_lead?: boolean;
 }
 export interface Performance {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number;

@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.order_entry import EntrySource, OrderEntry
 from app.models.organization import Organization, OrganizationKind
-from app.models.store import Store
+from app.models.store import Store, StoreStatus
 from app.models.user import User
 from app.services import activity_service, store_service, vendor_history_service
 from app.services.store_sync_service import SyncError, _check_unpacked_size, bounded_rows
@@ -62,6 +62,7 @@ class OrderImportResult:
     unknown_stores: int = 0     # distinct Outlet IDs not found on this platform
     invalid_values: int = 0
     future_skipped: int = 0
+    not_live_stores: int = 0    # stores the sheet has numbers for but that are not live: no entry is written for them
     start_dates_set: int = 0    # stores whose empty start date was filled from their first order
     vendor_starts_set: int = 0  # new vendors whose start date was fixed from their first order
     warnings: list[str] = field(default_factory=list)
@@ -316,11 +317,15 @@ def _import_grids(
             ).scalars()
         }
         today = _today()
+        not_live: set = set()
         for (sid, d), n in wanted.items():
             if d > today:
                 result.future_skipped += 1
                 continue
             store = stores_by_id[sid]
+            if store.status != StoreStatus.LIVE.value:   # an entry only ever belongs to a live store: a sheet row for a closed or pending one is ignored
+                not_live.add(sid)
+                continue
             entry = existing.get((store.id, d))
             if entry is None:
                 db.add(OrderEntry(
@@ -338,6 +343,7 @@ def _import_grids(
                 result.updated += 1
             else:
                 result.kept_existing += 1
+        result.not_live_stores = len(not_live)
 
     if unknown:
         ordered = sorted(unknown, key=lambda i: shown.get(i, ""))
@@ -353,6 +359,8 @@ def _import_grids(
         )
     if result.future_skipped:
         result.warnings.append(f"{result.future_skipped} future-dated cells were skipped.")
+    if result.not_live_stores:
+        result.warnings.append(f"{result.not_live_stores} store{'s' if result.not_live_stores > 1 else ''} in the sheet {'are' if result.not_live_stores > 1 else 'is'} not live, so no entries were written for {'them' if result.not_live_stores > 1 else 'it'}.")
     if result.kept_existing:
         result.warnings.append(
             f"{result.kept_existing} existing entries had a different value and were kept "

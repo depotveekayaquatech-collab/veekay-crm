@@ -25,7 +25,8 @@ function EmployeeCard({ r }: { r: PerformanceRow }) {
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{r.employee_name}</Text>
-          <Text numberOfLines={1} style={font.small}>{r.employee_code}{r.region_name ? ` · ${r.region_name}` : ""} · {r.stores} stores</Text>
+          <Text numberOfLines={1} style={font.small}>{r.employee_code}{r.region_name ? ` · ${r.region_name}` : ""} · {r.stores} stores{r.is_team_lead ? " · Team Lead" : ""}</Text>
+          {(r.is_team_lead || (r.corrected ?? 0) > 0) && <Text style={{ fontSize: 12, fontWeight: "700", color: colors.brand700 }}>{(r.corrected ?? 0).toLocaleString("en-IN")} {r.corrected === 1 ? "entry" : "entries"} corrected</Text>}
         </View>
         {r.no_stores ? <Badge tone="neutral">No stores</Badge> : <Badge tone={tone(r.percent)}>{r.percent}%</Badge>}
       </View>

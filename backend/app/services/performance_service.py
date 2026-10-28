@@ -10,17 +10,20 @@ from __future__ import annotations
 import calendar
 import uuid
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.order_entry import OrderEntry
+from app.models.order_entry_event import OrderEntryEvent
+from app.models.role import Role
 from app.models.organization import Organization, OrganizationKind
 from app.models.store import Store, StoreStatus
 from app.models.store_vendor_period import StoreVendorPeriod
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.employee_repository import EmployeeRepository
 from app.services import assignment_service, holiday_service
 
@@ -75,16 +78,35 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
             .group_by(who)
         ).all())
 
+    # Entries a person CORRECTED this month: distinct entries whose number they changed (a developer's cash adjustment is not a correction).
+    # Shown for Team Leads, whose job it is; anyone else with corrections shows them too.
+    corrected: dict[uuid.UUID, int] = {}
+    team_leads: set[uuid.UUID] = set()
+    if employees:
+        ids = [e.id for e in employees]
+        team_leads = set(db.execute(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code == "team_lead", UserRole.user_id.in_(ids))).scalars())
+        if last_of_month >= month:
+            ist = ZoneInfo("Asia/Kolkata")
+            ev = OrderEntryEvent
+            corrected = dict(db.execute(
+                select(ev.actor_user_id, func.count(func.distinct(ev.entry_id))).join(Store, Store.id == ev.store_id)
+                .where(Store.organization_id == admin.organization_id, Store.partner_organization_id == partner.id, ev.event_type == "EDITED",
+                       ev.new_values.has_key("bottle_count"), ~ev.new_values.has_key("cash_adjustment"), ev.actor_user_id.in_(ids),
+                       ev.created_at >= datetime.combine(month, time.min, ist),
+                       ev.created_at < datetime.combine(min(today, last_of_month) + timedelta(days=1), time.min, ist))
+                .group_by(ev.actor_user_id)
+            ).all())
+
     rows, storeless = [], []
     for emp in employees:
         stores = set(scopes.get(emp.id, []))
         if not stores:  # nothing to mark (a team lead with no store assigned, a new employee): no percentage, listed only if they entered something
-            if made.get(emp.id):
+            if made.get(emp.id) or corrected.get(emp.id):
                 storeless.append({
                     "employee_id": emp.id, "employee_code": emp.employee_code, "employee_name": emp.full_name,
                     "region_name": emp.region.name if emp.region else None,
                     "stores": 0, "expected": 0, "done": 0, "missing": 0, "percent": 0.0, "yesterday_percent": None, "daily": [],
-                    "entries_made": made[emp.id], "no_stores": True,
+                    "entries_made": made.get(emp.id, 0), "corrected": corrected.get(emp.id, 0), "is_team_lead": emp.id in team_leads, "no_stores": True,
                 })
             continue
         daily, done_total, running_expected = [], 0, 0
@@ -99,10 +121,10 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
             "region_name": emp.region.name if emp.region else None,
             "stores": len(stores), "expected": expected, "done": done_total, "missing": expected - done_total, "percent": _pct(done_total, expected),
             "yesterday_percent": daily[-1]["percent"] if daily and daily[-1]["date"] == today - timedelta(days=1) else None,
-            "daily": daily, "entries_made": made.get(emp.id, 0), "no_stores": False,
+            "daily": daily, "entries_made": made.get(emp.id, 0), "corrected": corrected.get(emp.id, 0), "is_team_lead": emp.id in team_leads, "no_stores": False,
         })
     rows.sort(key=lambda r: (r["percent"], r["employee_name"].lower()))
-    storeless.sort(key=lambda r: (-r["entries_made"], r["employee_name"].lower()))
+    storeless.sort(key=lambda r: (-r["entries_made"] - r["corrected"], r["employee_name"].lower()))
 
     expected_all = sum(r["expected"] for r in rows)
     done_all = sum(r["done"] for r in rows)

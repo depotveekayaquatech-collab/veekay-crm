@@ -118,6 +118,8 @@ def apply_number(
 
     audit_context.bind(db, actor, reason=f"Applied from the mark journal: the number {emp.employee_code if emp else 'an employee'} entered but that was not saved")
     if entry is None:
+        if store.status != "LIVE":                        # an entry only ever belongs to a live store
+            raise HTTPException(status.HTTP_409_CONFLICT, "This store is not live, so a new entry can't be added to it.")
         db.add(OrderEntry(organization_id=actor.organization_id, store_id=store.id, order_date=order_date, bottle_count=count,
                           source=EntrySource.EMPLOYEE.value, marked_by_user_id=emp.id if emp else None))
     else:

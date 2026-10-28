@@ -19,6 +19,9 @@ export interface ReportRow {
   entries_made?: number;
   /** No store of their own: there is no percentage, only how many entries they made. */
   no_stores?: boolean;
+  /** Entries whose number this person changed this month (a Team Lead's job). */
+  corrected?: number;
+  is_team_lead?: boolean;
 }
 
 /** Who the report is for: everyone, a performance band, or one employee ("emp:<id>"). */
@@ -36,8 +39,9 @@ const n = (v: number) => v.toLocaleString("en-IN");
 
 /** One employee's four lines. */
 export function formatEmployee(r: ReportRow): string {
-  if (r.no_stores) return [`Employee name - ${r.employee_name}`, `Entries made - ${n(r.entries_made ?? 0)}`, "No. of stores - 0"].join("\n");
-  return [`Employee name - ${r.employee_name}`, `Entries - ${n(r.done)} / ${n(r.expected)}`, `Percentage - ${r.percent}%`, `No. of stores - ${n(r.stores)}`].join("\n");
+  const fixed = r.is_team_lead || (r.corrected ?? 0) > 0 ? [`Entries corrected - ${n(r.corrected ?? 0)}`] : [];
+  if (r.no_stores) return [`Employee name - ${r.employee_name}`, `Entries made - ${n(r.entries_made ?? 0)}`, ...fixed, "No. of stores - 0"].join("\n");
+  return [`Employee name - ${r.employee_name}`, `Entries - ${n(r.done)} / ${n(r.expected)}`, `Percentage - ${r.percent}%`, ...fixed, `No. of stores - ${n(r.stores)}`].join("\n");
 }
 
 /** The whole message: a heading line saying what it is, then one block per employee with a blank line between. Empty when there is nobody to report. */
