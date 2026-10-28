@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconUpload } from "@/components/ui/icons";
@@ -219,6 +220,7 @@ export function SyncTab() {
               <IconUpload className="h-4 w-4" aria-hidden="true" />
               Upload Cash Purchase Sheet
             </Button>
+            <TemplateLink kind="cash" label="Template" />
             <Button variant="secondary" isLoading={downloading} onClick={async () => { setDownloading(true); try { await downloadPurchaseSheet(); } catch { /* shown */ } finally { setDownloading(false); } }}>
               Download Cash Purchase Sheet
             </Button>

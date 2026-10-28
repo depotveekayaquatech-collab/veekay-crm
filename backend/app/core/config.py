@@ -232,6 +232,8 @@ class Settings(BaseSettings):
 
     # Order sync from Google Sheets
     ORDER_SYNC_SHEETS: list[str] = Field(default_factory=list)
+    # Zepto capping alert: the average daily entry, and the average capping, of all stores together must not be ABOVE this. The one place the number lives.
+    MAX_DAILY_LIMIT: int = Field(default=11, ge=1)
     ORDER_SYNC_ENABLED: bool = Field(default=True)
     ORDER_SYNC_OVERWRITE: bool = Field(default=False)
 

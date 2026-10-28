@@ -16,19 +16,19 @@ router = APIRouter(prefix="/capping", tags=["capping"])
 
 
 class CappingChangeIn(BaseModel):
-    """A new capping for one store from a date. The names are camelCase (storeId, effectiveFrom); snake_case works too."""
+    """A new capping for one store. The names are camelCase (storeId); snake_case works too."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     store_id: uuid.UUID = Field(alias="storeId")
-    capping: StrictInt = Field(ge=1, le=capping_service.MAX_CAP, description="bottles per day, from the effective date")
-    effective_from: date = Field(alias="effectiveFrom", description="today or an earlier date (Asia/Kolkata)")
+    capping: StrictInt = Field(ge=1, le=capping_service.MAX_CAP, description="bottles per day")
 
 
-class EffectiveDateIn(BaseModel):
-    """Move a capping change to another start date. camelCase (effectiveFrom); snake_case works too."""
+class RemoveCappingIn(BaseModel):
+    """Remove a store's capping. camelCase (storeId); snake_case works too."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    effective_from: date = Field(alias="effectiveFrom")
+    store_id: uuid.UUID = Field(alias="storeId")
+
 
 
 @router.get("")
@@ -44,9 +44,28 @@ def change_capping(
     payload: CappingChangeIn,
     user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
 ) -> dict:
-    """Administrator / manager (capping.change): a store's capping from a date. A past date is allowed (`backdated` is true so the page can have asked first);
-    a date that already has a change for the store is refused with 409. There is no delete."""
-    return capping_history_service.change(db, user, perms, payload.store_id, payload.capping, payload.effective_from)
+    """Administrator / manager (capping.change): set a store's capping. It applies from today (a store's first capping from the day its entries started); every
+    change is kept in the history. There is no date to choose and no delete."""
+    return capping_history_service.change(db, user, perms, payload.store_id, payload.capping)
+
+
+@router.post("/remove", status_code=status.HTTP_201_CREATED)
+def remove_capping(
+    payload: RemoveCappingIn,
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Administrator / manager (capping.change): remove a store's capping. It is recorded in the history as a change to "no capping"; earlier days keep theirs."""
+    return capping_history_service.remove_capping(db, user, perms, payload.store_id)
+
+
+@router.get("/alert")
+def get_alert(
+    from_: date | None = Query(None, alias="from", description="first date; the 1st of this month by default"),
+    to: date | None = Query(None, description="last date; the end of this month by default"),
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """The "Reduce capping" alert: the collective average entry and average capping of all live Zepto stores against MAX_DAILY_LIMIT."""
+    return capping_history_service.alert_summary(db, user, perms, from_, to)
 
 
 @router.get("/history")
@@ -56,13 +75,3 @@ def get_history(
 ) -> dict:
     """One store's capping changes, newest effective date first."""
     return capping_history_service.history(db, user, perms, store_id)
-
-
-@router.patch("/history/{history_id}")
-def change_history_date(
-    history_id: uuid.UUID, payload: EffectiveDateIn,
-    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
-) -> dict:
-    """Administrator / manager (capping.change): move one capping change to another start date. Only the date can change (the capping value cannot); a date that
-    already has a change for the store is refused with 409, and the change is recorded in the activity log."""
-    return capping_history_service.change_effective_date(db, user, perms, history_id, payload.effective_from)

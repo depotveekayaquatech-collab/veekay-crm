@@ -19,12 +19,13 @@ class CappingHistory(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "capping_history"
     __table_args__ = (
         UniqueConstraint("store_id", "effective_from", name="uq_capping_history_store_date"),
-        CheckConstraint("capping >= 1", name="ck_capping_history_capping"),
+        CheckConstraint("capping IS NULL OR capping >= 1", name="ck_capping_history_capping"),
         Index("ix_capping_history_store_effective", "store_id", text("effective_from DESC")),
     )
 
     store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"))
-    capping: Mapped[int] = mapped_column(Integer)
+    # Bottles per day from effective_from; NULL = the capping was REMOVED from that date (the days before keep theirs).
+    capping: Mapped[int | None] = mapped_column(Integer, nullable=True)
     effective_from: Mapped[date] = mapped_column(Date)
     # Null only when the person's account was deleted later, or for a backfilled row whose cap had no known author.
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

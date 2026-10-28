@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -101,6 +102,7 @@ export function ImportSheetModal({ month: initialMonth, onClose }: { month: stri
             />
           </label>
         </div>
+        <TemplateLink kind="attendance" month={month} label={`Download the sheet layout for ${month}`} />
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-gray-500">
           <li>The first row needs <b>Employee ID</b> (and may have a Name) and the day numbers 1, 2, 3… as columns.</li>
           <li>Only <b>P</b> writes a day. Blank and A leave the day as it is. Days before today only.</li>

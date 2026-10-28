@@ -17,7 +17,7 @@ export function dateLabel(iso: string): string {
   return `${dayLabel(iso)}-${iso.slice(0, 4)}`;
 }
 
-/** A change dated before today asks for a confirmation first. */
-export function isBackdated(effectiveFrom: string, today: string = istToday()): boolean {
-  return effectiveFrom < today;
+/** An average with exactly two decimals ("9.40"); a dash when there is none. */
+export function fmtAvg(v: number | null | undefined): string {
+  return v == null ? "—" : v.toFixed(2);
 }

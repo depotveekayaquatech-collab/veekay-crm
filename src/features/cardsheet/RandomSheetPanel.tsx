@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { Button } from "@/components/ui/Button";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { Input } from "@/components/ui/Input";
@@ -151,6 +152,7 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
       </p>
 
       <FileDropzone file={file} onPick={pick} accept=".csv,.xlsx,.xlsm" hint="CSV or Excel: outlet and total on each row" />
+      <TemplateLink kind="cardsheet" label="Download a sample sheet" className="-mt-3 self-start" />
       {busy === "read" && <p className="text-sm text-gray-500">Reading the sheet…</p>}
 
       {parsed && (

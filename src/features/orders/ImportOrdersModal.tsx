@@ -1,32 +1,16 @@
 import { useState } from "react";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { FileDropzone } from "@/components/ui/FileDropzone";
-import { IconCheckCircle, IconDownload } from "@/components/ui/icons";
-import { downloadCsv } from "@/lib/csv";
+import { IconCheckCircle } from "@/components/ui/icons";
 import { usePartners } from "@/features/stores/useStores";
 import { useImportOrders } from "@/features/orders/useOrders";
 import type { OrderImportResult } from "@/types/order";
 
 const ACCEPT = ".csv,.xlsx,.xlsm";
 const MAX_MB = 10;
-
-function downloadTemplate() {
-  const d = (n: number) => {
-    const x = new Date();
-    x.setDate(x.getDate() - n);
-    return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  };
-  downloadCsv(
-    "order-sheet-template.csv",
-    ["S.No", "Outlet ID", "Outlet Name", d(2), d(1), d(0)],
-    [
-      [1, "BLK-1001", "Example Store", 24, 0, 31],
-      [2, "BLK-1002", "Another Store", 18, 22, ""],
-    ],
-  );
-}
 
 export function ImportOrdersModal({ onClose }: { onClose: () => void }) {
   const { data: partners = [] } = usePartners();
@@ -146,9 +130,7 @@ export function ImportOrdersModal({ onClose }: { onClose: () => void }) {
               0s after a store&rsquo;s last day with bottles, which are treated as not filled in yet. Stores must already exist — import them first. In an
               Excel workbook every tab with these columns is read; other tabs are ignored.
             </p>
-            <button onClick={downloadTemplate} className="flex shrink-0 items-center gap-1 font-semibold text-brand-600 hover:text-brand-700">
-              <IconDownload className="h-3.5 w-3.5" /> Template
-            </button>
+            <TemplateLink kind="orders" label="Template" />
           </div>
         </div>
       )}

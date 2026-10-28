@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -142,10 +143,13 @@ export function ImportEmployeesModal({ onClose }: { onClose: () => void }) {
             </p>
           )}
 
-          <p className="rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-600">
+          <div className="flex items-start justify-between gap-3 rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-600">
+            <p>
             Reads the <b>EMPLOYEES</b> tab: Employee ID, Employee Name, Password, Region, Status, IsAdmin, Platform, IsAccountant and a
             phone column. A <b>State_Assignments</b> tab (Zepto) is applied too. All other tabs are ignored and never read.
-          </p>
+            </p>
+            <TemplateLink kind="employees" label="Template" />
+          </div>
         </div>
       )}
     </Modal>

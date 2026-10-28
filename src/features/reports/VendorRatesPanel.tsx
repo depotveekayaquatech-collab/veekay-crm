@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { SelectField } from "@/components/ui/Dropdown";
 import { FileDropzone } from "@/components/ui/FileDropzone";
-import { IconAlertTriangle, IconCheckCircle, IconDownload } from "@/components/ui/icons";
-import { downloadCsv } from "@/lib/csv";
+import { IconAlertTriangle, IconCheckCircle } from "@/components/ui/icons";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { pushToast } from "@/lib/toast";
 import { usePartners } from "@/features/stores/useStores";
 import { listVendorRates, uploadVendorRates, type RateLine, type RateUploadResult } from "@/services/vendorRates";
@@ -83,12 +83,7 @@ export function VendorRatesPanel() {
             <input type="date" className="h-10 w-full rounded-lg border border-surface-border bg-surface px-3 text-sm" value={effective} onChange={(e) => { setEffective(e.target.value); setResult(null); }} />
           </label>
           <div className="flex items-end">
-            <Button
-              variant="secondary"
-              onClick={() => downloadCsv("vendor-rates-template.csv", ["City", "Rate", "Outlet ID", "Store Name"], [["Delhi", "4.50", "", ""], ["", "5.00", "BLK-1001", ""]])}
-            >
-              <IconDownload className="h-4 w-4" /> Template
-            </Button>
+            <TemplateLink kind="vendor-rates" label="Template" />
           </div>
         </div>
 

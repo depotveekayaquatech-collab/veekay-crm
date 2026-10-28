@@ -31,6 +31,7 @@ from app.api.v1.endpoints import (
     regions,
     stores,
     sync,
+    templates,
     test_reports,
     tickets,
     uploads,
@@ -52,6 +53,7 @@ api_router.include_router(orders.router)
 api_router.include_router(order_audit.router)
 api_router.include_router(capping.router)
 api_router.include_router(vendor_rates.router)
+api_router.include_router(templates.router)
 api_router.include_router(activity.router)
 api_router.include_router(compliance.router)
 api_router.include_router(cards.router)

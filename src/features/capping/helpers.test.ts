@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateLabel, dayLabel, isBackdated, istToday } from "./helpers";
+import { dateLabel, dayLabel, fmtAvg, istToday } from "./helpers";
 
 describe("capping dates (Asia/Kolkata)", () => {
   it("takes the day from India, not from the browser's zone", () => {
@@ -10,8 +10,10 @@ describe("capping dates (Asia/Kolkata)", () => {
     expect(dayLabel("2026-10-01")).toBe("01-Oct");
     expect(dateLabel("2026-12-15")).toBe("15-Dec-2026");
   });
-  it("treats only an earlier day as backdated", () => {
-    expect(isBackdated("2026-10-26", "2026-10-27")).toBe(true);
-    expect(isBackdated("2026-10-27", "2026-10-27")).toBe(false);
+  it("always shows two decimals", () => {
+    expect(fmtAvg(9.4)).toBe("9.40");
+    expect(fmtAvg(11)).toBe("11.00");
+    expect(fmtAvg(9.333)).toBe("9.33");
+    expect(fmtAvg(null)).toBe("—");
   });
 });

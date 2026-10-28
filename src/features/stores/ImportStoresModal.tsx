@@ -3,27 +3,13 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { FileDropzone } from "@/components/ui/FileDropzone";
-import { IconCheckCircle, IconDownload } from "@/components/ui/icons";
-import { downloadCsv } from "@/lib/csv";
+import { IconCheckCircle } from "@/components/ui/icons";
+import { TemplateLink } from "@/components/ui/TemplateLink";
 import { useStoreMutations, usePartners } from "@/features/stores/useStores";
 import type { StoreSyncResult } from "@/types/store";
 
 const ACCEPT = ".csv,.xlsx,.xlsm";
 const MAX_MB = 5;
-
-// Same columns as the Blinkit outlet sheet. Login / password columns are
-// accepted in an uploaded file but always ignored, so the template omits them.
-const TEMPLATE_HEADER = [
-  "S.NO", "Entity", "ZONE", "State", "City", "Outlet ID", "Outlet Name", "STATUS", "Rate - BCPL",
-  "DATE RECEIVED", "START DATE BY BLINKIT", "start Date", "Address", "POC Name", "POC Contact no",
-  "MAIL ID POC", "vendor", "Contact Details", "location",
-];
-
-function downloadTemplate() {
-  downloadCsv("blinkit-stores-template.csv", TEMPLATE_HEADER, [
-    [1, "Blinkit", "North Zone", "Delhi", "Delhi", "BLK-1001", "Blinkit - Example", "Live", "", "", "", "2026-03-01", "Sector 1, Rohini", "Store Manager", "9999999999", "", "Local Vendor", "8888888888", "Rohini"],
-  ]);
-}
 
 export function ImportStoresModal({ onClose }: { onClose: () => void }) {
   const { data: partners = [] } = usePartners();
@@ -137,9 +123,7 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
               STATUS, <b>start Date</b>, Address, POC Name, POC Contact no, vendor, Contact Details. Other columns (and any login / password columns)
               are ignored. New stores without a start date are still added, but flagged: fill the date in the store details or use Sync start dates.
             </p>
-            <button onClick={downloadTemplate} className="flex shrink-0 items-center gap-1 font-semibold text-brand-600 hover:text-brand-700">
-              <IconDownload className="h-3.5 w-3.5" /> Template
-            </button>
+            <TemplateLink kind="stores" label="Template" />
           </div>
         </div>
       )}
