@@ -11,7 +11,8 @@ import { dateLabel, isBackdated, istToday } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
 import { usePermission } from "@/hooks/usePermission";
 import { pushToast } from "@/lib/toast";
-import { changeCapping, getCappingHistory, markZeroDays, setDefaultCapping, unmarkZeroDay, type CapRow } from "@/services/capping";
+import { changeCapping, changeCappingDate, getCappingHistory, markZeroDays, setDefaultCapping, unmarkZeroDay, type CapRow } from "@/services/capping";
+import { CappingSheetUpload } from "@/features/capping/CappingSheetUpload";
 
 const MAX = 1_000_000;
 const EARLIEST = "2024-01-01";
@@ -43,6 +44,62 @@ function ZeroDays({ storeId, canChange, days }: { storeId: string; canChange: bo
   );
 }
 
+/** Move one capping change to another start date: the capping stays, only the day it starts on moves. */
+function EditDate({ row, label = "Change date" }: { row: { id: string; capping: number; effectiveFrom: string }; label?: string }) {
+  const qc = useQueryClient();
+  const today = istToday();
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(row.effectiveFrom);
+  const bad = !date || date > today || date < EARLIEST;
+  const save = useMutation({
+    mutationFn: () => changeCappingDate(row.id, date),
+    onSuccess: (r) => {
+      pushToast(`Capping ${r.capping} now starts on ${dateLabel(r.effectiveFrom)} (was ${dateLabel(r.was)}).`, "success");
+      setOpen(false);
+      void qc.invalidateQueries({ queryKey: ["capping"] });
+    },
+  });
+  return (
+    <>
+      <button type="button" onClick={() => { setDate(row.effectiveFrom); setOpen(true); }} className="text-xs font-semibold text-brand-600 hover:text-brand-700">{label}</button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Change the start date"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={() => save.mutate()} isLoading={save.isPending} disabled={bad || date === row.effectiveFrom}>Save date</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-700">
+          The capping of <b>{row.capping}</b> a day currently starts on <b>{dateLabel(row.effectiveFrom)}</b>. Choose the day it really started. The capping sheet and the averages change for the days in between.
+        </p>
+        <label className="mt-3 flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
+          Starts on
+          <input className={field} type="date" value={date} min={EARLIEST} max={today} onChange={(e) => setDate(e.target.value)} aria-invalid={bad} />
+        </label>
+        {bad && <p role="alert" className="mt-2 text-sm text-status-danger">Choose today or an earlier date.</p>}
+      </Modal>
+    </>
+  );
+}
+
+/** The capping in force today for the chosen store, and since when, with a way to correct that date. */
+function CurrentCapping({ storeId, canChange }: { storeId: string; canChange: boolean }) {
+  const { data } = useQuery({ queryKey: ["capping", "history", storeId], queryFn: () => getCappingHistory(storeId), staleTime: 15_000 });
+  if (!data) return null;
+  const now = data.rows.find((r) => r.effectiveFrom <= data.today);               // rows are newest first
+  if (!now) return <p className="mt-3 rounded-lg bg-surface-subtle px-3 py-2 text-sm text-gray-600">No capping is set for this store yet. Add one below.</p>;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-brand-500/5 px-3 py-2 ring-1 ring-brand-500/20">
+      <span className="text-sm text-gray-700">Current capping <b className="text-base tabular-nums text-heading">{now.capping}</b> a day, since <b>{dateLabel(now.effectiveFrom)}</b></span>
+      {canChange && <EditDate row={now} label="Change start date" />}
+    </div>
+  );
+}
+
 function History({ storeId, canChange }: { storeId: string; canChange: boolean }) {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["capping", "history", storeId],
@@ -69,7 +126,7 @@ function History({ storeId, canChange }: { storeId: string; canChange: boolean }
       <table className="w-full min-w-[520px] border-collapse text-sm">
         <thead>
           <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            {["Capping", "Effective from", "Changed by", "Created at"].map((h) => <th key={h} className="border-b border-surface-border px-3 py-3 first:pl-4">{h}</th>)}
+            {["Capping", "Effective from", "Changed by", "Created at", ""].map((h, i) => <th key={i} className="border-b border-surface-border px-3 py-3 first:pl-4">{h}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -81,6 +138,7 @@ function History({ storeId, canChange }: { storeId: string; canChange: boolean }
               <td className="px-3 py-3 tabular-nums">{dateLabel(r.effectiveFrom)}</td>
               <td className="px-3 py-3 text-gray-700">{r.changedBy ?? "—"}{r.changedByCode ? <span className="text-xs text-gray-500"> ({r.changedByCode})</span> : null}</td>
               <td className="px-3 py-3 text-gray-600">{new Date(r.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })}</td>
+              <td className="px-3 py-3 text-right">{canChange && <EditDate row={r} />}</td>
             </tr>
           ))}
         </tbody>
@@ -162,12 +220,14 @@ const DEFAULT_CAPPING = 10;
 /** Stores that have no capping at all: how many, and one button (administrators and managers) that gives them all the default from today. */
 function UnsetStores() {
   const qc = useQueryClient();
+  const today = istToday();
   const [confirming, setConfirming] = useState(false);
-  const count = useQuery({ queryKey: ["capping", "unset"], queryFn: () => setDefaultCapping(DEFAULT_CAPPING, true), staleTime: 15_000 });
+  const [from, setFrom] = useState(`${today.slice(0, 7)}-01`);                      // day 1 of this month unless changed
+  const count = useQuery({ queryKey: ["capping", "unset"], queryFn: () => setDefaultCapping(DEFAULT_CAPPING, true, from), staleTime: 15_000 });
   const apply = useMutation({
-    mutationFn: () => setDefaultCapping(DEFAULT_CAPPING, false),
+    mutationFn: () => setDefaultCapping(DEFAULT_CAPPING, false, from),
     onSuccess: (r) => {
-      pushToast(`${r.applied.toLocaleString("en-IN")} store${r.applied === 1 ? "" : "s"} set to ${r.capping} a day from today.`, "success");
+      pushToast(`${r.applied.toLocaleString("en-IN")} store${r.applied === 1 ? "" : "s"} set to ${r.capping} a day from ${dateLabel(r.effectiveFrom)}.`, "success");
       setConfirming(false);
       void qc.invalidateQueries({ queryKey: ["capping"] });
     },
@@ -183,7 +243,15 @@ function UnsetStores() {
           {n === 0 ? "Every live store has a capping." : `${n.toLocaleString("en-IN")} live store${n === 1 ? " has" : "s have"} no capping. Stores that already have one (even 0) are not touched.`}
         </p>
       </div>
-      {n > 0 && <Button onClick={() => setConfirming(true)}>Set them all to {DEFAULT_CAPPING}</Button>}
+      {n > 0 && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-gray-700">
+            Starts on
+            <input className={`${field} w-44`} type="date" value={from} min={EARLIEST} max={today} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <Button onClick={() => setConfirming(true)} disabled={!from || from > today || from < EARLIEST}>Set them all to {DEFAULT_CAPPING}</Button>
+        </div>
+      )}
       <Modal
         open={confirming}
         onClose={() => setConfirming(false)}
@@ -196,7 +264,7 @@ function UnsetStores() {
         }
       >
         <p className="text-sm text-gray-700">
-          Every live store with no capping gets <b>{DEFAULT_CAPPING}</b> a day <b>from today</b>. Earlier days stay as they were, so past averages do not move. Each store records this change like any other, and it cannot be edited or removed afterwards.
+          Every live store with no capping gets <b>{DEFAULT_CAPPING}</b> a day <b>from {from ? dateLabel(from) : ""}</b>. {from < today ? "Those days up to today now count in the averages. " : ""}Each store records this change like any other, and you can move a store's start date afterwards.
         </p>
       </Modal>
     </section>
@@ -244,6 +312,7 @@ export function ChangeCappingTab({ rows }: { rows: CapRow[] }) {
   return (
     <div className="flex flex-col gap-5">
       {canChange && <UnsetStores />}
+      {canChange && <CappingSheetUpload />}
       <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <h3 className="text-sm font-bold text-gray-900">Change capping</h3>
         <p className="mt-1 text-xs text-gray-500">
@@ -270,7 +339,7 @@ export function ChangeCappingTab({ rows }: { rows: CapRow[] }) {
         </form>
         {canChange && cappingBad && <p role="alert" className="mt-2 text-sm text-status-danger">Enter a whole number from 1 to 1,000,000.</p>}
         {canChange && dateBad && <p role="alert" className="mt-2 text-sm text-status-danger">Choose today or an earlier date.</p>}
-        {canChange && store && store.dailyCap !== null && <p className="mt-2 text-xs text-gray-500">Current capping for {store.outletName}: <b>{store.dailyCap}</b> a day.</p>}
+        {storeId && <CurrentCapping storeId={storeId} canChange={canChange} />}
       </section>
 
       {canChange && storeId && <ZeroDaysForm key={storeId} storeId={storeId} storeName={store?.outletName ?? "The store"} />}

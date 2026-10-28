@@ -270,8 +270,8 @@ export interface DefaultCappingResult {
 }
 
 /** Administrator / manager: every live Zepto store with no capping gets `capping` from today. `dryRun` only counts them. */
-export async function setDefaultCapping(capping: number, dryRun: boolean): Promise<DefaultCappingResult> {
-  return camelize<DefaultCappingResult>(await apiRequest("/capping/defaults", { method: "POST", body: { capping, dry_run: dryRun } }));
+export async function setDefaultCapping(capping: number, dryRun: boolean, effectiveFrom?: string): Promise<DefaultCappingResult> {
+  return camelize<DefaultCappingResult>(await apiRequest("/capping/defaults", { method: "POST", body: { capping, dry_run: dryRun, ...(effectiveFrom ? { effective_from: effectiveFrom } : {}) } }));
 }
 
 /** Saves the one-page PDF: every live Zepto store and its capping per day. */
@@ -285,4 +285,55 @@ export async function downloadCappingPrint(): Promise<void> {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** Administrator / manager: move one capping change to another start date (the capping itself stays). */
+export async function changeCappingDate(historyId: string, effectiveFrom: string): Promise<{ id: string; capping: number; effectiveFrom: string; was: string; currentCapping: number | null }> {
+  return camelize(await apiRequest(`/capping/history/${encodeURIComponent(historyId)}`, { method: "PATCH", body: { effectiveFrom } }));
+}
+
+export interface DatedImportStart { date: string; stores: number }
+export interface DatedImportSample {
+  outletId: string;
+  store: string;
+  start: string | null;
+  current: number | null;
+  changes: { date: string; capping: number }[];
+  status: "new" | "update" | "conflict";
+  differsFromCrm: { date: string; crm: number; sheet: number }[];
+}
+export interface DatedImportResult {
+  dryRun: boolean;
+  applied: boolean;
+  layout: "dates" | "simple";
+  readAs: string;
+  replace: boolean;
+  defaultStart: string;
+  warnings: string[];
+  rowsRead: number;
+  stores: number;
+  unknownStores: number;
+  ambiguous: number;
+  invalid: number;
+  newRows: number;
+  updatedRows: number;
+  removedRows: number;
+  conflicts: number;
+  unchangedStores: number;
+  zeroDays: number;
+  /** Stores whose capping starts on the 1st of a month, and the rest (they start part-way through). */
+  dayOne: number;
+  midMonth: number;
+  starts: DatedImportStart[];
+  sample: DatedImportSample[];
+}
+
+/** Administrator / manager: read a capping sheet with its start dates. `dryRun` only reports; send it again with `dryRun: false` to save. */
+export async function importDatedSheet(file: File, opts: { dryRun: boolean; replace: boolean; startDate?: string }): Promise<DatedImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("dry_run", String(opts.dryRun));
+  form.append("replace", String(opts.replace));
+  if (opts.startDate) form.append("start_date", opts.startDate);
+  return camelize<DatedImportResult>(await apiRequest("/capping/import-dated", { method: "POST", body: form }));
 }

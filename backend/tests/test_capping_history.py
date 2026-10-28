@@ -202,6 +202,8 @@ def test_there_is_no_way_to_edit_or_delete_a_history_row(client, admin, zstore):
     row = _change(client, admin, zstore, 10, _today()).json()
     for method in ("put", "patch", "delete"):
         for url in (f"{API}/capping/change", f"{API}/capping/history", f"{API}/capping/history/{row['id']}", f"{API}/capping/change/{row['id']}"):
+            if method == "patch" and url.endswith(f"/history/{row['id']}"):
+                continue                                                  # the one allowed edit: the START DATE (see the effective-date tests)
             assert getattr(client, method)(url, headers=admin).status_code in (404, 405), (method, url)
 
 
@@ -495,7 +497,7 @@ def test_stores_with_no_capping_all_get_the_default_from_today_and_nobody_else_i
         assert done.json()["applied"] == count["unset"]
         db.expire_all()
         row = db.query(CappingHistory).filter_by(store_id=zstore.id).one()
-        assert row.capping == 10 and row.effective_from == _today() and row.created_by == admin_id                       # from today, never backdated
+        assert row.capping == 10 and row.effective_from == _today().replace(day=1) and row.created_by == admin_id        # from day 1 of the month by default
         assert db.query(StoreCap).filter_by(store_id=zstore.id).one().daily_cap == 10
         assert [r.capping for r in db.query(CappingHistory).filter_by(store_id=have.id)] == [12]                         # a store that has one is left alone
         assert db.query(CappingHistory).filter_by(store_id=zero.id).count() == 0 and db.query(StoreCap).filter_by(store_id=zero.id).one().daily_cap == 0
@@ -503,7 +505,7 @@ def test_stores_with_no_capping_all_get_the_default_from_today_and_nobody_else_i
         assert again["unset"] == 0 and again["applied"] == 0                                                             # running it twice does nothing
     finally:
         db.rollback()
-        db.query(CappingHistory).filter(CappingHistory.created_by == admin_id, CappingHistory.effective_from == _today()).delete()
+        db.query(CappingHistory).filter(CappingHistory.created_by == admin_id, CappingHistory.effective_from == _today().replace(day=1)).delete()
         db.query(StoreCap).filter(StoreCap.store_id.notin_(before_caps)).delete(synchronize_session=False)
         db.commit()
 
@@ -519,3 +521,108 @@ def test_the_capping_print_is_one_page_with_every_store_and_its_capping(client, 
     text = pdf[0].get_text()
     assert zstore.name[:20] in text and "store capping per day" in text and "9" in text
     assert client.get(f"{API}/capping/print").status_code == 401
+
+
+def test_the_default_capping_can_start_on_any_past_date_but_not_in_the_future(client, admin, zstore, db):
+    first = _today().replace(day=1)
+    assert client.post(f"{API}/capping/defaults", json={"dry_run": True, "effective_from": (_today() + timedelta(days=1)).isoformat()}, headers=admin).status_code == 422
+    assert client.post(f"{API}/capping/defaults", json={"dry_run": True}, headers=admin).json()["effective_from"] == first.isoformat()       # day 1 unless chosen
+
+
+def test_a_start_date_can_be_moved_and_the_current_capping_follows(client, admin, zepto_emp, zstore, db):
+    today = _today()
+    _seed(db, zstore, (today - timedelta(days=9), 10), (today - timedelta(days=2), 12))
+    ids = {r.capping: r.id for r in db.query(CappingHistory).filter_by(store_id=zstore.id)}
+
+    moved = client.patch(f"{API}/capping/history/{ids[12]}", json={"effectiveFrom": (today - timedelta(days=5)).isoformat()}, headers=admin)
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["effective_from"] == (today - timedelta(days=5)).isoformat() and moved.json()["capping"] == 12 and moved.json()["current_capping"] == 12
+    db.expire_all()
+    assert {r.capping: r.effective_from for r in db.query(CappingHistory).filter_by(store_id=zstore.id)} == {10: today - timedelta(days=9), 12: today - timedelta(days=5)}
+
+    assert client.patch(f"{API}/capping/history/{ids[12]}", json={"effectiveFrom": (today - timedelta(days=9)).isoformat()}, headers=admin).status_code == 409   # that date is used
+    assert client.patch(f"{API}/capping/history/{ids[12]}", json={"effectiveFrom": (today + timedelta(days=1)).isoformat()}, headers=admin).status_code == 422
+    assert client.patch(f"{API}/capping/history/{ids[12]}", json={"effectiveFrom": today.isoformat()}, headers=zepto_emp).status_code == 403          # capping.change only
+    assert client.patch(f"{API}/capping/history/{uuid.uuid4()}", json={"effectiveFrom": today.isoformat()}, headers=admin).status_code == 404
+    assert client.patch(f"{API}/capping/history/{ids[12]}", json={"effectiveFrom": today.isoformat(), "capping": 99}, headers=admin).status_code == 422     # only the date can change
+
+
+def _upload(client, headers, text, **form):
+    return client.post(f"{API}/capping/import-dated", headers=headers, files={"file": ("capping.csv", text.encode(), "text/csv")}, data={k: str(v).lower() if isinstance(v, bool) else str(v) for k, v in form.items()})
+
+
+def test_a_dated_sheet_finds_where_each_stores_capping_starts_and_nothing_is_saved_until_applied(client, admin, zepto_emp, make_store, db):
+    from app.models.capping_history import CappingZeroDay
+
+    today = _today()
+    if today.day < 4:
+        return                                                    # the sheet needs a few days of the month
+    first = today.replace(day=1)
+    days = [first + timedelta(days=i) for i in range(4)]
+    a, b, c = (make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru") for _ in range(3))
+    head = "Store," + ",".join(d.isoformat() for d in days)
+    sheet = "\n".join([
+        head,
+        f"{a.name},10,10,10,10",                  # 10 from day 1
+        f"{b.name},,,12,12",                      # starts on day 3
+        f"{c.name},10,10,12,0",                   # 10 from day 1, 12 from day 3, and day 4 marked 0
+        "Not A Store,5,5,5,5",
+    ])
+    assert _upload(client, zepto_emp, sheet).status_code == 403                                   # capping.change only
+
+    look = _upload(client, admin, sheet)                                                          # a preview by default
+    assert look.status_code == 200, look.text
+    body = look.json()
+    assert body["dry_run"] is True and body["applied"] is False and body["layout"] == "dates" and body["stores"] == 3 and body["unknown_stores"] == 1
+    assert body["day_one"] == 2 and body["mid_month"] == 1 and body["new_rows"] == 4 and body["zero_days"] == 1
+    assert {x["date"]: x["stores"] for x in body["starts"]} == {first.isoformat(): 2, days[2].isoformat(): 1}
+    assert db.query(CappingHistory).filter(CappingHistory.store_id.in_([a.id, b.id, c.id])).count() == 0
+
+    done = _upload(client, admin, sheet, dry_run=False)
+    assert done.status_code == 200 and done.json()["applied"] is True, done.text
+    db.expire_all()
+    rows = lambda s: sorted((r.effective_from, r.capping) for r in db.query(CappingHistory).filter_by(store_id=s.id))  # noqa: E731
+    assert rows(a) == [(first, 10)] and rows(b) == [(days[2], 12)] and rows(c) == [(first, 10), (days[2], 12)]
+    assert [z.day for z in db.query(CappingZeroDay).filter_by(store_id=c.id)] == [days[3]]
+    assert db.query(StoreCap).filter_by(store_id=a.id).one().daily_cap == 10                       # the current capping is read from the sheet
+    assert db.query(StoreCap).filter_by(store_id=c.id).one().daily_cap == 12
+
+    again = _upload(client, admin, sheet, dry_run=False).json()
+    assert again["new_rows"] == 0 and again["zero_days"] == 0                                     # applying twice adds nothing
+
+
+def test_a_dated_sheet_leaves_a_different_existing_capping_alone_unless_replace_is_on(client, admin, make_store, db):
+    today = _today()
+    if today.day < 4:
+        return
+    first = today.replace(day=1)
+    days = [first + timedelta(days=i) for i in range(4)]
+    s = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru")
+    _seed(db, s, (first, 9), (days[3], 15))                       # the CRM disagrees on day 1 and has a change on day 4 the sheet does not
+    sheet = "Store," + ",".join(d.isoformat() for d in days) + f"\n{s.name},10,10,10,10"
+
+    keep = _upload(client, admin, sheet, dry_run=False).json()
+    assert keep["conflicts"] == 1 and keep["updated_rows"] == 0 and keep["removed_rows"] == 0
+    db.expire_all()
+    assert sorted((r.effective_from, r.capping) for r in db.query(CappingHistory).filter_by(store_id=s.id)) == [(first, 9), (days[3], 15)]
+
+    replaced = _upload(client, admin, sheet, dry_run=False, replace=True).json()
+    assert replaced["updated_rows"] == 1 and replaced["removed_rows"] == 1 and replaced["conflicts"] == 0
+    db.expire_all()
+    assert sorted((r.effective_from, r.capping) for r in db.query(CappingHistory).filter_by(store_id=s.id)) == [(first, 10)]
+    assert db.query(StoreCap).filter_by(store_id=s.id).one().daily_cap == 10
+
+
+def test_a_one_capping_sheet_starts_each_store_on_its_date_or_on_the_chosen_default(client, admin, make_store, db):
+    today = _today()
+    first = today.replace(day=1)
+    mid = first + timedelta(days=min(2, today.day - 1))
+    a, b = (make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru") for _ in range(2))
+    sheet = f"Outlet Name,Daily Capping,Effective From\n{a.name},11,\n{b.name},13,{mid.isoformat()}\n"
+    body = _upload(client, admin, sheet, dry_run=False).json()
+    assert body["layout"] == "simple" and body["stores"] == 2 and body["applied"] is True
+    db.expire_all()
+    assert [(r.effective_from, r.capping) for r in db.query(CappingHistory).filter_by(store_id=a.id)] == [(first, 11)]      # no date: day 1 of the month
+    assert [(r.effective_from, r.capping) for r in db.query(CappingHistory).filter_by(store_id=b.id)] == [(mid, 13)]
+    assert _upload(client, admin, "Outlet Name,Capping\nx,1\n", start_date=(today + timedelta(days=1)).isoformat()).status_code == 422
+    assert _upload(client, admin, "just,some,words\n1,2,3\n").status_code == 422

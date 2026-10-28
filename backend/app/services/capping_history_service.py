@@ -246,6 +246,39 @@ def change(db: Session, user: User, perms: set[str], store_id: uuid.UUID, cappin
     }
 
 
+def change_effective_date(db: Session, user: User, perms: set[str], history_id: uuid.UUID, effective_from: date) -> dict:
+    """Move one capping change to another start date (a sheet said it started on the 1st, not today). The capping value stays; the date must not be in
+    the future or already used by another change of the same store. The old and new dates go to the activity log, and the store's current capping is
+    recomputed."""
+    _require_change(user, perms)
+    partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
+    row = db.get(CappingHistory, history_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That capping change was not found.")
+    store = _store(db, user, partner.id, row.store_id)
+    today = today_ist()
+    if effective_from > today:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The effective date cannot be in the future. Use today or an earlier date.")
+    if effective_from < EARLIEST:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That date is too far back.")
+    old = row.effective_from
+    if effective_from != old:
+        if db.execute(select(CappingHistory.id).where(CappingHistory.store_id == row.store_id, CappingHistory.effective_from == effective_from)).first():
+            raise HTTPException(status.HTTP_409_CONFLICT, f"A capping change for {effective_from:%d-%b-%Y} already exists for this store.")
+        before = db.execute(select(StoreCap.daily_cap).where(StoreCap.store_id == row.store_id)).scalar_one_or_none()
+        row.effective_from = effective_from
+        db.flush()
+        current = _sync_current(db, row.store_id, user.id, today)
+        activity_service.record(
+            db, actor=user, action="store.capping_date_changed", entity_type="store", entity_id=row.store_id,
+            metadata={"outlet": store.external_code, "name": store.name, "capping": row.capping, "from": old.isoformat(), "to": effective_from.isoformat(),
+                      "current_from": before, "current_to": current},
+        )
+        db.commit()
+    return {"id": row.id, "store_id": row.store_id, "capping": row.capping, "effective_from": row.effective_from, "was": old,
+            "current_capping": effective_capping(_history_by_store(db, [row.store_id], today)[row.store_id], today)}
+
+
 def history(db: Session, user: User, perms: set[str], store_id: uuid.UUID) -> dict:
     """One store's changes, newest effective date first."""
     capping_service.require_eligible(user, perms)
@@ -407,28 +440,35 @@ def sheet_file(db: Session, user: User, perms: set[str], start: date | None, end
 DEFAULT_CAPPING = 10
 
 
-def set_unset_default(db: Session, user: User, perms: set[str], capping: int = DEFAULT_CAPPING, *, dry_run: bool = True) -> dict:
-    """Give every live Zepto store that has NO capping at all (no history in force today and nothing in store_caps) `capping`, effective today.
-    A store that already has a capping, including a 0, is never touched. Each store gets an ordinary history row naming the person, so it shows in
-    the store's history like any other change; nothing is backdated, so the averages of past days do not move. `dry_run` only counts."""
+def set_unset_default(
+    db: Session, user: User, perms: set[str], capping: int = DEFAULT_CAPPING, *, dry_run: bool = True, effective_from: date | None = None,
+) -> dict:
+    """Give every live Zepto store that has NO capping at all (no history in force today and nothing in store_caps) `capping`, from `effective_from`
+    (the 1st of this month unless chosen; never in the future). A store that already has a capping, including a 0, is never touched. Each store gets an
+    ordinary history row naming the person, so it shows in the store's history like any other change. `dry_run` only counts."""
     _require_change(user, perms)
     if not 1 <= capping <= capping_service.MAX_CAP:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The capping must be a whole number from 1 to {capping_service.MAX_CAP:,}.")
     partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
     today = today_ist()
+    effective_from = effective_from or date(today.year, today.month, 1)
+    if effective_from > today:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The effective date cannot be in the future. Use today or an earlier date.")
+    if effective_from < EARLIEST:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That date is too far back.")
     stores = _stores(db, user, partner.id, None)
     hist = _history_by_store(db, [s[0] for s in stores], today)
     unset = [s for s in stores if effective_capping(hist.get(s[0], []), today) is None and s[5] is None]
-    out = {"unset": len(unset), "applied": 0, "capping": capping, "effective_from": today, "dry_run": dry_run, "examples": [f"{s[2]} ({s[1]})" for s in unset[:5]]}
+    out = {"unset": len(unset), "applied": 0, "capping": capping, "effective_from": effective_from, "dry_run": dry_run, "examples": [f"{s[2]} ({s[1]})" for s in unset[:5]]}
     if dry_run or not unset:
         return out
     for sid, _code, _name, *_ in unset:
-        db.add(CappingHistory(store_id=sid, capping=capping, effective_from=today, created_by=user.id))
+        db.add(CappingHistory(store_id=sid, capping=capping, effective_from=effective_from, created_by=user.id))
         db.flush()
         _sync_current(db, sid, user.id, today)
     activity_service.record(
         db, actor=user, action="capping.defaults_applied", entity_type="store", entity_id=user.organization_id,
-        metadata={"capping": capping, "effective_from": today.isoformat(), "stores": len(unset), "examples": out["examples"]},
+        metadata={"capping": capping, "effective_from": effective_from.isoformat(), "stores": len(unset), "examples": out["examples"]},
     )
     db.commit()
     out["applied"] = len(unset)

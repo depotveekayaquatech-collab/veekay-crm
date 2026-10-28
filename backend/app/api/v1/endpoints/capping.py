@@ -47,6 +47,14 @@ class DefaultCappingIn(BaseModel):
 
     capping: StrictInt = Field(default=capping_history_service.DEFAULT_CAPPING, ge=1, le=capping_service.MAX_CAP)
     dry_run: bool = True
+    effective_from: date | None = Field(default=None, description="the 1st of this month when left out")
+
+
+class EffectiveDateIn(BaseModel):
+    """Move a capping change to another start date. camelCase (effectiveFrom); snake_case works too."""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    effective_from: date = Field(alias="effectiveFrom")
 
 
 class ZeroDaysIn(BaseModel):
@@ -167,7 +175,37 @@ def set_default_capping(
 ) -> dict:
     """Administrator / manager (capping.change): every live Zepto store that has no capping gets one (10 by default) from today. Stores that already have
     one, even 0, are never touched. Send dry_run true (the default) first to see how many."""
-    return capping_history_service.set_unset_default(db, user, perms, payload.capping, dry_run=payload.dry_run)
+    return capping_history_service.set_unset_default(db, user, perms, payload.capping, dry_run=payload.dry_run, effective_from=payload.effective_from)
+
+
+@router.patch("/history/{history_id}")
+def change_history_date(
+    history_id: uuid.UUID, payload: EffectiveDateIn,
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Administrator / manager (capping.change): move one capping change to another start date. Only the date can change (the capping value cannot); a date that
+    already has a change for the store is refused with 409, and the change is recorded in the activity log. There is still no delete."""
+    return capping_history_service.change_effective_date(db, user, perms, history_id, payload.effective_from)
+
+
+@router.post("/import-dated")
+async def import_dated_sheet(
+    file: UploadFile = File(...), dry_run: bool = Form(True), replace: bool = Form(False), start_date: date | None = Form(None),
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Administrator / manager (capping.change): load capping WITH its start dates from a .csv / .xlsx. Dates across the top (like the downloaded sheet) or one
+    capping per store with an optional Effective from column (`start_date`, the 1st of this month by default, is used for rows without one). `dry_run` (the
+    default) only reads the sheet and reports; `replace` makes each store's rows from its first date in the sheet match the sheet."""
+    from starlette.concurrency import run_in_threadpool
+
+    from app.services import capping_import_service
+
+    content = await file.read(store_sync_service.MAX_UPLOAD_BYTES + 1)
+    try:
+        grids = await run_in_threadpool(capping_service.read_grids, file.filename or "", content)
+    except store_sync_service.SyncError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return await run_in_threadpool(capping_import_service.import_sheet, db, user, perms, grids, dry_run=dry_run, replace=replace, default_start=start_date)
 
 
 @router.get("/print")

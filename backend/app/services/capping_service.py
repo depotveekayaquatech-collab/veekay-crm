@@ -212,7 +212,7 @@ def report(db: Session, user: User, perms: set[str], month_str: str | None) -> d
 def alerts(db: Session, user: User, perms: set[str]) -> dict:
     """This month's stores that need the employee's attention (OVER or AHEAD), for people holding capping.alerts.
     An administrator sees every Zepto store; a Zepto employee only the stores they cover (their assigned states)."""
-    if "capping.alerts" not in perms:
+    if "capping.alerts" not in perms and not assignment_service.is_partner_account(db, user):     # the platform's own login always sees them
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Capping alerts are not switched on for you.")
     require_eligible(user, perms)
     partner = _partner(db, user.organization_id)

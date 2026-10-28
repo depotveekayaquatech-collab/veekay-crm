@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle } from "@/components/ui/icons";
+import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
 import { getCappingAlerts, type CapRow } from "@/services/capping";
 
@@ -49,7 +50,9 @@ function AlertRow({ r }: { r: CapRow }) {
 /** Warns an employee holding capping.alerts when their stores are over the monthly limit, or marking faster than the daily cap
  * allows for this point in the month. Renders nothing when there is nothing to manage (or no permission). */
 export function CappingAlertBanner() {
-  const allowed = usePermission("capping.alerts");
+  const { user, hasRole } = useAuth();
+  // The platform's own login (a Zepto partner account) always sees them; staff need capping.alerts ticked.
+  const allowed = usePermission("capping.alerts") || (hasRole("partner") && user?.platformSlug?.toLowerCase() === "zepto");
   const { data } = useQuery({
     queryKey: ["capping", "alerts"],
     queryFn: getCappingAlerts,
