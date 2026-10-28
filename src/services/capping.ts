@@ -258,3 +258,31 @@ export async function downloadCappingSheet(from: string, to: string, storeId: st
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
+
+export interface DefaultCappingResult {
+  /** Live Zepto stores that have no capping at all. */
+  unset: number;
+  applied: number;
+  capping: number;
+  effectiveFrom: string;
+  dryRun: boolean;
+  examples: string[];
+}
+
+/** Administrator / manager: every live Zepto store with no capping gets `capping` from today. `dryRun` only counts them. */
+export async function setDefaultCapping(capping: number, dryRun: boolean): Promise<DefaultCappingResult> {
+  return camelize<DefaultCappingResult>(await apiRequest("/capping/defaults", { method: "POST", body: { capping, dry_run: dryRun } }));
+}
+
+/** Saves the one-page PDF: every live Zepto store and its capping per day. */
+export async function downloadCappingPrint(): Promise<void> {
+  const blob = await apiBlob("/capping/print");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `zepto-store-capping_${new Date().toISOString().slice(0, 10)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}

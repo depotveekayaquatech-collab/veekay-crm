@@ -41,6 +41,14 @@ class CappingChangeIn(BaseModel):
     effective_from: date = Field(alias="effectiveFrom", description="today or an earlier date (Asia/Kolkata)")
 
 
+class DefaultCappingIn(BaseModel):
+    """Give every live Zepto store with no capping at all this capping, from today. Counts only, until `dry_run` is false."""
+    model_config = ConfigDict(extra="forbid")
+
+    capping: StrictInt = Field(default=capping_history_service.DEFAULT_CAPPING, ge=1, le=capping_service.MAX_CAP)
+    dry_run: bool = True
+
+
 class ZeroDaysIn(BaseModel):
     """Days on which a store's capping is 0. camelCase (storeId); snake_case works too."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -150,6 +158,25 @@ def download_sheet(
         content=content, media_type=capping_history_service.SHEET_MEDIA[format],
         headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "private, no-store"},
     )
+
+
+@router.post("/defaults")
+def set_default_capping(
+    payload: DefaultCappingIn,
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Administrator / manager (capping.change): every live Zepto store that has no capping gets one (10 by default) from today. Stores that already have
+    one, even 0, are never touched. Send dry_run true (the default) first to see how many."""
+    return capping_history_service.set_unset_default(db, user, perms, payload.capping, dry_run=payload.dry_run)
+
+
+@router.get("/print")
+def print_capping(
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> Response:
+    """One landscape page: every live Zepto store and its capping per day (today's)."""
+    content, name = capping_history_service.print_file(db, user, perms)
+    return Response(content=content, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "private, no-store"})
 
 
 @router.get("/summary")

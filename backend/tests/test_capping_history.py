@@ -472,3 +472,50 @@ def test_zero_days_need_capping_change_and_sensible_dates(client, admin, zepto_e
     assert client.post(f"{API}/capping/zero-days", json={"storeId": str(zstore.id), "days": too_many}, headers=admin).status_code == 422
     assert client.post(f"{API}/capping/zero-days", json={"storeId": str(uuid.uuid4()), "days": [day.isoformat()]}, headers=admin).status_code == 404
     assert _zero(client, admin, make_store(platform="blinkit"), day).status_code == 404
+
+
+def test_stores_with_no_capping_all_get_the_default_from_today_and_nobody_else_is_touched(client, admin, zepto_emp, zstore, make_store, db):
+    from app.models.user import User
+
+    have = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru")
+    zero = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru")
+    _seed(db, have, (_today() - timedelta(days=3), 12))
+    db.add(StoreCap(store_id=zero.id, daily_cap=0, source="manual"))                       # a 0 is a capping that was set
+    db.commit()
+    before_caps = {r.store_id for r in db.query(StoreCap).all()}
+    admin_id = db.query(User).filter_by(employee_code="ADMIN001").one().id
+    try:
+        assert client.post(f"{API}/capping/defaults", json={"dry_run": False}, headers=zepto_emp).status_code == 403     # only capping.change
+        count = client.post(f"{API}/capping/defaults", json={}, headers=admin).json()                                    # a dry run by default
+        assert count["dry_run"] is True and count["unset"] >= 1 and count["applied"] == 0 and count["capping"] == 10
+        assert db.query(CappingHistory).filter_by(store_id=zstore.id).count() == 0                                       # counting changed nothing
+
+        done = client.post(f"{API}/capping/defaults", json={"dry_run": False}, headers=admin)
+        assert done.status_code == 200, done.text
+        assert done.json()["applied"] == count["unset"]
+        db.expire_all()
+        row = db.query(CappingHistory).filter_by(store_id=zstore.id).one()
+        assert row.capping == 10 and row.effective_from == _today() and row.created_by == admin_id                       # from today, never backdated
+        assert db.query(StoreCap).filter_by(store_id=zstore.id).one().daily_cap == 10
+        assert [r.capping for r in db.query(CappingHistory).filter_by(store_id=have.id)] == [12]                         # a store that has one is left alone
+        assert db.query(CappingHistory).filter_by(store_id=zero.id).count() == 0 and db.query(StoreCap).filter_by(store_id=zero.id).one().daily_cap == 0
+        again = client.post(f"{API}/capping/defaults", json={"dry_run": False}, headers=admin).json()
+        assert again["unset"] == 0 and again["applied"] == 0                                                             # running it twice does nothing
+    finally:
+        db.rollback()
+        db.query(CappingHistory).filter(CappingHistory.created_by == admin_id, CappingHistory.effective_from == _today()).delete()
+        db.query(StoreCap).filter(StoreCap.store_id.notin_(before_caps)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_the_capping_print_is_one_page_with_every_store_and_its_capping(client, admin, zepto_emp, zstore, db):
+    import fitz
+
+    _seed(db, zstore, (_today() - timedelta(days=2), 9))
+    r = client.get(f"{API}/capping/print", headers=zepto_emp)                                  # anyone who may see Zepto capping can print it
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf" and ".pdf" in r.headers["content-disposition"]
+    pdf = fitz.open(stream=r.content, filetype="pdf")
+    assert pdf.page_count == 1
+    text = pdf[0].get_text()
+    assert zstore.name[:20] in text and "store capping per day" in text and "9" in text
+    assert client.get(f"{API}/capping/print").status_code == 401

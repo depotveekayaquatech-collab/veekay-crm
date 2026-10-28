@@ -9,7 +9,7 @@ import { IconDownload } from "@/components/ui/icons";
 import { currentMonth, dayLabel, monthRange } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
 import { pushToast } from "@/lib/toast";
-import { downloadCappingSheet, getCappingSheet, type CapRow, type SheetFormat } from "@/services/capping";
+import { downloadCappingPrint, downloadCappingSheet, getCappingSheet, type CapRow, type SheetFormat } from "@/services/capping";
 
 const PREVIEW_STORES = 200;       // the file always has every store; the page shows the first rows
 const MAX_DAYS = 365;
@@ -43,8 +43,22 @@ export function CappingSheetTab({ rows: storeRows }: { rows: CapRow[] }) {
     onSuccess: (_d, format) => pushToast(`Capping sheet downloaded (${format === "csv" ? "CSV" : "Excel"}).`, "success"),
   });
 
+  const print = useMutation({
+    mutationFn: downloadCappingPrint,
+    onSuccess: () => pushToast("One-page capping list downloaded (PDF).", "success"),
+  });
+
   return (
     <div className="flex flex-col gap-4">
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">Print capping list</h3>
+          <p className="mt-0.5 text-xs text-gray-500">One page: every live store and its capping per day, as on today.</p>
+        </div>
+        <Button variant="secondary" onClick={() => print.mutate()} isLoading={print.isPending}>
+          <IconDownload className="h-4 w-4" /> Download PDF (1 page)
+        </Button>
+      </section>
       <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <div className="grid gap-3 md:grid-cols-[repeat(2,minmax(0,1fr))_minmax(0,2fr)_auto] md:items-end">
           <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">

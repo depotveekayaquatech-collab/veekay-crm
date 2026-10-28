@@ -402,6 +402,116 @@ def sheet_file(db: Session, user: User, perms: set[str], start: date | None, end
     return out.getvalue(), name
 
 
+# ---------------------------------------------------------------- stores with no capping, and the one-page print
+
+DEFAULT_CAPPING = 10
+
+
+def set_unset_default(db: Session, user: User, perms: set[str], capping: int = DEFAULT_CAPPING, *, dry_run: bool = True) -> dict:
+    """Give every live Zepto store that has NO capping at all (no history in force today and nothing in store_caps) `capping`, effective today.
+    A store that already has a capping, including a 0, is never touched. Each store gets an ordinary history row naming the person, so it shows in
+    the store's history like any other change; nothing is backdated, so the averages of past days do not move. `dry_run` only counts."""
+    _require_change(user, perms)
+    if not 1 <= capping <= capping_service.MAX_CAP:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The capping must be a whole number from 1 to {capping_service.MAX_CAP:,}.")
+    partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
+    today = today_ist()
+    stores = _stores(db, user, partner.id, None)
+    hist = _history_by_store(db, [s[0] for s in stores], today)
+    unset = [s for s in stores if effective_capping(hist.get(s[0], []), today) is None and s[5] is None]
+    out = {"unset": len(unset), "applied": 0, "capping": capping, "effective_from": today, "dry_run": dry_run, "examples": [f"{s[2]} ({s[1]})" for s in unset[:5]]}
+    if dry_run or not unset:
+        return out
+    for sid, _code, _name, *_ in unset:
+        db.add(CappingHistory(store_id=sid, capping=capping, effective_from=today, created_by=user.id))
+        db.flush()
+        _sync_current(db, sid, user.id, today)
+    activity_service.record(
+        db, actor=user, action="capping.defaults_applied", entity_type="store", entity_id=user.organization_id,
+        metadata={"capping": capping, "effective_from": today.isoformat(), "stores": len(unset), "examples": out["examples"]},
+    )
+    db.commit()
+    out["applied"] = len(unset)
+    return out
+
+
+def _print_layout(names: list[str], values: list[str], width: float, height: float, margin: float, top: float, font: str):
+    """(font size, columns, rows per column) of the largest type at which every store fits on ONE page, or None when even the smallest does not."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    avail_w, avail_h = width - 2 * margin, height - margin - top
+    widest_value = max((stringWidth(v, font, 10) for v in values), default=0)
+    widths = sorted(stringWidth(n, font, 10) for n in names)
+    typical = widths[int(len(widths) * 0.9)] if widths else 0          # the 90th-percentile name: the rare very long one is shortened, it does not widen every column
+    for size in [x / 2 for x in range(24, 8, -1)]:                     # 12 pt down to 4.5 pt
+        rows = int(avail_h // (size * 1.2))
+        if rows < 1:
+            continue
+        cols = -(-len(names) // rows)
+        need = (typical + widest_value) * size / 10 + size * 2.5
+        if need <= avail_w / cols:
+            return size, cols, rows
+    return None
+
+
+def print_file(db: Session, user: User, perms: set[str]) -> tuple[bytes, str]:
+    """A PDF of every live Zepto store and the capping in force TODAY (per day), on one landscape A4 page: the type is made as large as still lets all of them
+    fit (long names are shortened to their column). A store with no capping prints "-"; a day marked 0 prints 0. If there are too many for one page even at the
+    smallest readable type, it continues on more pages."""
+    capping_service.require_eligible(user, perms)
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    from reportlab.pdfgen import canvas
+
+    partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
+    today = today_ist()
+    stores = _stores(db, user, partner.id, None)
+    ids = [s[0] for s in stores]
+    hist = _history_by_store(db, ids, today)
+    zero = _zero_days_by_store(db, ids, today, today)
+    rows: list[tuple[str, str]] = []
+    for sid, code, name, _state, _city, legacy in stores:
+        cap = 0 if today in zero.get(sid, ()) else effective_capping(hist.get(sid, []), today)
+        cap = legacy if cap is None else cap                      # a legacy store_caps value (a 0 or a cap the history cannot hold) still answers
+        rows.append((" ".join((name or code or "").split()), "-" if cap is None else f"{cap:,}"))
+
+    width, height = landscape(A4)
+    margin, top, font, bold = 22.0, 58.0, "Helvetica", "Helvetica-Bold"
+    fit = _print_layout([r[0] for r in rows], [r[1] for r in rows], width, height, margin, top, font)
+    size, cols = (fit[0], fit[1]) if fit else (5.5, 7)
+    row_h = size * 1.2
+    per_col = max(1, int((height - margin - top) // row_h))
+    col_w = (width - 2 * margin) / cols
+    per_page = per_col * cols
+    pages = max(1, -(-len(rows) // per_page))
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(width, height))
+    c.setTitle(f"{partner.name} store capping, {today:%d %b %Y}")
+    for page in range(pages):
+        c.setFont(bold, 13)
+        c.drawString(margin, height - 26, f"{partner.name}: store capping per day")
+        c.setFont(font, 8)
+        c.drawString(margin, height - 40, f"As on {today:%d %b %Y}. {len(rows):,} live stores. Capping = bottles allowed per day; - means no capping is set."
+                     + (f" Page {page + 1} of {pages}." if pages > 1 else ""))
+        c.setLineWidth(0.4)
+        c.line(margin, height - 46, width - margin, height - 46)
+        for i, (name, value) in enumerate(rows[page * per_page:(page + 1) * per_page]):
+            col, row = divmod(i, per_col)
+            x, y = margin + col * col_w, height - top - row * row_h
+            room = col_w - 10 - stringWidth(value, bold, size) - size
+            label = name
+            while label and stringWidth(label, font, size) > room:
+                label = label[:-1]
+            c.setFont(font, size)
+            c.drawString(x, y, label.rstrip())
+            c.setFont(bold, size)
+            c.drawRightString(x + col_w - 10, y, value)
+        c.showPage()
+    c.save()
+    return buf.getvalue(), f"zepto-store-capping_{today:%Y-%m-%d}.pdf"
+
+
 # ---------------------------------------------------------------- the average-vs-limit summary
 
 def summary(db: Session, user: User, perms: set[str], start: date | None, end: date | None) -> dict:

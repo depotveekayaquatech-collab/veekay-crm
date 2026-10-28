@@ -11,7 +11,7 @@ import { dateLabel, isBackdated, istToday } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
 import { usePermission } from "@/hooks/usePermission";
 import { pushToast } from "@/lib/toast";
-import { changeCapping, getCappingHistory, markZeroDays, unmarkZeroDay, type CapRow } from "@/services/capping";
+import { changeCapping, getCappingHistory, markZeroDays, setDefaultCapping, unmarkZeroDay, type CapRow } from "@/services/capping";
 
 const MAX = 1_000_000;
 const EARLIEST = "2024-01-01";
@@ -157,6 +157,52 @@ function ZeroDaysForm({ storeId, storeName }: { storeId: string; storeName: stri
   );
 }
 
+const DEFAULT_CAPPING = 10;
+
+/** Stores that have no capping at all: how many, and one button (administrators and managers) that gives them all the default from today. */
+function UnsetStores() {
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const count = useQuery({ queryKey: ["capping", "unset"], queryFn: () => setDefaultCapping(DEFAULT_CAPPING, true), staleTime: 15_000 });
+  const apply = useMutation({
+    mutationFn: () => setDefaultCapping(DEFAULT_CAPPING, false),
+    onSuccess: (r) => {
+      pushToast(`${r.applied.toLocaleString("en-IN")} store${r.applied === 1 ? "" : "s"} set to ${r.capping} a day from today.`, "success");
+      setConfirming(false);
+      void qc.invalidateQueries({ queryKey: ["capping"] });
+    },
+    onError: () => setConfirming(false),
+  });
+  const n = count.data?.unset ?? 0;
+  if (count.isLoading || count.isError) return null;
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface p-4 shadow-card">
+      <div>
+        <h3 className="text-sm font-bold text-gray-900">Stores with no capping</h3>
+        <p className="mt-0.5 text-xs text-gray-500">
+          {n === 0 ? "Every live store has a capping." : `${n.toLocaleString("en-IN")} live store${n === 1 ? " has" : "s have"} no capping. Stores that already have one (even 0) are not touched.`}
+        </p>
+      </div>
+      {n > 0 && <Button onClick={() => setConfirming(true)}>Set them all to {DEFAULT_CAPPING}</Button>}
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title={`Set ${n.toLocaleString("en-IN")} stores to ${DEFAULT_CAPPING} a day?`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button onClick={() => apply.mutate()} isLoading={apply.isPending}>Yes, set them</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-700">
+          Every live store with no capping gets <b>{DEFAULT_CAPPING}</b> a day <b>from today</b>. Earlier days stay as they were, so past averages do not move. Each store records this change like any other, and it cannot be edited or removed afterwards.
+        </p>
+      </Modal>
+    </section>
+  );
+}
+
 /** Change a store's capping from a date (administrators and managers), and read the store's history (everyone who can see capping). */
 export function ChangeCappingTab({ rows }: { rows: CapRow[] }) {
   const canChange = usePermission("capping.change");
@@ -197,6 +243,7 @@ export function ChangeCappingTab({ rows }: { rows: CapRow[] }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {canChange && <UnsetStores />}
       <section className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
         <h3 className="text-sm font-bold text-gray-900">Change capping</h3>
         <p className="mt-1 text-xs text-gray-500">
