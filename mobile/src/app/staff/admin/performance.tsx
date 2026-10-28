@@ -89,7 +89,7 @@ export default function Performance() {
       </View>
       {d && (
         <View style={{ backgroundColor: colors.ink950, borderRadius: radius.xl, padding: 16 }}>
-          <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{d.partner_label} · team average</Text>
+          <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{d.partner_label} · overall, each store-day counted once</Text>
           <Text style={{ color: colors.white, fontSize: 32, fontWeight: "800" }}>{d.summary.percent}%</Text>
           <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 2 }}>
             {d.days === 0 ? "No day of this month has finished yet." : `${d.summary.done.toLocaleString("en-IN")} of ${d.summary.expected.toLocaleString("en-IN")} entries · ${short(d.from!)} to ${short(d.as_of!)} · ${d.summary.below_50} under 50%`}

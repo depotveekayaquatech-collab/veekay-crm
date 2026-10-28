@@ -32,7 +32,7 @@ interface Row {
 }
 interface Performance {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number; today: string;
-  summary: { employees: number; expected: number; done: number; percent: number; below_50: number };
+  summary: { employees: number; stores: number; expected: number; done: number; percent: number; below_50: number };
   employees: Row[];
 }
 
@@ -194,7 +194,7 @@ function PerformanceBody() {
             <StatCard label="Entries marked" value={`${d.summary.done.toLocaleString()} / ${d.summary.expected.toLocaleString()}`} tone="aqua" icon={IconCheckCircle}>
               <ProgressBar percent={d.summary.percent} className="mt-3" />
             </StatCard>
-            <StatCard label="Team average" value={`${d.summary.percent}%`} tone="brand" icon={IconCheckCircle} />
+            <StatCard label={`${d.partner_label} overall`} value={`${d.summary.percent}%`} hint={`${d.summary.stores.toLocaleString()} live stores, each day counted once`} tone="brand" icon={IconCheckCircle} />
             <StatCard label="Under 50%" value={d.summary.below_50} hint={d.summary.below_50 > 0 ? "employees behind this month" : "everyone is on track"} tone={d.summary.below_50 > 0 ? "warning" : "success"} icon={IconUsers} />
           </div>
 
@@ -213,12 +213,12 @@ function PerformanceBody() {
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Stores</th><th className="px-4 py-3">Marked / should mark</th>
+                    <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Stores</th><th className="px-4 py-3">Entries made</th><th className="px-4 py-3">Marked / should mark</th>
                     <th className="px-4 py-3">Missing</th><th className="w-64 px-4 py-3">Performance</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 && <tr><td colSpan={5} className="px-4 py-12 text-center text-gray-500">No employees match.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500">No employees match.</td></tr>}
                   {rows.map((e) => (
                     <Fragment key={e.employee_id}>
                       <tr className="cursor-pointer border-b border-surface-border hover:bg-surface-subtle/70" onClick={() => setOpen(open === e.employee_id ? null : e.employee_id)}>
@@ -233,11 +233,9 @@ function PerformanceBody() {
                           </div>
                         </td>
                         <td className="px-4 py-3 tabular-nums">{e.stores}</td>
+                        <td className="px-4 py-3 font-bold tabular-nums text-heading">{e.entries_made.toLocaleString()}</td>
                         {e.no_stores ? (
-                          <td colSpan={3} className="px-4 py-3">
-                            <span className="font-bold tabular-nums text-heading">{e.entries_made.toLocaleString()}</span> entries made this month
-                            <span className="ml-2 text-xs text-gray-500">No store of their own, so there is no percentage.</span>
-                          </td>
+                          <td colSpan={3} className="px-4 py-3 text-xs text-gray-500">No store of their own, so there is no percentage.</td>
                         ) : (
                           <>
                             <td className="px-4 py-3 tabular-nums">{e.done.toLocaleString()} <span className="text-gray-400">/ {e.expected.toLocaleString()}</span></td>
@@ -253,7 +251,7 @@ function PerformanceBody() {
                       </tr>
                       {open === e.employee_id && !e.no_stores && (
                         <tr className="border-b border-surface-border bg-surface-subtle/50">
-                          <td colSpan={5} className="px-5 py-4">
+                          <td colSpan={6} className="px-5 py-4">
                             <p className="mb-2 text-xs font-semibold text-gray-700">Entered by {e.employee_name} this month, in any store of {d.partner_label}: <span className="tabular-nums">{e.entries_made.toLocaleString()}</span></p>
                             <p className="mb-2 text-xs font-semibold text-gray-500">Each day: the share of this employee's stores that have an entry for that day today. The small number is their average from the 1st up to that day.</p>
                             <div className="flex flex-wrap gap-1.5">

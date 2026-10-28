@@ -126,13 +126,15 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
     rows.sort(key=lambda r: (r["percent"], r["employee_name"].lower()))
     storeless.sort(key=lambda r: (-r["entries_made"] - r["corrected"], r["employee_name"].lower()))
 
-    expected_all = sum(r["expected"] for r in rows)
-    done_all = sum(r["done"] for r in rows)
+    # The platform's overall figure counts each live store-day ONCE, whoever entered it (an employee, a Team Lead, someone with no store of their own,
+    # an admin) and however many employees' scopes the store sits in. So nothing is repeated and nobody's entries drop out of the total.
+    expected_all = len(all_ids) * len(days)
+    done_all = sum(len(covered[d]) for d in days)
     return {
         "partner_slug": partner.slug, "partner_label": partner.name, "month": f"{month:%Y-%m}", "month_label": month.strftime("%B %Y"),
         "from": days[0] if days else None, "as_of": days[-1] if days else None, "days": len(days), "today": today,
         "holidays": {d.isoformat(): n for d, n in holidays.items() if d <= as_of},
-        "summary": {"employees": len(rows), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
+        "summary": {"employees": len(rows), "stores": len(all_ids), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
                     "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50)},
         "employees": rows + storeless,      # people with no store of their own come last, and are not part of the summary
     }

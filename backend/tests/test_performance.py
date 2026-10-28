@@ -75,6 +75,28 @@ def test_someone_with_no_store_who_made_entries_is_listed_with_how_many(client, 
     assert r.json()["summary"]["employees"] == sum(1 for e in got.values() if not e["no_stores"])      # and not counted in the summary
 
 
+def test_the_platform_overall_counts_each_store_day_once_whoever_entered_it(client, db, admin, make_user, make_store):
+    from .conftest import plant_entry
+
+    if TODAY.day < 3:
+        return                                                   # needs a finished day in the month
+    store = make_store(platform="blinkit", region="NORTH", state="Perf-Land")
+    _, _, helper = make_user(platform="blinkit", region="SOUTH", grants=("orders.view", "orders.mark"))        # no store of their own
+    _, _, owner = make_user(platform="blinkit", region="NORTH", grants=("orders.view", "orders.mark"))
+    day = TODAY.replace(day=1)
+
+    def summary():
+        r = client.get(f"{API}/orders/performance", params={"partner": "blinkit", "month": TODAY.strftime("%Y-%m")}, headers=admin)
+        assert r.status_code == 200, r.text
+        return r.json()["summary"]
+
+    base = summary()
+    assert 0 < base["expected"] <= base["stores"] * (TODAY - timedelta(days=1)).day      # every live store on every finished day (a holiday takes its day away)
+    plant_entry(db, store, day, 8, creator=helper)               # entered by someone with no store of their own: it still counts, once
+    assert summary()["done"] == base["done"] + 1
+    assert summary()["expected"] == base["expected"]
+
+
 def test_a_team_lead_shows_how_many_entries_they_corrected(client, db, admin, make_user, make_store):
     from app.models.role import Role
     from app.models.user import User, UserRole
