@@ -83,7 +83,7 @@ export function StoreCappingPanel({ row, canChange, onClose }: { row: CapRow; ca
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-base font-extrabold text-heading">{row.outletName}</h3>
-          <p className="text-xs text-gray-500">{row.outletId}{row.city ? ` · ${row.city}` : ""}{row.startDate ? ` · entries since ${dateLabel(row.startDate)}` : " · no entries yet"}</p>
+          <p className="text-xs text-gray-500">{row.outletId}{row.city ? ` · ${row.city}` : ""}</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Close" className="rounded px-2 text-xl leading-none text-gray-400 hover:text-gray-700">×</button>
       </div>

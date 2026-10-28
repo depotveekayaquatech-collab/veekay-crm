@@ -203,19 +203,18 @@ def change(db: Session, user: User, perms: set[str], store_id: uuid.UUID, cappin
 
 
 def current_list(db: Session, user: User, perms: set[str]) -> dict:
-    """Every live Zepto store with its latest capping (the one in force today) and the day its actual entries started. A store with no capping has none (null)."""
+    """Every live Zepto store with its latest capping (the one in force today). A store with no capping has none (null). The store's start date is not part of this list."""
     capping_service.require_eligible(user, perms)
     partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
     today = today_ist()
     stores = _stores(db, user, partner.id, None)
     hist = _history_by_store(db, [s[0] for s in stores], today)
-    starts = entry_start(db, stores)
     rows = []
     for sid, code, name, state, city, legacy, _start in stores:
         capping = effective_capping(hist.get(sid, []), today)
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
-            "capping": capping if capping is not None else legacy if not hist.get(sid) else None, "start_date": starts.get(sid),
+            "capping": capping if capping is not None else legacy if not hist.get(sid) else None,
         })
     return {"today": today, "total": len(rows), "without_capping": sum(1 for r in rows if r["capping"] is None), "rows": rows}
 

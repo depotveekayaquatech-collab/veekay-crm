@@ -180,17 +180,13 @@ def test_a_store_that_never_had_a_capping_has_nothing_to_remove(client, admin, z
 
 # ---------------------------------------------------------------- the list shows each store's actual entry start date
 
-def test_the_list_shows_the_latest_capping_and_the_day_the_stores_entries_started(client, admin, zstore, db):
-    from app.models.store import Store
-
+def test_the_list_shows_the_latest_capping_and_no_start_dates(client, admin, zstore, db):
     today = _today()
     plant_entry(db, zstore, today - timedelta(days=4), 6)
     _seed(db, zstore, (today - timedelta(days=4), 10), (today - timedelta(days=1), 11))
     row = _listed(client, admin, zstore)
-    assert row["capping"] == 11 and row["start_date"] == (today - timedelta(days=4)).isoformat()      # from its first day with bottles
-    db.query(Store).filter_by(id=zstore.id).update({"start_date": today - timedelta(days=20)})
-    db.commit()
-    assert _listed(client, admin, zstore)["start_date"] == (today - timedelta(days=20)).isoformat()   # the store's own start date wins when it has one
+    assert row["capping"] == 11
+    assert "start_date" not in row and "since" not in row                                           # a store's start date is shown in the store's details, not here
     assert client.get(f"{API}/capping", headers=admin).json()["without_capping"] >= 0
 
 

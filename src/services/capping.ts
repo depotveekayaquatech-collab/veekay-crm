@@ -1,7 +1,7 @@
 import { camelize } from "@/lib/camel";
 import { apiRequest } from "@/services/api";
 
-/** One live Zepto store with its latest capping (bottles per day) and the day its actual entries started. */
+/** One live Zepto store with its latest capping (bottles per day). */
 export interface CapRow {
   storeId: string;
   outletId: string;
@@ -10,8 +10,6 @@ export interface CapRow {
   city: string | null;
   /** The capping in force today; null when the store has none. */
   capping: number | null;
-  /** The store's start date, else its first day with bottles; null when it has never been supplied. */
-  startDate: string | null;
 }
 
 export interface CapList {
@@ -101,4 +99,63 @@ export async function changeCapping(storeId: string, capping: number): Promise<C
 /** Administrator / manager: remove a store's capping. The history keeps what it was. */
 export async function removeCapping(storeId: string): Promise<CapChangeResult> {
   return camelize<CapChangeResult>(await apiRequest("/capping/remove", { method: "POST", body: { storeId } }));
+}
+
+// ---------------------------------------------------------------- monthly usage against the limit (the dashboard / analysis view)
+
+/** OK below the warning line, NEAR from 80% of the monthly limit, AHEAD faster than the daily capping allows so far this month, OVER above the limit. */
+export type CapLevel = "OVER" | "AHEAD" | "NEAR" | "OK" | "NO_CAP";
+
+export interface UsageRow {
+  storeId: string;
+  outletId: string;
+  outletName: string;
+  state: string | null;
+  city: string | null;
+  ownerCode: string | null;
+  ownerName: string | null;
+  /** Bottles per day: the capping in force today. */
+  dailyCap: number | null;
+  /** The most the store may take in a month: dailyCap x 30. */
+  monthlyCap: number | null;
+  /** Bottles marked so far this month, every entry whoever entered it. */
+  used: number;
+  entries: number;
+  highestDay: number;
+  lastEntry: string | null;
+  remaining: number | null;
+  excess: number;
+  percent: number | null;
+  /** The capping pro-rated to today; null for a finished month or a store with no capping. */
+  allowedToDate: number | null;
+  aheadBy: number | null;
+  alert: CapLevel;
+}
+
+export interface CapUsage {
+  month: string;
+  monthLabel: string;
+  months: string[];
+  warnPercent: number;
+  summary: { over: number; ahead: number; near: number; ok: number; noCap: number; total: number; entries: number; bottles: number };
+  rows: UsageRow[];
+}
+
+/** This month's over-limit / ahead-of-pace stores for the signed-in person (needs capping.alerts, or the platform's own login). */
+export interface CapAlerts {
+  month: string;
+  monthLabel: string;
+  day: number;
+  daysInMonth: number;
+  over: number;
+  ahead: number;
+  rows: UsageRow[];
+}
+
+export async function getCappingUsage(month?: string): Promise<CapUsage> {
+  return camelize<CapUsage>(await apiRequest(`/capping/usage${month ? `?month=${encodeURIComponent(month)}` : ""}`));
+}
+
+export async function getCappingAlerts(): Promise<CapAlerts> {
+  return camelize<CapAlerts>(await apiRequest("/capping/alerts"));
 }
