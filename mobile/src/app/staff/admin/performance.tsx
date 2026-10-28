@@ -35,7 +35,7 @@ function EmployeeCard({ r }: { r: PerformanceRow }) {
       ) : (
         <>
           <ProgressBar value={r.percent / 100} tone={bar(r.percent)} />
-          <Text style={font.small}>{r.done.toLocaleString("en-IN")} of {r.expected.toLocaleString("en-IN")} marked · {r.missing.toLocaleString("en-IN")} missing · {(r.entries_made ?? 0).toLocaleString("en-IN")} entered by them</Text>
+          <Text style={font.small}>{r.done.toLocaleString("en-IN")} of {r.expected.toLocaleString("en-IN")} of their stores covered by anyone · {r.missing.toLocaleString("en-IN")} missing · {(r.entries_made ?? 0).toLocaleString("en-IN")} typed in by them</Text>
         </>
       )}
       {open && !r.no_stores && (

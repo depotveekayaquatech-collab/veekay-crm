@@ -201,7 +201,7 @@ function PerformanceBody() {
           <Panel
             flush
             title={<>Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span></>}
-            subtitle="Lowest first. Open a row to see every day."
+            subtitle="Lowest first. Entries made = typed in by that person. Covered = an entry exists for their stores, whoever entered it. Open a row to see every day."
             action={
               <div className="flex flex-wrap items-center gap-2">
                 <FilterChip active={behindOnly} onClick={() => setBehindOnly((v) => !v)} count={d.summary.below_50}>Under 50% only</FilterChip>
@@ -213,7 +213,8 @@ function PerformanceBody() {
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Stores</th><th className="px-4 py-3">Entries made</th><th className="px-4 py-3">Marked / should mark</th>
+                    <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Stores</th><th className="px-4 py-3" title="Entries this person typed in themselves this month, in any store of the platform">Entries made by them</th>
+                    <th className="px-4 py-3" title="Store-days of THIS person's stores that have an entry, whoever entered it, out of the store-days they should have">Their stores covered / needed</th>
                     <th className="px-4 py-3">Missing</th><th className="w-64 px-4 py-3">Performance</th>
                   </tr>
                 </thead>
