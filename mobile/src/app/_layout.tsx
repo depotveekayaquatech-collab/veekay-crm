@@ -115,6 +115,7 @@ function Navigator() {
         <Stack.Screen name="staff/payslips" options={{ title: "Payslips" }} />
         <Stack.Screen name="staff/entries" options={{ title: "My entries" }} />
         <Stack.Screen name="staff/vendors" options={{ title: "Vendor performance" }} />
+        <Stack.Screen name="staff/inventory" options={{ title: "Inventory" }} />
         <Stack.Screen name="staff/sync"options={{ title: "Scan sync" }} />
         <Stack.Screen name="staff/alerts" options={{ title: "Alerts" }} />
         <Stack.Screen name="staff/admin/pending" options={{ title: "Stores yet to mark" }} />

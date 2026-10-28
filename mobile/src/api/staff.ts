@@ -78,6 +78,8 @@ export interface MyStore {
   id: string; name: string; external_code: string;
   /** The store's permanent system code (BKT000123 / ZPT000045), and whether another store of this platform has exactly this name. */
   crm_code?: string | null; duplicate_name?: boolean; state: string | null; city: string | null; region_name: string | null; vendor_name: string | null;
+  /** The vendor's phone and the store's point of contact, as the store sheet has them. */
+  vendor_number?: string | null; poc_name?: string | null; poc_number?: string | null;
   status: string; partner_name: string | null; today: string;
   /** YOUR number for the day (null when you have not marked it, or a colleague did). */
   today_count: number | null; yesterday_count?: number | null;

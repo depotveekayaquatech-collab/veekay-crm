@@ -433,3 +433,98 @@ def test_a_store_that_is_not_live_never_gets_an_entry_from_a_sheet_or_an_admin(c
     assert cleared.status_code == 200, cleared.text
     db.expire_all()
     assert db.query(OrderEntry).filter_by(store_id=closed.id).count() == 0
+
+
+def test_order_sheet_headings_without_a_year_are_read_with_the_tabs_year():
+    from app.services.order_import_service import _header_date as head, year_of
+
+    today = date(2026, 10, 28)
+    assert year_of("NORTH OCT-2026") == 2026 and year_of("Sheet1") is None
+    assert head("1-Oct", 2026, today) == date(2026, 10, 1) and head("28-Oct", None, today) == date(2026, 10, 28)
+    assert head("01 October 2026", None, today) == date(2026, 10, 1) and head("2-Sept", None, today) == date(2026, 9, 2) and head("1-Oct-26", None, today) == date(2026, 10, 1)
+    assert head("15 Dec", None, date(2027, 1, 5)) == date(2026, 12, 15)            # a December sheet read in January is last year's
+    assert head("2026-10-01", None, today) == date(2026, 10, 1)                      # the old formats still work
+    assert head("Total Count", None, today) is None and head("Outlet ID", None, today) is None and head("Region", None, today) is None
+
+
+def test_an_order_workbook_with_day_month_headings_loads_and_a_zero_only_counts_where_the_crm_has_a_zero(client, dev, db, make_store):
+    import io
+
+    from openpyxl import Workbook
+
+    from app.models.order_entry import OrderEntry
+
+    from .conftest import plant_entry
+
+    today = date.today()
+    if today.day < 4:
+        return
+    days = [today.replace(day=i) for i in range(1, 5)]
+    a = make_store(code="OS-A", name="Blinkit - Sheet Mart A")
+    b = make_store(code="OS-B", name="Blinkit - Sheet Mart B")
+    c = make_store(code="OS-C", name="Blinkit - Sheet Mart C")
+    plant_entry(db, a, days[1], 0)                                                         # the CRM already has a real 0 on day 2 for store A
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"NORTH {today:%b}-{today.year}".upper()                                    # the tab carries the year, the headings do not
+    ws.append(["Region", "Outlet ID", "Outlet Name", "Total Count"] + [f"{d.day}-{d:%b}" for d in days])
+    ws.append(["NORTH", "OS-A", "Blinkit - Sheet Mart A", 12, 5, 0, 7, 0])                  # 0 on day 2 matches the CRM's 0 (nothing to change); 0 on day 4 is not marked
+    ws.append(["NORTH", "OS-B", "Some Other Name In The Sheet", 12, 3, 3, 3, 3])            # the name matches no store, the Outlet ID does
+    ws.append(["NORTH", "OS-C", "Blinkit - Sheet Mart C", 0, 0, 0, 0, 0])                   # zeros the CRM does not have: never marked
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    r = client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit"},
+                    files={"file": ("Arti october.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["created"] == 6 and out["unchanged"] == 1 and out["matched_by_id"] == 1 and out["zeros_skipped"] == 5 and out["unknown_stores"] == 0
+    assert any("only counts on a day the CRM" in w for w in out["warnings"]) and any("Outlet ID" in w for w in out["warnings"])
+    db.expire_all()
+    got = lambda s: {e.order_date: e.bottle_count for e in db.query(OrderEntry).filter_by(store_id=s.id)}  # noqa: E731
+    assert got(a) == {days[0]: 5, days[1]: 0, days[2]: 7}                                      # day 2 is the CRM's own 0; day 4's 0 was not written
+    assert got(b) == {d: 3 for d in days}
+    assert got(c) == {}
+
+
+def test_a_blank_cell_and_a_zero_never_mark_a_day_and_a_zero_never_replaces_a_number(client, dev, db, make_store):
+    from app.models.order_entry import OrderEntry
+
+    from .conftest import plant_entry
+
+    day = date.today() - timedelta(days=1)
+    s = make_store(code="ZR-1", name="Blinkit - Zero Rule Mart")
+    t = make_store(code="ZR-2", name="Blinkit - Zero Rule Mart Two")
+    plant_entry(db, s, day, 9)                                                    # the CRM has a real 9; the sheet says 0 and overwrite is on
+    csv = f"Outlet ID,Outlet Name,{day}\nZR-1,Blinkit - Zero Rule Mart,0\nZR-2,Blinkit - Zero Rule Mart Two,\n".encode()   # a 0 for one store, a blank for the other
+    r = client.post(f"{API}/orders/import", headers=dev, data={"platform": "blinkit", "overwrite": "true"}, files={"file": ("o.csv", csv, "text/csv")})
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 0 and r.json()["updated"] == 0 and r.json()["zeros_skipped"] == 1
+    db.expire_all()
+    assert db.query(OrderEntry).filter_by(store_id=s.id).one().bottle_count == 9           # never replaced by the sheet's 0
+    assert db.query(OrderEntry).filter_by(store_id=t.id).count() == 0                      # a blank cell marks nothing: left for the employee
+
+
+def test_the_matrix_export_can_show_days_nobody_marked_as_0_or_leave_them_blank(client, admin, make_store, db):
+    import io
+
+    from openpyxl import load_workbook
+
+    from .conftest import plant_entry
+
+    d1 = date.today() - timedelta(days=3)
+    s = make_store(code="MX-1", name="Blinkit - Matrix Mart")
+    plant_entry(db, s, d1, 5)                                                        # marked on day 1 only
+    plant_entry(db, s, d1 + timedelta(days=1), 0)                                    # a real 0 on day 2; nothing on day 3
+
+    def cells(**extra):
+        r = client.get(f"{API}/orders/matrix/export", params={"start": d1.isoformat(), "end": (d1 + timedelta(days=2)).isoformat(), "partner": "blinkit", **extra}, headers=admin)
+        assert r.status_code == 200, r.text
+        ws = load_workbook(io.BytesIO(r.content)).active
+        head = [c.value for c in ws[1]]
+        row = next(r_ for r_ in ws.iter_rows(min_row=2, values_only=True) if r_[head.index("Outlet ID")] == "MX-1")
+        return row[head.index("Total Count")], list(row[-3:])
+
+    assert cells() == (5, [5, 0, 0])                                                 # the default is as before: unmarked shows 0
+    assert cells(blank_as_zero="true") == (5, [5, 0, 0])
+    assert cells(blank_as_zero="false") == (5, [5, 0, None])                         # a real 0 stays 0, an unmarked day is an empty cell

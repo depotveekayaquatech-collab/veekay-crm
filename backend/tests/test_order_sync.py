@@ -55,14 +55,15 @@ def test_sync_imports_every_tab_and_keeps_existing_entries(client, dev, db, make
     assert r.status_code == 200, r.text
     (res,) = r.json()
     assert res["platform"] == "blinkit"
-    assert res["created"] == 1                      # only d3 (a real zero) is new; d2 is blank
+    assert res["created"] == 0                      # d2 is blank (left for the employee) and d3's 0 is not marked: the CRM has no 0 there
+    assert res["zeros_skipped"] == 1
     assert res["kept_existing"] == 1                # d1 kept at 99
     assert res["unknown_stores"] == 1               # NOPE-9
     assert any("NOPE-9" in w or "not found" in w for w in res["warnings"])
 
     db.expire_all()
     rows = {e.order_date.isoformat(): e.bottle_count for e in db.query(OrderEntry).filter(OrderEntry.store_id == store.id)}
-    assert rows == {d1: 99, d3: 0}
+    assert rows == {d1: 99}
 
     # Overwrite on: the sheet wins.
     r = client.post(f"{API}/orders/sync?platform=blinkit&overwrite=true", headers=dev)

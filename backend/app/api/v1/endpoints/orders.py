@@ -428,13 +428,15 @@ def matrix_export(
     city: str | None = None,
     region: uuid.UUID | None = None,
     include_rate: bool = False,
+    blank_as_zero: bool = True,
     user: User = Depends(get_current_user),
     perms: set[str] = Depends(get_current_permissions),
     db: Session = Depends(get_db),
 ) -> Response:
+    """`blank_as_zero` (default true): a day nobody marked is 0 in the file; false leaves it an empty cell."""
     if include_rate and "rates.manage" not in perms:   # the vendor-rate columns are for admins only
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to the vendor rate report.")
-    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city, region=region, with_rates=include_rate)
+    data = matrix_service.matrix_xlsx(db, user, start, end, partner=partner, state=state, city=city, region=region, with_rates=include_rate, blank_as_zero=blank_as_zero)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

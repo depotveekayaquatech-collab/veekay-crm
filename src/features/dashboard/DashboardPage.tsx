@@ -13,7 +13,6 @@ import type { DashboardInsights } from "@/types/order";
 import { usePartners } from "@/features/stores/useStores";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { CappingAlertBanner } from "@/features/capping/CappingAlertBanner";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePermission } from "@/hooks/usePermission";
 import { useInsights, useMyStores } from "@/features/orders/useOrders";
@@ -862,7 +861,6 @@ export function DashboardPage() {
           ) : undefined
         }
       />
-      <CappingAlertBanner />
       {isAdmin ? <AdminDashboard /> : (
         <>
           {isLead && <TeamOverviewSection />}

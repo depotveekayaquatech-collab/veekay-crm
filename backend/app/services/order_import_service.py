@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -63,6 +64,8 @@ class OrderImportResult:
     invalid_values: int = 0
     future_skipped: int = 0
     not_live_stores: int = 0    # stores the sheet has numbers for but that are not live: no entry is written for them
+    zeros_skipped: int = 0      # 0s in the sheet that were not marked: a 0 only counts on a day the CRM already has a 0 for
+    matched_by_id: int = 0      # stores found by their Outlet ID because their name in the sheet matched no store
     start_dates_set: int = 0    # stores whose empty start date was filled from their first order
     vendor_starts_set: int = 0  # new vendors whose start date was fixed from their first order
     warnings: list[str] = field(default_factory=list)
@@ -79,7 +82,21 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
-def _header_date(value: object) -> date | None:
+_MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+_DAY_MONTH = re.compile(r"(\d{1,2})[\s./-]*([A-Za-z]{3,9})\.?(?:[\s./,-]*(\d{2}|\d{4}))?")
+_YEAR_IN_NAME = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
+
+
+def year_of(sheet_name: str) -> int | None:
+    """The year a tab says it is for ("NORTH OCT-2026" -> 2026), or None."""
+    m = _YEAR_IN_NAME.search(sheet_name or "")
+    return int(m.group(1)) if m else None
+
+
+def _header_date(value: object, year_hint: int | None = None, today: date | None = None) -> date | None:
+    """A date column heading: a real date, 2026-10-01, 01-10-2026, 01/10/2026, or a day and month name with or without a year: 1-Oct, 01 Oct, 1-Oct-26, 1 October 2026.
+    With no year in the heading the tab's year (`year_hint`) is used, else this year, or last year when that would put the date more than a month ahead (a December
+    sheet read in January)."""
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
@@ -92,7 +109,21 @@ def _header_date(value: object) -> date | None:
             return datetime.strptime(text[:size], fmt).date()
         except ValueError:
             continue
-    return None
+    m = _DAY_MONTH.fullmatch(text)
+    if not m or m.group(2)[:3].lower() not in _MONTHS:
+        return None
+    month, day = _MONTHS[m.group(2)[:3].lower()], int(m.group(1))
+    try:
+        if m.group(3):
+            year = int(m.group(3)) + (2000 if len(m.group(3)) == 2 else 0)
+            return date(year, month, day)
+        if year_hint:
+            return date(year_hint, month, day)
+        now = today or _today()
+        guess = date(now.year, month, day)
+        return date(now.year - 1, month, day) if guess > now + timedelta(days=31) else guess
+    except ValueError:
+        return None
 
 
 def _id_text(value: object) -> str:
@@ -151,14 +182,16 @@ def _grids(filename: str, content: bytes) -> list[tuple[str, list[tuple]]]:
     raise OrderImportError("Upload a .csv or .xlsx file.")
 
 
-def _locate(rows: list[tuple]) -> tuple[int, int | None, int | None, dict[int, date]] | None:
-    """Find (header_row_index, id_column, name_column, {column_index: date}) or None. A sheet needs a name or an ID column."""
+def _locate(rows: list[tuple], sheet_name: str = "") -> tuple[int, int | None, int | None, dict[int, date]] | None:
+    """Find (header_row_index, id_column, name_column, {column_index: date}) or None. A sheet needs a name or an ID column.
+    A heading with no year takes the year from the tab's name."""
+    hint = year_of(sheet_name)
     for r_idx, row in enumerate(rows[:5]):
         id_col = next((i for i, c in enumerate(row) if isinstance(c, str) and c.strip().lower() in _ID_HEADERS), None)
         name_col = next((i for i, c in enumerate(row) if isinstance(c, str) and c.strip().lower() in _NAME_HEADERS), None)
         if id_col is None and name_col is None:
             continue
-        date_cols = {i: d for i, c in enumerate(row) if (d := _header_date(c)) is not None}
+        date_cols = {i: d for i, c in enumerate(row) if (d := _header_date(c, hint)) is not None}
         if date_cols:
             return r_idx, id_col, name_col, date_cols
     return None
@@ -235,11 +268,12 @@ def _import_grids(
     wanted: dict[tuple[tuple[str, str], date], int] = {}
     shown: dict[tuple[str, str], str] = {}      # how a row calls its store, for the warnings
     for sheet_name, rows in grids:
-        found = _locate(rows)
+        found = _locate(rows, sheet_name)
         if found is None:
             continue
         header_idx, id_col, name_col, date_cols = found
         rows_before = result.rows_read
+        sheet_cells: dict[tuple[tuple[str, str], date], int] = {}
         for row in rows[header_idx + 1:]:
             code = _id_text(row[id_col]) if id_col is not None and id_col < len(row) else ""
             name = _id_text(row[name_col]) if name_col is not None and name_col < len(row) else ""
@@ -254,13 +288,14 @@ def _import_grids(
                 if bad:
                     result.invalid_values += 1
                 elif n is not None:
-                    wanted[(ident, d)] = n
+                    sheet_cells[(ident, d)] = n
+        wanted.update(sheet_cells)
         if result.rows_read > rows_before:
             result.sheets.append(sheet_name)
 
     if not wanted and not result.invalid_values:
         raise OrderImportError(
-            "No order data found. Each sheet needs an 'Outlet Name' column (or 'Outlet ID') and date columns such as 2026-09-01."
+            "No order data found. Each sheet needs an 'Outlet Name' column (or 'Outlet ID') and date columns such as 2026-09-01 or 1-Oct."
         )
 
     all_stores = list(
@@ -285,8 +320,12 @@ def _import_grids(
         if len(named) > 1:
             pick = [st for st in named if st.external_code == code]
             return (pick[0], "") if len(pick) == 1 else (None, f"{len(named)} stores have that name")
+        if code and code in by_code:                       # the name matches no store (renamed, or spelt differently): the Outlet ID stands in
+            by_id.add(ident)
+            return by_code[code], ""
         return None, "not found"
 
+    by_id: set[tuple[str, str]] = set()
     resolved: dict[tuple[str, str], Store | None] = {}
     problems: dict[tuple[str, str], str] = {}
     for ident, _ in wanted:
@@ -295,6 +334,7 @@ def _import_grids(
 
     unknown = {i for i, st in resolved.items() if st is None}
     result.unknown_stores = len(unknown)
+    result.matched_by_id = len([i for i in by_id if resolved.get(i) is not None])
     # two sheet rows can point at one store (an old and a new line): the later one wins
     cells: dict[tuple, int] = {}
     for (ident, d), n in wanted.items():
@@ -327,6 +367,14 @@ def _import_grids(
                 not_live.add(sid)
                 continue
             entry = existing.get((store.id, d))
+            if n == 0:
+                # A 0 in a sheet is not trusted (a sheet made for the whole month has 0 in every cell nobody has filled in): it is only honoured on a day the CRM
+                # already has a 0 for (nothing to change). Anywhere else it is not marked and the day is left for the employee. A blank cell is never marked either.
+                if entry is not None and entry.bottle_count == 0:
+                    result.unchanged += 1
+                else:
+                    result.zeros_skipped += 1
+                continue
             if entry is None:
                 db.add(OrderEntry(
                     organization_id=actor.organization_id, store_id=store.id, order_date=d,
@@ -359,6 +407,13 @@ def _import_grids(
         )
     if result.future_skipped:
         result.warnings.append(f"{result.future_skipped} future-dated cells were skipped.")
+    if result.zeros_skipped:
+        result.warnings.append(
+            f"{result.zeros_skipped:,} cell{'s' if result.zeros_skipped > 1 else ''} with 0 {'were' if result.zeros_skipped > 1 else 'was'} not marked: a 0 in the sheet only counts on a day the CRM "
+            "already has a 0 for. Blank cells are never marked either; those days are left for the employee."
+        )
+    if result.matched_by_id:
+        result.warnings.append(f"{result.matched_by_id} store{'s' if result.matched_by_id > 1 else ''} matched by Outlet ID because the name in the sheet matched no store.")
     if result.not_live_stores:
         result.warnings.append(f"{result.not_live_stores} store{'s' if result.not_live_stores > 1 else ''} in the sheet {'are' if result.not_live_stores > 1 else 'is'} not live, so no entries were written for {'them' if result.not_live_stores > 1 else 'it'}.")
     if result.kept_existing:

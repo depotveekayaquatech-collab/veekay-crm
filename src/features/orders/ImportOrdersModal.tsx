@@ -141,9 +141,10 @@ export function ImportOrdersModal({ onClose }: { onClose: () => void }) {
 
           <div className="flex items-start justify-between gap-3 rounded-lg bg-surface-subtle px-3.5 py-3 text-xs text-gray-600">
             <p>
-              Needs an <b>Outlet ID</b> column and one column per date (e.g. <b>2026-09-01</b>). Blank = not marked, <b>0</b> = marked with
-              zero. Stores must already exist — import them first. In an Excel workbook every tab with these columns is read; other tabs
-              are ignored.
+              Needs an <b>Outlet Name</b> or <b>Outlet ID</b> column and one column per date (e.g. <b>2026-09-01</b> or <b>1-Oct</b>; with no year in
+              the heading the year in the tab name, like &ldquo;NORTH OCT-2026&rdquo;, is used). Blank = not marked, <b>0</b> = marked with zero, except
+              0s after a store&rsquo;s last day with bottles, which are treated as not filled in yet. Stores must already exist — import them first. In an
+              Excel workbook every tab with these columns is read; other tabs are ignored.
             </p>
             <button onClick={downloadTemplate} className="flex shrink-0 items-center gap-1 font-semibold text-brand-600 hover:text-brand-700">
               <IconDownload className="h-3.5 w-3.5" /> Template

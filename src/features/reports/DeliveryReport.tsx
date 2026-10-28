@@ -80,6 +80,7 @@ function DailyMatrix() {
   const [draft, setDraft] = useState<Filters>(DEFAULTS);
   const [applied, setApplied] = useState<Filters>(DEFAULTS);
   const [exporting, setExporting] = useState(false);
+  const [blankAs, setBlankAs] = useState<"zero" | "blank">("zero");        // an unmarked day in the Excel file: 0 or an empty cell
   const bad = draft.from > draft.to;
 
   // The regions that have stores of the chosen channel (all regions while no channel is chosen).
@@ -119,7 +120,7 @@ function DailyMatrix() {
   async function exportExcel() {
     setExporting(true);
     try {
-      const blob = await apiBlob(`/orders/matrix/export?${qs(applied)}`);
+      const blob = await apiBlob(`/orders/matrix/export?${qs(applied, { blank_as_zero: blankAs === "zero" ? "true" : "false" })}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -203,6 +204,13 @@ function DailyMatrix() {
         subtitle={data ? `${data.total} stores · ${data.grandTotalBottles.toLocaleString()} bottles · ${data.storesWithEntries} with deliveries` : undefined}
         action={
           <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+              Days nobody marked
+              <SelectField className="h-9 rounded-lg border border-surface-border bg-surface px-2 text-sm" value={blankAs} onChange={(e) => setBlankAs(e.target.value as "zero" | "blank")} aria-label="Unmarked days in the Excel file">
+                <option value="zero">Show as 0</option>
+                <option value="blank">Leave blank</option>
+              </SelectField>
+            </label>
             <Button variant="secondary" size="sm" onClick={() => void exportExcel()} isLoading={exporting} disabled={!data?.total}>
               <IconDownload className="h-3.5 w-3.5" />
               Export Excel

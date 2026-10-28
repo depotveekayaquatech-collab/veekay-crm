@@ -9,7 +9,6 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Button } from "@/components/ui/Button";
-import { CappingAlertBanner } from "@/features/capping/CappingAlertBanner";
 import { MultiDateMarkModal } from "@/features/orders/MultiDateMarkModal";
 import { OrderCalendar } from "@/features/orders/OrderCalendar";
 import { QuickEntry } from "@/features/orders/QuickEntry";
@@ -74,7 +73,6 @@ export function MarkOrdersPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <CappingAlertBanner />
       <div className="flex flex-wrap items-center gap-3">
         {canMark && <SegmentedControl
           label="View"

@@ -177,8 +177,9 @@ def _rate_cells(book, store: Store, bottles: int) -> list:
 
 def matrix_xlsx(
     db: Session, admin: User, start: date, end: date, *, partner: str | None, state: str | None, city: str | None,
-    totals: bool = True, with_rates: bool = False, region: uuid.UUID | None = None,
+    totals: bool = True, with_rates: bool = False, region: uuid.UUID | None = None, blank_as_zero: bool = True,
 ) -> bytes:
+    """The daily matrix as an Excel file. A day nobody marked is written as 0 (`blank_as_zero`, the default) or left as an empty cell, so a real 0 and "not marked" can be told apart."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, Side
 
@@ -213,7 +214,8 @@ def matrix_xlsx(
 
     for s in stores:
         v = entries.get(s.id, {})
-        days = [v.get(d, 0) for d in dates]
+        days = [v.get(d, 0 if blank_as_zero else None) for d in dates]
+        done = sum(x or 0 for x in days)
         ws.append([
             text(s.region.name.upper() if s.region else None),
             s.partner_organization.name.upper() if s.partner_organization else "N/A",
@@ -228,8 +230,8 @@ def matrix_xlsx(
             "10013064000321",
             None,
             None,
-            *([sum(days)] if totals else []),
-            *(_rate_cells(book, s, sum(days)) if with_rates else []),
+            *([done] if totals else []),
+            *(_rate_cells(book, s, done) if with_rates else []),
             *days,
         ])
     buf = io.BytesIO()

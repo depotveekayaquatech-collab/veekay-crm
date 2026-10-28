@@ -9,6 +9,22 @@ const FRESH = 20_000;
 export const useComplianceList = (p: ComplianceQuery) =>
   useQuery({ queryKey: ["s-compliance", p], queryFn: () => complianceApi.stores(p), placeholderData: keepPreviousData, staleTime: FRESH });
 
+/** EVERY store of the month in one list (the server pages at 200): what the Inventory needs to count cards and bills per vendor. `month` "" = the server's month. */
+export const useAllCompliance = (month: string, enabled = true) =>
+  useQuery({
+    queryKey: ["s-compliance-all", month],
+    enabled,
+    staleTime: FRESH,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const ask = (page: number) => complianceApi.stores({ month: month || undefined, page, page_size: 200 });
+      const first = await ask(1);
+      const items = [...first.items];
+      for (let page = 2; items.length < first.total && page <= 25; page++) items.push(...(await ask(page)).items);
+      return { month: first.month, month_label: first.month_label, months: first.months, items };
+    },
+  });
+
 /** The headline numbers for the month (one tiny request: a page of one store). Used by the dashboard tile. */
 export const useComplianceKpis = (enabled: boolean) =>
   useQuery({ queryKey: ["s-compliance-kpis"], queryFn: () => complianceApi.stores({ page_size: 1 }), enabled, staleTime: 60_000 });
@@ -44,7 +60,7 @@ export function useUploadPolicy(): UploadPolicy {
 export function useRefreshCompliance() {
   const qc = useQueryClient();
   return () =>
-    Promise.all(["s-compliance", "s-compliance-kpis", "s-compliance-store", "s-doc-versions", "s-doc-link", "s-doc-copy"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+    Promise.all(["s-compliance", "s-compliance-all", "s-compliance-kpis", "s-compliance-store", "s-doc-versions", "s-doc-link", "s-doc-copy"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
 }
 
 /**

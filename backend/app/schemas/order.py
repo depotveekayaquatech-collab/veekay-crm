@@ -219,6 +219,8 @@ class OrderImportResult(BaseModel):
     invalid_values: int
     future_skipped: int
     not_live_stores: int = 0
+    zeros_skipped: int = 0
+    matched_by_id: int = 0
     start_dates_set: int = 0
     vendor_starts_set: int = 0
     warnings: list[str]
