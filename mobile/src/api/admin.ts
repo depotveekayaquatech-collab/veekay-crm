@@ -79,9 +79,19 @@ export interface PerformanceRow {
   is_team_lead?: boolean;
 }
 export interface Performance {
+  /** Whose performance this is: everyone, your team (a Team Lead), or only yours. */
+  view?: "all" | "team" | "self";
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number;
   summary: { employees: number; expected: number; done: number; percent: number; below_50: number };
   employees: PerformanceRow[];
+}
+
+/** The stores holding one employee's percentage below 100 up to a day, each with the dates it is missing. */
+export interface PendingStores {
+  employee_id: string; employee_name: string; date: string; from: string | null; holiday: string | null; scope_stores: number; judged_days: number; missing_total: number;
+  /** False when the month is closed to this person: they can look at the stores, only an admin can mark them. */
+  month_open: boolean;
+  stores: { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; vendor_name: string | null; can_open: boolean; missing_days: number; missing_dates: string[] }[];
 }
 
 export interface VendorStoreRow { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; live: boolean; bottles: number; days_marked: number }
@@ -98,6 +108,7 @@ export const adminApi = {
   markDays: (userId: string, dates: string[], present: boolean) =>
     request<MarkDaysResult>("/attendance/mark", { method: "POST", body: { user_id: userId, dates, present } }),
   performance: (partner: string, month: string) => request<Performance>(`/orders/performance${qs({ partner, month })}`),
+  performancePending: (partner: string, employeeId: string, date: string) => request<PendingStores>(`/orders/performance/pending${qs({ partner, employee_id: employeeId, date })}`),
   vendorPerformance: (partner: string, month: string) => request<VendorPerformance>(`/orders/performance/vendors${qs({ partner, month })}`),
   attendanceDay: () => request<AttendanceDay>("/attendance/day"),
   attendanceMonth: (month: string) => request<AttendanceMonth>(`/attendance/month-brief${qs({ month })}`),

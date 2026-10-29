@@ -205,9 +205,9 @@ export function ListSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 /** A thin progress bar. `value` is 0..1; it announces its percentage to screen readers. */
-export function ProgressBar({ value, tone = "brand" }: { value: number; tone?: "brand" | "success" | "danger" }) {
+export function ProgressBar({ value, tone = "brand" }: { value: number; tone?: "brand" | "success" | "warning" | "danger" }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
-  const fill = tone === "success" ? colors.success : tone === "danger" ? colors.danger : colors.brand500;
+  const fill = tone === "success" ? colors.success : tone === "danger" ? colors.danger : tone === "warning" ? "#D9A400" : colors.brand500;
   return (
     <View
       accessibilityRole="progressbar"

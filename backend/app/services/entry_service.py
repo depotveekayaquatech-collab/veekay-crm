@@ -26,7 +26,7 @@ from app.models.store import Store
 from app.models.user import User, UserRole
 from app.repositories.user_repository import UserRepository
 from app.services import activity_service, security_event_service, staff_notify
-from app.services.entry_changes import STATUS_LABEL
+from app.services.entry_changes import STATUS_LABEL, role_label
 
 _JOURNAL = table("order_mark_journal", column("store_id"), column("order_date"), column("outcome"), column("organization_id"))
 
@@ -802,6 +802,97 @@ def summary(db: Session, user: User, perms: set[str], days: int = 30) -> dict:
         "pending_l2": counts.get(STATUS_SUBMITTED, (0, 0))[0], "verified_l2": counts.get(STATUS_VERIFIED, (0, 0))[0],
         "reviewed_l3": counts.get(STATUS_REVIEWED, (0, 0))[0], "requested": counts.get(STATUS_SUBMITTED, (0, 0))[1],
     }
+
+
+# --------------------------------------------------------------------------
+# how often each employee's entries were changed afterwards (audit log)
+# --------------------------------------------------------------------------
+
+def _month_span(month: str | None) -> tuple[date, date]:
+    """(first day, last day) of "YYYY-MM"; the current month by default."""
+    today = date.today()
+    try:
+        y, m = (int(x) for x in month.split("-")) if month else (today.year, today.month)
+        first = date(y, m, 1)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Month must look like 2026-10.") from exc
+    nxt = date(first.year + (first.month == 12), first.month % 12 + 1, 1)
+    return first, nxt - timedelta(days=1)
+
+
+def changes_by_employee(db: Session, user: User, perms: set[str], month: str | None, platform: str | None) -> dict:
+    """For every person who entered numbers (by the entry's creator, as stamped when it was saved): how many entries they made on the dates of `month`, how many were never
+    changed, changed once, changed more than once, and the total number of changes. Every change of a number adds 1 to the entry's version, so version 1 = never changed.
+    Inside the caller's scope only (an administrator / reviewer: everyone; a Team Lead: their team). Entries with no known creator (older data) are one row of their own."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    first, last = _month_span(month)
+    v = OrderEntry.version
+    stmt = (
+        select(
+            OrderEntry.created_by_user_id, func.max(OrderEntry.created_by_code), func.max(OrderEntry.created_by_name), func.max(OrderEntry.created_by_role),
+            func.count(), func.count().filter(v <= 1), func.count().filter(v == 2), func.count().filter(v >= 3), func.coalesce(func.sum(func.greatest(v - 1, 0)), 0),
+        )
+        .join(Store, Store.id == OrderEntry.store_id)
+        .where(*scope.conditions(), OrderEntry.order_date >= first, OrderEntry.order_date <= last)
+        .group_by(OrderEntry.created_by_user_id)
+    )
+    if scope.platform_id is not None:
+        stmt = stmt.where(Store.partner_organization_id == scope.platform_id)
+    if platform:
+        stmt = stmt.where(Store.partner_organization_id.in_(select(Organization.id).where(Organization.slug == platform.strip().lower())))
+    rows = []
+    for uid, code, name, role, total, unchanged, once, multiple, changes in db.execute(stmt).all():
+        rows.append({
+            "employee_id": uid, "employee_code": code, "employee_name": name, "role": role, "role_label": role_label(role) if role else None,
+            "entries": total, "unchanged": unchanged, "changed_once": once, "changed_multiple": multiple, "changes": int(changes),
+            "changed_percent": round((once + multiple) * 100 / total, 1) if total else 0.0, "known": uid is not None,
+        })
+    rows.sort(key=lambda r: (-r["changed_multiple"], -r["changed_once"], (r["employee_name"] or "~").lower()))
+    return {
+        "month": f"{first:%Y-%m}", "month_label": first.strftime("%B %Y"), "from": first, "to": last,
+        "totals": {k: sum(r[k] for r in rows) for k in ("entries", "unchanged", "changed_once", "changed_multiple", "changes")},
+        "employees": rows,
+    }
+
+
+def changed_entries_of(db: Session, user: User, perms: set[str], creator_id: uuid.UUID, month: str | None, kind: str) -> dict:
+    """The entries of one creator that were changed after they were entered (`kind`: once = changed once, multiple = changed more than once, changed = either),
+    with the first number, the number now, how many changes, and who last changed it. Same scope as changes_by_employee."""
+    scope = scope_for(db, user, perms)
+    if not scope.can_view_history:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+    first, last = _month_span(month)
+    v = OrderEntry.version
+    cond = {"once": v == 2, "multiple": v >= 3}.get(kind, v >= 2)
+    modifier = aliased(User)
+    stmt = (
+        select(OrderEntry, Store.name, Store.external_code, modifier.full_name, modifier.employee_code)
+        .join(Store, Store.id == OrderEntry.store_id)
+        .outerjoin(modifier, modifier.id == OrderEntry.last_modified_by_user_id)
+        .where(*scope.conditions(), OrderEntry.created_by_user_id == creator_id, OrderEntry.order_date >= first, OrderEntry.order_date <= last, cond)
+        .order_by(OrderEntry.version.desc(), OrderEntry.order_date.desc())
+        .limit(500)
+    )
+    if scope.platform_id is not None:
+        stmt = stmt.where(Store.partner_organization_id == scope.platform_id)
+    found = db.execute(stmt).all()
+    ids = [e.id for e, *_ in found]
+    first_counts: dict[uuid.UUID, int] = {}
+    if ids:
+        for entry_id, new in db.execute(
+            select(OrderEntryEvent.entry_id, OrderEntryEvent.new_values).where(OrderEntryEvent.entry_id.in_(ids), OrderEntryEvent.event_type == "CREATED").order_by(OrderEntryEvent.seq.desc())
+        ):
+            if isinstance(new, dict) and new.get("bottle_count") is not None:
+                first_counts[entry_id] = int(new["bottle_count"])
+    items = [{
+        "entry_id": e.id, "order_date": e.order_date, "store_name": store_name, "store_code": store_code,
+        "first_count": first_counts.get(e.id), "count_now": e.bottle_count, "changes": max((e.version or 1) - 1, 0), "version": e.version,
+        "last_changed_by": by_name or by_code, "last_changed_role": role_label(e.last_modified_by_role) if e.last_modified_by_role else None,
+        "last_changed_at": e.last_modified_at, "status": e.verification_status,
+    } for e, store_name, store_code, by_name, by_code in found]
+    return {"month": f"{first:%Y-%m}", "kind": kind, "items": items, "truncated": len(found) >= 500}
 
 
 # --------------------------------------------------------------------------

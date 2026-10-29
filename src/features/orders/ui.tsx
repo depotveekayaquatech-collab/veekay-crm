@@ -114,9 +114,12 @@ export function SearchBox({
   );
 }
 
-export function ProgressBar({ percent, className = "" }: { percent: number; className?: string }) {
+/** `strict` is the performance scale: green only when everything is done (100%), yellow from 99.9% down to 70%, red below 70%. */
+export function ProgressBar({ percent, className = "", strict = false }: { percent: number; className?: string; strict?: boolean }) {
   const p = Math.max(0, Math.min(100, percent));
-  const tone = p >= 85 ? "from-status-success to-aqua-400" : p >= 50 ? "from-brand-500 to-aqua-400" : "from-status-warning to-status-warning/70";
+  const tone = strict
+    ? p >= 100 ? "from-status-success to-status-success/70" : p >= 70 ? "from-yellow-500 to-yellow-400" : "from-status-danger to-status-danger/70"
+    : p >= 85 ? "from-status-success to-aqua-400" : p >= 50 ? "from-brand-500 to-aqua-400" : "from-status-warning to-status-warning/70";
   return (
     <div className={`h-2 overflow-hidden rounded-full bg-surface-muted ${className}`} role="progressbar" aria-valuenow={Math.round(p)} aria-valuemin={0} aria-valuemax={100}>
       <div className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ${tone}`} style={{ width: `${p}%` }} />

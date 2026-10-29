@@ -51,6 +51,7 @@ export default function StaffTabs() {
         ...(canCompliance ? [{ key: "cards", label: "Store cards", icon: "id-card-outline" as IconName, href: "/staff/cards" as const, path: "/staff/cards" }] : []),
         ...(eligibleForAttendance ? [{ key: "payslips", label: "Payslips", icon: "cash-outline" as IconName, href: "/staff/payslips" as const, path: "/staff/payslips" }] : []),
         ...(hasPermission("orders.view") ? [{ key: "inventory", label: "Inventory", icon: "storefront-outline" as IconName, href: "/staff/inventory" as never, path: "/staff/inventory" }] : []),
+        ...(hasPermission("orders.view") && !hasPermission("orders.overview") ? [{ key: "myperf", label: staff?.entry_level === "team_lead" ? "Team performance" : "My performance", icon: "speedometer-outline" as IconName, href: "/staff/performance" as never, path: "/staff/performance" }] : []),
         ...(hasPermission("orders.view") ? [{ key: "vendors", label: "Vendor performance", icon: "business-outline" as IconName, href: "/staff/vendors" as never, path: "/staff/vendors" }] : []),
         ...(hasPermission("orders.mark") ? [{ key: "entries", label: "My entries", icon: "checkmark-done-outline" as IconName, href: "/staff/entries" as const, path: "/staff/entries" }] : []),
         { key: "leave", label: "Leave", icon: "calendar-outline" as IconName, href: "/staff/leave" as const, path: "/staff/leave" },

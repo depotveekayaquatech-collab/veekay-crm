@@ -30,7 +30,10 @@ from app.services import assignment_service, holiday_service
 
 
 def _pct(done: int, expected: int) -> float:
-    return round(done * 100 / expected, 1) if expected else 0.0
+    """done / expected as a percentage with one decimal. 100 means nothing is missing: a day that is one entry short never rounds up to 100."""
+    if not expected:
+        return 0.0
+    return 100.0 if done >= expected else min(round(done * 100 / expected, 1), 99.9)
 
 
 def parse_month(value: str | None, today: date) -> date:

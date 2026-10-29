@@ -65,8 +65,9 @@ function usePerformance(partner: string, month: string, enabled = true) {
   });
 }
 
-const tone = (p: number): "success" | "warning" | "danger" => (p >= 85 ? "success" : p >= 50 ? "warning" : "danger");
-const dayChip = (p: number) => (p >= 85 ? "bg-status-success/15 text-status-success" : p >= 50 ? "bg-status-warning-soft text-status-warning" : "bg-status-danger-soft text-status-danger");
+// Green only when nothing is missing (100%); yellow from 99.9% down to 70%; red below 70%. The server never rounds a day that is short of 100% up to 100.
+const tone = (p: number): "success" | "warning" | "danger" => (p >= 100 ? "success" : p >= 70 ? "warning" : "danger");
+const dayChip = (p: number) => (p >= 100 ? "bg-status-success/15 text-status-success" : p >= 70 ? "bg-yellow-500/20 text-yellow-800 dark:text-yellow-300" : "bg-status-danger-soft text-status-danger");
 const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
 /**
@@ -266,7 +267,7 @@ function PerformanceBody() {
 
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label="Entries marked" value={`${d.summary.done.toLocaleString()} / ${d.summary.expected.toLocaleString()}`} tone="aqua" icon={IconCheckCircle}>
-              <ProgressBar percent={d.summary.percent} className="mt-3" />
+              <ProgressBar percent={d.summary.percent} strict className="mt-3" />
             </StatCard>
             <StatCard label={`${d.partner_label} overall`} value={`${d.summary.percent}%`} hint={`${d.summary.stores.toLocaleString()} live stores, each day counted once`} tone="brand" icon={IconCheckCircle} />
             {alone ? <StatCard label="Missing" value={(d.employees[0]?.missing ?? 0).toLocaleString()} hint="store-days still to mark this month" tone={(d.employees[0]?.missing ?? 0) > 0 ? "warning" : "success"} icon={IconUsers} /> : <StatCard label="Under 50%" value={d.summary.below_50} hint={d.summary.below_50 > 0 ? "employees behind this month" : "everyone is on track"} tone={d.summary.below_50 > 0 ? "warning" : "success"} icon={IconUsers} />}
@@ -317,7 +318,7 @@ function PerformanceBody() {
                             <td className="px-4 py-3 font-bold tabular-nums">{e.missing.toLocaleString()}</td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
-                                <ProgressBar percent={e.percent} className="min-w-[6rem] flex-1" />
+                                <ProgressBar percent={e.percent} strict className="min-w-[6rem] flex-1" />
                                 <Badge tone={tone(e.percent)}>{e.percent}%</Badge>
                               </div>
                             </td>

@@ -6,6 +6,8 @@ import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { EntryChangesByEmployee } from "@/features/activity/EntryChangesByEmployee";
+import { SegmentedControl } from "@/features/orders/ui";
 import { listActivity } from "@/services/activity";
 import type { Activity } from "@/types/activity";
 
@@ -36,6 +38,17 @@ function ago(iso: string): string {
 }
 
 export function ActivityPage() {
+  const [tab, setTab] = useState<"activity" | "employees">("activity");
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Audit log" subtitle={tab === "activity" ? "Every change in the workspace, newest first." : "How often each employee's entries were changed after they entered them."} />
+      <SegmentedControl label="Audit log" value={tab} onChange={(v) => setTab(v as "activity" | "employees")} options={[{ value: "activity", label: "Activity" }, { value: "employees", label: "Entries by employee" }]} />
+      {tab === "activity" ? <ActivityList /> : <EntryChangesByEmployee />}
+    </div>
+  );
+}
+
+function ActivityList() {
   const [page, setPage] = useState(1);
   const [entityType, setEntityType] = useState("");
   const { data, isLoading } = useQuery({
@@ -45,7 +58,6 @@ export function ActivityPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Audit log" subtitle="Every change in the workspace, newest first." />
       <Select
         label="Filter"
         value={entityType}

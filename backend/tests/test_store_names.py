@@ -213,9 +213,7 @@ def test_moving_to_a_platform_that_already_has_that_name_is_refused(client, admi
     assert any(x["store"]["id"] == str(a.id) and any("also exists" in why for why in x["reasons"]) for x in flagged)
 
 
-def test_an_employee_can_correct_or_clear_their_own_entry_but_not_someone_elses(client, emp, admin, db, make_store, monkeypatch):
-    from app.core.config import settings
-    monkeypatch.setattr(settings, "EMPLOYEE_CAN_CORRECT_OWN", True)           # the old behaviour, switched back on for this test
+def test_a_level_one_employee_can_correct_or_clear_an_entry_of_their_store_in_the_open_dates(client, emp, admin, db, make_store):
     s = make_store(code="OC-1", region="NORTH")
     today = date.today().isoformat()
     mark = client.post(f"{API}/orders/mark", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 5})
@@ -239,7 +237,8 @@ def test_an_employee_can_correct_or_clear_their_own_entry_but_not_someone_elses(
     db.add(OrderEntry(organization_id=s.organization_id, store_id=s.id, order_date=date.today(), bottle_count=6, source="admin"))
     db.commit()
     theirs = client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": today, "bottle_count": 1})
-    assert theirs.status_code == 403 and "marked yourself" in theirs.json()["detail"]
+    assert theirs.status_code == 200, theirs.text                                                       # an admin's entry of their store: allowed at Level 1, and audited
+    assert db.query(OrderEntry).filter_by(store_id=s.id).one().bottle_count == 1
     old = (date.today().replace(day=1) - timedelta(days=70)).isoformat()
     assert client.patch(f"{API}/orders/my-entry", headers=emp, json={"store_id": str(s.id), "order_date": old, "bottle_count": 1}).status_code == 422
 

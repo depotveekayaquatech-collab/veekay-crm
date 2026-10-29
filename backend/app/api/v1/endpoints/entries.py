@@ -148,6 +148,26 @@ def team(perms: set[str] = Depends(get_current_permissions), user: User = Depend
     return entry_service.team_members(db, user, perms)
 
 
+@router.get("/changes-by-employee")
+def changes_by_employee(
+    response: Response, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), platform: str | None = Query(None, max_length=32),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Audit log: for each person who entered numbers, how many of their entries (on the dates of the month) were never changed, changed once, or changed more than once."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.changes_by_employee(db, user, perms, month, platform)
+
+
+@router.get("/changes-by-employee/{creator_id}")
+def changed_entries_of(
+    response: Response, creator_id: uuid.UUID, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), kind: str = Query("changed", pattern="^(changed|once|multiple)$"),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """The entries of one person that were changed after they entered them: first number, number now, how many changes, who changed it last."""
+    response.headers["Cache-Control"] = "no-store"
+    return entry_service.changed_entries_of(db, user, perms, creator_id, month, kind)
+
+
 @router.get("/{entry_id}")
 def entry_detail(
     entry_id: uuid.UUID, response: Response,

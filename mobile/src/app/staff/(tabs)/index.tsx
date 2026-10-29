@@ -221,6 +221,9 @@ Location is required to check in.`,
         {hasPermission("orders.view") && (
           <Action icon="storefront-outline" label="Inventory" sub="Your stores by vendor, with contacts" onPress={() => router.push("/staff/inventory" as never)} tone={[colors.successSoft, colors.success]} />
         )}
+        {hasPermission("orders.view") && !hasPermission("orders.overview") && (
+          <Action icon="speedometer-outline" label={staff?.entry_level === "team_lead" ? "Team performance" : "My performance"} sub="Your percentage by day, and the stores still to mark" onPress={() => router.push("/staff/performance" as never)} tone={[colors.warningSoft, colors.warning]} />
+        )}
         {hasPermission("orders.view") && (
           <Action icon="business-outline" label="Vendor performance" sub="Bottles per vendor, send on WhatsApp" onPress={() => router.push("/staff/vendors" as never)} tone={[colors.brand50, colors.brand700]} />
         )}
