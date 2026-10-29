@@ -32,7 +32,7 @@ export const useNotifications = () =>
 
 export function useMarkRead() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (ids?: string[]) => api.markRead(ids), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
+  return useMutation({ mutationFn: (ids?: string[]) => api.markRead(ids), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["notifications"] }); } });
 }
 
 /** After any write, the lists it can change are refetched. */
@@ -40,6 +40,6 @@ export function useWrite<V, R>(fn: (v: V) => Promise<R>, invalidate: string[]) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
-    onSuccess: () => Promise.all(invalidate.map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    onSuccess: () => { for (const k of invalidate) void qc.invalidateQueries({ queryKey: [k] }); },
   });
 }

@@ -7,6 +7,9 @@
  *
  * Entries are the exception: every time the app comes to the front the entry screens (calendars, store lists, "My entries", the admin counts) are
  * read again, so a number corrected, cleared or added in the CRM shows on the phone the next time it is opened, not at the next 10:00.
+ * Two things keep that cheap: opening the app cold only stamps the time (the screens are loading their data anyway, and re-requesting it
+ * would cancel and repeat every first load), and coming back after less than AWAY_MS away (a file picker, a permission dialog)
+ * does not read it all again.
  */
 import { useEffect } from "react";
 import { AppState } from "react-native";
@@ -15,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const KEY = "veekay.lastRefresh";
 const SYNC_UTC_MINUTES = 4 * 60 + 30;
+const AWAY_MS = 20_000;
 const ENTRY_QUERIES = ["s-calendar", "s-stores", "s-my-entries", "a-insights", "a-pending", "a-performance", "a-vendor-performance"];
 
 /** The most recent daily sync time, as epoch ms. */
@@ -27,20 +31,32 @@ export function useDailyRefresh(enabled: boolean) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
-    const check = async () => {
-      void qc.invalidateQueries({ predicate: (q) => ENTRY_QUERIES.includes(String(q.queryKey[0])) });
+    let leftAt = 0;                                          // when the app left the front (0 = it is in front)
+    const check = async (awayMs: number | null) => {
+      // cancelRefetch:false: a read already on its way is kept, not cancelled and sent again
+      if (awayMs !== null && awayMs >= AWAY_MS) {
+        void qc.invalidateQueries({ predicate: (q) => ENTRY_QUERIES.includes(String(q.queryKey[0])) }, { cancelRefetch: false });
+      }
       try {
         const last = Number(await AsyncStorage.getItem(KEY)) || 0;
         if (last < lastSyncBoundary()) {
-          await qc.invalidateQueries();
+          if (awayMs !== null) await qc.invalidateQueries(undefined, { cancelRefetch: false });
           await AsyncStorage.setItem(KEY, String(Date.now()));
         }
       } catch {
         /* storage unavailable: pull-to-refresh still works */
       }
     };
-    void check();
-    const sub = AppState.addEventListener("change", (s) => { if (s === "active") void check(); });
+    void check(null);                                        // cold start: the screens are already loading
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s !== "active") {
+        if (!leftAt) leftAt = Date.now();
+        return;
+      }
+      const away = leftAt ? Date.now() - leftAt : 0;
+      leftAt = 0;
+      void check(away);
+    });
     return () => sub.remove();
   }, [enabled, qc]);
 }

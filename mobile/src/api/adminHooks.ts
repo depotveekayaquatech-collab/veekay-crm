@@ -35,7 +35,7 @@ export function useReviewLeave() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; approve: boolean; note: string }) => adminApi.reviewLeave(v.id, v.approve, v.note),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["a-leaves"] }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["a-leaves"] }); },
   });
 }
 

@@ -55,7 +55,7 @@ export const useStaffAlerts = () =>
 
 export function useMarkStaffAlertsRead() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (ids?: string[]) => staffApi.markAlertsRead(ids), onSuccess: () => qc.invalidateQueries({ queryKey: ["s-alerts"] }) });
+  return useMutation({ mutationFn: (ids?: string[]) => staffApi.markAlertsRead(ids), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["s-alerts"] }); } });
 }
 
 export const useScanStores = () => useQuery({ queryKey: ["s-scan-stores"], queryFn: staffApi.scanStores, staleTime: 5 * 60_000 });
@@ -75,7 +75,8 @@ export function useMarkMany() {
     // `key` stays the same while the person retries the same submission, so a lost answer never makes a second entry or a false "already marked".
     mutationFn: (b: { store_id: string; entries: { order_date: string; bottle_count: number }[]; key?: string }) =>
       request<MarkResult>("/orders/mark-many", { method: "POST", body: { store_id: b.store_id, entries: b.entries }, idempotencyKey: b.key, clientTime: true }),
-    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ["s-calendar"] }), qc.invalidateQueries({ queryKey: ["s-stores"] })]),
+    // Not returned: the save is done as soon as the server confirms it. The lists refresh in the background instead of holding the spinner.
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["s-calendar"] }); void qc.invalidateQueries({ queryKey: ["s-stores"] }); },
   });
 }
 
@@ -85,13 +86,13 @@ export function useCorrectEntry() {
   return useMutation({
     mutationFn: (b: { store_id: string; order_date: string; bottle_count: number | null }) =>
       request<unknown>("/orders/my-entry", { method: "PATCH", body: b }),
-    onSuccess: () => Promise.all(["s-calendar", "s-stores", "s-my-entries"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    onSuccess: () => { for (const k of ["s-calendar", "s-stores", "s-my-entries"]) void qc.invalidateQueries({ queryKey: [k] }); },
   });
 }
 
 export function useStaffWrite<V, R>(fn: (v: V) => Promise<R>, invalidate: string[]) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: fn, onSuccess: () => Promise.all(invalidate.map((k) => qc.invalidateQueries({ queryKey: [k] }))) });
+  return useMutation({ mutationFn: fn, onSuccess: () => { for (const k of invalidate) void qc.invalidateQueries({ queryKey: [k] }); } });
 }
 
 export type { LeaveType };

@@ -124,8 +124,7 @@ let refreshing: Promise<boolean> | null = null;
 export function refreshSession(): Promise<boolean> {
   if (!refreshing) {
     refreshing = (async () => {
-      const token = await readSecure(REFRESH_KEY);
-      const kind = await storedSessionKind();
+      const [token, kind] = await Promise.all([readSecure(REFRESH_KEY), storedSessionKind()]);
       if (!token || !kind) return false;
       try {
         const res = await timedFetch(`${BASE}${AUTH_PATH[kind]}/refresh`, {

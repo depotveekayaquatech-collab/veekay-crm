@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Text, View } from "react-native";
+import { AppState, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { configError } from "@/api/client";
 import { registerPush } from "@/lib/push";
@@ -20,6 +20,12 @@ import { colors } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 startConnectivity();
+// React Native has no browser tab to tell React Query the app is hidden, so its once-a-minute polls (attendance, payslips,
+// alerts, notifications) would carry on over mobile data with the app in the background. Tell it when the app is in front.
+focusManager.setEventListener((handleFocus) => {
+  const sub = AppState.addEventListener("change", (s) => handleFocus(s === "active"));
+  return () => sub.remove();
+});
 installGlobalErrorHandler();
 
 /** Shown instead of a blank screen when a screen crashes. Expo Router uses this export automatically. */

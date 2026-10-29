@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -28,9 +28,12 @@ export default function Orders() {
   const [day, setDay] = useState<Day>("today");
   const [vendor, setVendor] = useState("");   // vendorKey of the chosen vendor, "" = all vendors
 
-  // Coming back from a store's page (or another tab) always shows the latest marks.
+  // Coming back from a store's page (or another tab) shows the latest marks. The first visit is skipped (the query is already loading it, and
+  // refetching would cancel that read and send it again), and so is a return within a few seconds of the last read.
   const { refetch } = q;
-  useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
+  const readAt = useRef(0);
+  readAt.current = q.dataUpdatedAt;
+  useFocusEffect(useCallback(() => { if (readAt.current > 0 && Date.now() - readAt.current > 5_000) void refetch(); }, [refetch]));
 
   const stores = useMemo(() => (q.data ?? []).filter((s) => s.status === "LIVE"), [q.data]);
   const serverToday = q.data?.[0]?.today;
