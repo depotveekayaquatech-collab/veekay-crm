@@ -23,10 +23,12 @@ export interface StaffMe {
   must_change_password: boolean;
   /** The server lets you change an entry you already saved (off by default: a Team Lead or an admin corrects it). */
   can_correct_own_entries?: boolean;
-  /** Given the permission to change ANY earlier entry of their stores (whoever entered it), in the dates still open: this month, and last month for the first 5 days. */
+  /** Every Level 1 employee may change ANY earlier entry of their stores (whoever entered it), in the dates still open: this month, and last month for the first 5 days. */
   can_edit_previous?: boolean;
   /** entry_contributor | team_lead | entry_reviewer | administrator */
   entry_level?: string;
+  /** "L1 Employee", "L2 Team Lead", "L3 Entry Reviewer", "L4 Administrator" ("L4 Developer"). */
+  entry_level_label?: string;
 }
 
 export interface AttendanceToday {

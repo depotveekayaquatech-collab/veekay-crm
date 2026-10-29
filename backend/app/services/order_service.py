@@ -48,7 +48,7 @@ from app.schemas.order import (
     TrendPoint,
 )
 from app.core import audit_context
-from app.core.entry_access import PERM_EDIT_PREVIOUS, ROLE_RANK, EntryScope, owned_clause, owns_value, sees_every_entry, set_by_someone_above, viewer_rank, visible_clause
+from app.core.entry_access import ROLE_RANK, EntryScope, can_edit_any_entry, owned_clause, owns_value, sees_every_entry, set_by_someone_above, viewer_rank, visible_clause
 from app.services import activity_service, assignment_service, order_journal_service, vendor_history_service
 from app.services.entry_changes import last_changes, last_changes_for, status_for_contributor
 
@@ -253,7 +253,7 @@ def get_calendar(
 ) -> OrderCalendar:
     store = _resolve_store(db, user, store_id, is_admin=is_admin)
     rank = viewer_rank(db, user)
-    sees_all = not is_admin and sees_every_entry(db, user)       # entries.view_all: read-only, every entry of a store they can reach
+    sees_all = not is_admin and sees_every_entry(db, user)       # every Level 1 employee: read-only, every entry of a store they can reach
     repo = OrderEntryRepository(db)
     entries = repo.month_map(store.id, year, month)
     who = {
@@ -414,12 +414,11 @@ def _write_employee_entry(db: Session, employee: User, store: Store, order_date:
     return "created"
 
 
-def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest, perms: set[str] | None = None) -> OrderCalendar:
-    """An employee changes (or clears, with no count) an entry THEY marked themselves, in the dates they can still mark (when the server allows it at all).
-    With the entries.edit_previous permission they may change ANY entry of their stores in those dates, whoever entered it or changed it last (an admin, a Team Lead,
-    a colleague, a sheet): that is the one thing the permission is for. Without it, anyone else's entry stays a Team Lead's or an admin's job. Either way every change
-    is stamped with who made it, kept in the entry history with what was there before, and logged."""
-    anyone = PERM_EDIT_PREVIOUS in (perms or set())
+def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -> OrderCalendar:
+    """A Level 1 employee changes (or clears, with no count) ANY entry of their stores in the dates they can still mark, whoever entered it or changed it last (an admin, a
+    Team Lead, a colleague, a sheet). Anyone else with the mark permission (an accounts login) only changes an entry they marked themselves, and only when the server allows it
+    (EMPLOYEE_CAN_CORRECT_OWN). Every change is stamped with who made it, kept in the entry history with what was there before, and logged."""
+    anyone = can_edit_any_entry(db, employee)
     if not settings.EMPLOYEE_CAN_CORRECT_OWN and not anyone:
         _journal(db, employee, payload.store_id, [(payload.order_date, payload.bottle_count, "rejected", "employees cannot change a submitted entry", None)], action="correct")
         raise HTTPException(
@@ -450,8 +449,8 @@ def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest, p
         )
     meta = {**_store_meta(store), "order_date": payload.order_date.isoformat(), "previous_count": mine}
     if anyone and not own:
-        meta.update({"entered_by": existing.created_by_name or existing.created_by_code, "permission": PERM_EDIT_PREVIOUS})
-        audit_context.bind(db, employee, reason="Changed with the permission to change earlier entries")     # the entry history says why, next to who and when
+        meta.update({"entered_by": existing.created_by_name or existing.created_by_code, "rule": "level-1 change of an earlier entry"})
+        audit_context.bind(db, employee, reason="Changed an earlier entry of the same store")     # the entry history says why, next to who and when
     if new is None:
         if existing.cash_adjustment:
             existing.bottle_count = existing.cash_adjustment            # only the adjustment is left

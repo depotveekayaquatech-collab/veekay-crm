@@ -173,13 +173,11 @@ def import_revert(payload: RevertImportRequest, user: User = Depends(get_current
 )
 def correct_my_entry(
     payload: AdminEntryRequest,
-    perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OrderCalendar:
-    """An employee corrects (or clears, with no count) an entry they marked themselves, in the dates they can still mark; with entries.edit_previous, ANY entry of
-    their stores in those dates, whoever entered it. Always audited."""
-    result = order_service.correct_own_entry(db, user, payload, perms)
+    """A Level 1 employee corrects (or clears, with no count) ANY entry of their stores in the dates they can still mark, whoever entered it. Always audited."""
+    result = order_service.correct_own_entry(db, user, payload)
     read_cache.invalidate()
     return result
 

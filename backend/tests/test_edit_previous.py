@@ -1,4 +1,5 @@
-"""entries.edit_previous: a Level 1 employee who is given it may change ANY entry of their stores in the dates still open to them, whoever entered it, with the full audit."""
+"""Every Level 1 employee may change ANY entry of their stores in the dates still open to them, whoever entered it, with the full audit. No permission is needed;
+outside those dates nothing can be marked or changed."""
 from datetime import date, timedelta
 
 from sqlalchemy import text
@@ -23,17 +24,15 @@ def _events(db, entry_id):
                       {"e": entry_id}).mappings().all()
 
 
-def test_the_permission_lets_a_level_one_employee_change_an_entry_a_colleague_made_and_it_is_audited(client, db, make_user, make_store):
+def test_a_level_one_employee_can_change_an_entry_a_colleague_made_and_it_is_audited(client, db, make_user, make_store):
     store = make_store(region="NORTH")
     colleague, c_id, _ = _as(client, make_user)
-    editor, e_id, _ = _as(client, make_user, "entries.edit_previous")
-    plain, _, _ = _as(client, make_user)
+    editor, e_id, _ = _as(client, make_user)
     day = TODAY
     assert client.post(f"{API}/orders/mark", headers=colleague, json={"store_id": str(store.id), "order_date": day.isoformat(), "bottle_count": 11}).status_code == 200
     entry = db.query(OrderEntry).filter_by(store_id=store.id, order_date=day).one()
 
     body = {"store_id": str(store.id), "order_date": day.isoformat(), "bottle_count": 14}
-    assert client.patch(f"{API}/orders/my-entry", headers=plain, json=body).status_code == 403          # no permission: someone else's entry stays a senior's job
     r = client.patch(f"{API}/orders/my-entry", headers=editor, json=body)
     assert r.status_code == 200, r.text
 
@@ -44,12 +43,12 @@ def test_the_permission_lets_a_level_one_employee_change_an_entry_a_colleague_ma
     created, edited = _events(db, entry.id)
     assert edited["event_type"] == "EDITED" and edited["actor_user_id"] == e_id
     assert edited["old_values"]["bottle_count"] == 11 and edited["new_values"]["bottle_count"] == 14   # what it was stays in the history
-    assert "earlier entries" in (edited["reason"] or "")
+    assert "earlier entry" in (edited["reason"] or "")
 
 
 def test_it_also_works_on_an_entry_an_admin_made_and_on_one_already_changed_by_someone_else_and_can_clear_it(client, db, admin, make_user, make_store):
     store = make_store(region="NORTH")
-    editor, e_id, _ = _as(client, make_user, "entries.edit_previous")
+    editor, e_id, _ = _as(client, make_user)
     day = TODAY - timedelta(days=1) if TODAY.day > 1 else TODAY
     assert client.patch(f"{API}/orders/entry", headers=admin, json={"store_id": str(store.id), "order_date": day.isoformat(), "bottle_count": 20}).status_code == 200      # an admin's entry
     assert client.patch(f"{API}/orders/entry", headers=admin, json={"store_id": str(store.id), "order_date": day.isoformat(), "bottle_count": 21}).status_code == 200      # changed again
@@ -66,7 +65,7 @@ def test_it_also_works_on_an_entry_an_admin_made_and_on_one_already_changed_by_s
 def test_only_the_open_dates_can_be_changed_this_month_and_last_month_for_five_days(client, db, make_user, make_store):
     assert settings.BACKMONTH_GRACE_DAYS == 5                                                           # the month itself plus 5 days
     store = make_store(region="NORTH")
-    editor, _, _ = _as(client, make_user, "entries.edit_previous")
+    editor, _, _ = _as(client, make_user)
     first = TODAY.replace(day=1)
     last_month_day = first - timedelta(days=3)
     old_day = first - timedelta(days=45)
@@ -84,17 +83,28 @@ def test_only_the_open_dates_can_be_changed_this_month_and_last_month_for_five_d
     assert change(TODAY + timedelta(days=1)).status_code == 422                                          # never the future
 
 
-def test_the_permission_is_in_the_catalogue_and_the_app_is_told_about_it(client, make_user):
-    ticked, _, _ = _as(client, make_user, "entries.edit_previous")
-    plain, _, _ = _as(client, make_user)
-    assert client.get(f"{API}/auth/me", headers=ticked).json()["can_edit_previous"] is True
-    assert client.get(f"{API}/auth/me", headers=plain).json()["can_edit_previous"] is False
+def test_the_app_is_told_the_level_and_that_a_level_one_employee_may_change_earlier_entries(client, admin, make_user):
+    employee, _, _ = _as(client, make_user)
+    me = client.get(f"{API}/auth/me", headers=employee).json()
+    assert me["can_edit_previous"] is True and me["entry_level"] == "entry_contributor" and me["entry_level_label"] == "L1 Employee"
+    boss = client.get(f"{API}/auth/me", headers=admin).json()
+    assert boss["can_edit_previous"] is False and boss["entry_level_label"] in ("L4 Administrator", "L4 Developer")   # administrators use their own correction tool
+
+
+def test_a_team_lead_is_labelled_l2(client, db, make_user):
+    from app.models.user import User
+    from .test_entry_hierarchy import _role
+
+    code, pw, uid = make_user(platform="blinkit", region="NORTH", grants=GRANTS)
+    _role(db, uid, "team_lead")
+    me = client.get(f"{API}/auth/me", headers=auth(login(client, code, pw).json()["access_token"])).json()
+    assert me["entry_level"] == "team_lead" and me["entry_level_label"] == "L2 Team Lead" and me["can_edit_previous"] is False
 
 
 def test_after_the_window_a_level_one_employee_can_see_entries_but_not_mark_or_change_them(client, db, make_user, make_store):
     store = make_store(region="NORTH")
     plain, _, _ = _as(client, make_user)
-    editor, _, _ = _as(client, make_user, "entries.edit_previous")
+    editor, _, _ = _as(client, make_user)
     closed = TODAY.replace(day=1) - timedelta(days=40)                                                  # beyond this month + 5 days of the next, always
     plant_entry(db, store, closed, 12)
 
@@ -108,6 +118,6 @@ def test_after_the_window_a_level_one_employee_can_see_entries_but_not_mark_or_c
         other = (closed + timedelta(days=1)).isoformat()
         many = client.post(f"{API}/orders/mark-many", headers=who, json={"store_id": str(store.id), "entries": [{"order_date": other, "bottle_count": 5}]})
         assert many.status_code == 200 and many.json()["saved"] == 0 and many.json()["failed"] == 1       # each date is refused on its own
-        assert client.patch(f"{API}/orders/my-entry", headers=who, json=body).status_code == (403 if who is plain else 422)    # no permission: refused outright; with it: the dates are closed
+        assert client.patch(f"{API}/orders/my-entry", headers=who, json=body).status_code == 422     # the dates are closed to everyone at Level 1
     db.expire_all()
     assert db.query(OrderEntry).filter_by(store_id=store.id).count() == 1 and db.query(OrderEntry).filter_by(store_id=store.id).one().bottle_count == 12

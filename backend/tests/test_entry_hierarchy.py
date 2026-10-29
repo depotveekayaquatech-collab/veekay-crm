@@ -103,10 +103,9 @@ def test_a_contributor_sees_their_own_entries_as_theirs_and_a_colleagues_read_on
     stores = {s["external_code"]: s for s in client.get(f"{API}/orders/my-stores", headers=cast["B"]).json()}
     assert stores["HX-1"]["today_marked"] is True and stores["HX-1"]["today_count"] == 11 and stores["HX-1"]["month_bottles"] == 11
     assert stores["HX-2"]["today_count"] == 22 and stores["HX-2"]["month_bottles"] == 22
-    # but it is read-only: the day cannot be marked a second time, and nobody at Level 1 can change it
+    # the day cannot be marked a second time, and the administrator's correction tool is closed to Level 1 (their own change route: see test_edit_previous)
     assert _mark(client, cast["B"], cast["s1"], 99).status_code == 409
-    for path in ("my-entry", "entry"):
-        assert client.patch(f"{API}/orders/{path}", headers=cast["B"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
+    assert client.patch(f"{API}/orders/entry", headers=cast["B"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
     assert _entry(db, cast["s1"]).bottle_count == 11
 
 
@@ -126,7 +125,7 @@ def _day(client, who, store, day=None):
     return next(d for d in days if d["date"] == (day or TODAY).isoformat())
 
 
-def test_a_contributor_sees_what_someone_more_senior_entered_but_cannot_touch_it(client, db, cast, dev):
+def test_a_contributor_sees_what_someone_more_senior_entered_but_has_no_admin_tools_on_it(client, db, cast, dev):
     # the administrator and the developer each enter a number; the Team Lead marks too
     assert client.patch(f"{API}/orders/entry", headers=cast["ADM"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 15}).status_code == 200
     csv = "\n".join([f"Outlet ID,Outlet Name,{TODAY}", f"HX-2,{cast['s2'].name},33", ""]).encode()
@@ -142,9 +141,8 @@ def test_a_contributor_sees_what_someone_more_senior_entered_but_cannot_touch_it
         assert stores["HX-1"]["month_bottles"] == 15 and stores["HX-2"]["month_bottles"] == 33
         inv = {i["external_code"]: i for i in client.get(f"{API}/orders/inventory", headers=cast[who]).json()["items"]}
         assert inv["HX-1"]["month_bottles"] == 15 and inv["HX-2"]["month_bottles"] == 33
-        # ...but they are read-only
+        # ...a second mark of the day is refused, and the admin and audit tools stay closed to them (their own change route is covered in test_edit_previous)
         assert _mark(client, cast[who], cast["s1"], 99).status_code == 409
-        assert client.patch(f"{API}/orders/my-entry", headers=cast[who], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
         assert client.patch(f"{API}/orders/entry", headers=cast[who], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
         assert client.patch(f"{API}/entries/{adm_day.get('entry_id') or _entry(db, cast['s1']).id}", headers=cast[who], json={"bottle_count": 1, "reason": "no right", "expected_version": 2}).status_code == 403
     assert _entry(db, cast["s1"]).bottle_count == 15 and _entry(db, cast["s2"]).bottle_count == 33
@@ -195,12 +193,9 @@ def test_the_vendors_page_totals_a_colleagues_numbers_for_an_employee_too(client
     assert inv_adm["HX-1"]["month_bottles"] == 11
 
 
-def test_a_contributor_cannot_edit_delete_or_read_history(client, db, cast):
+def test_a_contributor_has_no_admin_tools_and_cannot_read_history(client, db, cast):
     _mark(client, cast["A"], cast["s1"], 11)
     e = _entry(db, cast["s1"])
-    fix = client.patch(f"{API}/orders/my-entry", headers=cast["A"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 3})
-    clear = client.patch(f"{API}/orders/my-entry", headers=cast["A"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat()})
-    assert fix.status_code == clear.status_code == 403
     assert client.get(f"{API}/orders/entry", headers=cast["A"]).status_code in (404, 405)
     assert client.patch(f"{API}/orders/entry", headers=cast["A"], json={"store_id": str(cast["s1"].id), "order_date": TODAY.isoformat(), "bottle_count": 1}).status_code == 403
     for call in (lambda: client.get(f"{API}/entries/{e.id}", headers=cast["A"]),

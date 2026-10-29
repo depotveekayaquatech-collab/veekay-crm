@@ -1,5 +1,5 @@
-"""entries.view_all: a Level 1 Zepto employee who marks like anyone else (same store scope, one entry per store and day, no corrections) but can SEE every
-entry of the stores she can reach, in the order calendar and in the month's bottles."""
+"""Every Level 1 employee marks within their own stores (one entry per store and day) and SEES every entry of the stores they can reach, in the order calendar and in the
+month's bottles. (Changing an entry is covered in test_edit_previous.)"""
 from datetime import date
 
 from app.models.organization import Organization
@@ -29,10 +29,10 @@ def _day(client, who, store):
     return next(d for d in r.json()["days"] if d["day"] == TODAY.day)
 
 
-def test_a_view_all_employee_sees_a_colleagues_number_and_a_plain_one_does_not(client, db, make_user, make_store):
+def test_every_level_one_employee_sees_a_colleagues_number(client, db, make_user, make_store):
     a, b = (make_store(platform="zepto", region=None, state=STATE, city="Viewville") for _ in range(2))
     marker = _scoped(client, db, make_user)
-    viewer = _scoped(client, db, make_user, "entries.view_all")
+    viewer = _scoped(client, db, make_user)
     plain = _scoped(client, db, make_user)
     assert _mark(client, marker, a, 7).status_code == 200
 
@@ -48,15 +48,15 @@ def test_a_view_all_employee_sees_a_colleagues_number_and_a_plain_one_does_not(c
     assert _mark(client, viewer, a, 9).status_code == 409                                                   # an already-marked day stays closed to her too
 
 
-def test_a_view_all_employee_still_cannot_correct_or_reach_stores_outside_her_scope(client, db, make_user, make_store):
+def test_a_level_one_employee_has_no_admin_tools_and_cannot_reach_stores_outside_her_scope(client, db, make_user, make_store):
     a = make_store(platform="zepto", region=None, state=STATE, city="Viewville")
     outside = make_store(platform="zepto", region=None, state="Elsewhere", city="Nowhere")
     marker = _scoped(client, db, make_user)
-    viewer = _scoped(client, db, make_user, "entries.view_all")
+    viewer = _scoped(client, db, make_user)
     assert _mark(client, marker, a, 7).status_code == 200
     fix = client.patch(f"{API}/orders/entry", headers=viewer, json={"store_id": str(a.id), "order_date": TODAY.isoformat(), "bottle_count": 1})
-    assert fix.status_code == 403                                                                           # no corrections
-    assert _mark(client, viewer, outside, 3).status_code in (403, 404)                                      # the permission does not widen which stores she can mark
+    assert fix.status_code == 403                                                                           # the administrator's correction tool is closed to her
+    assert _mark(client, viewer, outside, 3).status_code in (403, 404)                                      # seeing colleagues' numbers does not widen which stores she can mark
     assert client.get(f"{API}/orders/calendar", params={"store_id": str(outside.id), "year": TODAY.year, "month": TODAY.month}, headers=viewer).status_code in (403, 404)
     assert client.get(f"{API}/entries/attempts", headers=viewer).status_code == 403                          # and it opens no Store Audit / attempts log
 
@@ -64,7 +64,7 @@ def test_a_view_all_employee_still_cannot_correct_or_reach_stores_outside_her_sc
 def test_the_months_bottles_in_vendors_count_everyones_entries_for_her_only(client, db, make_user, make_store):
     a = make_store(platform="zepto", region=None, state=STATE, city="Viewville")
     marker = _scoped(client, db, make_user)
-    viewer = _scoped(client, db, make_user, "entries.view_all")
+    viewer = _scoped(client, db, make_user)
     plain = _scoped(client, db, make_user)
     assert _mark(client, marker, a, 7).status_code == 200
 
@@ -75,11 +75,11 @@ def test_the_months_bottles_in_vendors_count_everyones_entries_for_her_only(clie
     assert bottles(viewer) == 7 and bottles(plain) == 7
 
 
-def test_the_permission_exists_for_an_administrator_to_tick(client, admin):
+def test_the_two_old_permissions_are_gone_because_every_level_one_employee_has_them(client, admin):
     r = client.get(f"{API}/permissions", headers=admin)
     assert r.status_code == 200
     codes = {p["code"] for g in r.json() for p in g["permissions"]}
-    assert "entries.view_all" in codes
+    assert "entries.view_all" not in codes and "entries.edit_previous" not in codes
 
 
 # ---------------------------------------------------------------- "every store of the platform" scope
@@ -92,7 +92,7 @@ def _give_all_stores(client, admin, db, uid, org_slug="zepto"):
 
 
 def test_the_all_stores_scope_reaches_every_state_including_one_that_did_not_exist_before(client, admin, db, make_user, make_store):
-    code, pw, uid = make_user("employee", platform="zepto", grants=("orders.view", "orders.mark", "entries.view_all"))
+    code, pw, uid = make_user("employee", platform="zepto", grants=("orders.view", "orders.mark"))
     she = auth(login(client, code, pw).json()["access_token"])
     brand_new_state = make_store(platform="zepto", region=None, state="Newstate Pradesh", city="Somewhere")
     blank_state = make_store(platform="zepto", region=None, state="", city="Nowhere")

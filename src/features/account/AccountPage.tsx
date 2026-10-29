@@ -95,6 +95,7 @@ export function AccountPage() {
               {[
                 ["Name", user?.fullName],
                 ["Employee ID", user?.employeeCode],
+                ["Level", user?.entryLevelLabel],
                 ["Platform", user?.platformLabel],
                 ["Region", user?.regionName],
                 ["Email", user?.email],

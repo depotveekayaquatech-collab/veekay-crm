@@ -79,8 +79,6 @@ PERMISSIONS = [
     ("logins.view", "View and export the vendor / POC logins prepared for the mobile app"),
     ("cards.sheet", "Cards from an uploaded sheet, behind an access code (developer only for now)"),
     ("capping.alerts", "See capping alerts for your stores (over the monthly cap, or ahead of its pace)"),
-    ("entries.view_all", "See every entry of the stores you can mark, read-only (you still mark like any Level 1 employee: no corrections, no history)"),
-    ("entries.edit_previous", "Change any earlier entry of the stores you mark, whoever entered it (this month, and last month until the 5th). Every change is kept in the entry history"),
     ("capping.change", "Change a store's capping with an effective date, and see the history of changes"),
     ("tickets.view", "View tickets for your stores"),
     ("tickets.create", "Raise tickets"),

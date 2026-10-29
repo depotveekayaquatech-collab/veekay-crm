@@ -10,6 +10,9 @@ import { niceName } from "@/lib/format";
 import { UpdateCheckRow, versionLabel } from "@/components/UpdateCheckRow";
 import { colors, font } from "@/theme";
 
+// The level on the profile; the server sends the label itself, this covers a server that is a version behind.
+const LEVEL_LABEL: Record<string, string> = { entry_contributor: "L1 Employee", team_lead: "L2 Team Lead", entry_reviewer: "L3 Entry Reviewer", administrator: "L4 Administrator" };
+
 const extra = (Constants.expoConfig?.extra ?? {}) as { privacyPolicyUrl?: string; supportEmail?: string; supportPhone?: string };
 
 function Row({ icon, label, onPress }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void }) {
@@ -29,6 +32,7 @@ export default function Me() {
   const rows: [string, string][] = [
     ["Name", niceName(staff.full_name)],
     ["Employee ID", staff.employee_code],
+    ["Level", staff.entry_level_label ?? LEVEL_LABEL[staff.entry_level ?? ""] ?? "L1 Employee"],
     ["Platform", staff.platform_label ?? "–"],
     ["Region", staff.region_name ?? "–"],
   ];

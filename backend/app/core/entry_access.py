@@ -42,12 +42,10 @@ STATUS_REVIEWED = "reviewed_l3"
 PERM_TEAM = "entries.team"
 PERM_AUDIT = "entries.audit"
 PERM_REVIEW = "entries.review"
-# Per-person, read-only: a Level 1 employee who ticks this still marks like any Level 1 employee (own stores' scope, one entry per store and day, no
-# corrections) but SEES every entry of the stores they can mark: the calendar numbers and the month's bottles. No history, no Store Audit, no edits.
-PERM_VIEW_ALL = "entries.view_all"
-# Per-person: a Level 1 employee who ticks this may change or clear ANY entry of the stores they mark, whoever entered it or changed it last, in the dates still open to
-# them (this month, and last month for the first days of the next). Every change is audited like any correction: stamped with who made it, the earlier number kept.
-PERM_EDIT_PREVIOUS = "entries.edit_previous"
+# There is no per-person permission for these two any more (migration 0061): every Level 1 employee has both, see is_level_one().
+#   - SEE every entry of the stores they can mark (the calendar numbers and the month's bottles). No history, no Store Audit.
+#   - CHANGE or clear ANY entry of the stores they mark, whoever entered it or changed it last, in the dates still open to them (this month, and last month for the
+#     first days of the next). Every change is audited like any correction: stamped with who made it, the earlier number kept. Outside those dates nothing changes.
 
 
 class Level(StrEnum):
@@ -60,6 +58,9 @@ class Level(StrEnum):
 # How senior the person who SET a number was (their role at that time, stamped on the entry). Someone sees their own numbers, and the numbers set
 # by anyone strictly more senior than themselves (read-only): a contributor sees what a Team Lead, reviewer, administrator or the developer entered.
 # People at the same level never see each other's numbers.
+LEVEL_LABEL = {
+    Level.CONTRIBUTOR: "L1 Employee", Level.TEAM_LEAD: "L2 Team Lead", Level.REVIEWER: "L3 Entry Reviewer", Level.ADMINISTRATOR: "L4 Administrator",
+}
 ROLE_RANK = {
     "entry_contributor": 1, "accountant": 1, "partner": 1, "unknown": 0,
     "team_lead": 2,
@@ -69,14 +70,20 @@ ROLE_RANK = {
 LEVEL_RANK = {Level.CONTRIBUTOR: 1, Level.TEAM_LEAD: 2, Level.REVIEWER: 3, Level.ADMINISTRATOR: 4}
 
 
-def sees_every_entry(db, user) -> bool:
-    """True for every Level 1 employee (they all see their colleagues' numbers, read-only: nobody at Level 1 changes an entry once it is entered), and for
-    anyone given entries.view_all. Re-read from the database on every call, like every permission."""
-    from app.repositories.user_repository import UserRepository
+def is_level_one(db, user) -> bool:
+    """A field employee at Level 1 (the employee role, and nothing above it). Re-read from the database on every call, like every permission."""
+    return "employee" in _roles(db, user) and viewer_rank(db, user) == 1
 
-    if "employee" in _roles(db, user) and viewer_rank(db, user) == 1:
-        return True
-    return PERM_VIEW_ALL in UserRepository(db).get_permission_codes(user.id)
+
+def sees_every_entry(db, user) -> bool:
+    """Every Level 1 employee sees their colleagues' numbers for the stores they can mark (read-only)."""
+    return is_level_one(db, user)
+
+
+def can_edit_any_entry(db, user) -> bool:
+    """Every Level 1 employee may change or clear any entry of their stores in the dates still open to them (this month, and last month for the first days of the
+    next), whoever entered it. The dates are enforced where the change is made; the audit stamps who did it and keeps the earlier number."""
+    return is_level_one(db, user)
 
 
 def roles_above(rank: int) -> list[str]:
@@ -216,6 +223,13 @@ def team_only(db: Session, user: User, perms: set[str]) -> frozenset[uuid.UUID] 
     None for everyone else: those views are then governed by their own permission as before."""
     scope = scope_for(db, user, perms)
     return scope.creator_ids if scope.level is Level.TEAM_LEAD else None
+
+
+def level_label(db: Session, user: User, perms: set[str]) -> str:
+    """The level as people read it: "L1 Employee", "L2 Team Lead", "L3 Entry Reviewer", "L4 Administrator" (the developer is "L4 Developer")."""
+    if DEVELOPER in _roles(db, user):
+        return "L4 Developer"
+    return LEVEL_LABEL[level_of(db, user, perms)]
 
 
 def level_of(db: Session, user: User, perms: set[str]) -> Level:

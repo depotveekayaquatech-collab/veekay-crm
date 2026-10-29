@@ -79,9 +79,11 @@ class CurrentUserResponse(BaseModel):
     must_change_password: bool = False
     # Entry Contributors may change an entry they already submitted only if the server allows it (it does not, by default).
     can_correct_own_entries: bool = False
-    # May change ANY earlier entry of the stores they mark (entries.edit_previous), in the dates still open to them.
+    # May change ANY earlier entry of the stores they mark (every Level 1 employee), in the dates still open to them.
     can_edit_previous: bool = False
     # The caller's level in the entry hierarchy: entry_contributor | team_lead | entry_reviewer | administrator
     entry_level: str = "entry_contributor"
+    # How people read it: "L1 Employee", "L2 Team Lead", "L3 Entry Reviewer", "L4 Administrator" ("L4 Developer" for the developer)
+    entry_level_label: str = "L1 Employee"
 
     model_config = {"from_attributes": True}

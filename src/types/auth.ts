@@ -15,10 +15,12 @@ export interface CurrentUser {
   mustChangePassword: boolean;
   /** The server lets an Entry Contributor change an entry they already submitted (off by default). */
   canCorrectOwnEntries: boolean;
-  /** Given the permission to change ANY earlier entry of their stores (entries.edit_previous), in the dates still open to them. */
+  /** Every Level 1 employee may change ANY earlier entry of their stores, in the dates still open to them. */
   canEditPrevious: boolean;
   /** entry_contributor | team_lead | entry_reviewer | administrator */
   entryLevel: string;
+  /** How the level reads on the profile: "L1 Employee", "L2 Team Lead", "L3 Entry Reviewer", "L4 Administrator" ("L4 Developer"). */
+  entryLevelLabel: string;
 }
 
 export interface TokenPair {

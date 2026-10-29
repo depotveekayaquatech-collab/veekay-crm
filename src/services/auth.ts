@@ -30,6 +30,7 @@ interface MeResponse {
   can_correct_own_entries?: boolean;
   can_edit_previous?: boolean;
   entry_level?: string;
+  entry_level_label?: string;
 }
 
 function toCurrentUser(res: MeResponse): CurrentUser {
@@ -51,6 +52,7 @@ function toCurrentUser(res: MeResponse): CurrentUser {
     canCorrectOwnEntries: res.can_correct_own_entries ?? false,
     canEditPrevious: res.can_edit_previous ?? false,
     entryLevel: res.entry_level ?? "entry_contributor",
+    entryLevelLabel: res.entry_level_label ?? "L1 Employee",
   };
 }
 

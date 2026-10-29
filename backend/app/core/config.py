@@ -204,8 +204,8 @@ class Settings(BaseSettings):
     QR_SIGNING_SECRET: str = Field(default="")
 
     # Order marking
-    # Last month's data often takes a few days to finish. For this many days at the start of a month employees may still mark (and, with the
-    # entries.edit_previous permission, change) LAST month's dates: the month itself plus 5 days. 0 switches it off. Admins can always mark any past date.
+    # Last month's data often takes a few days to finish. For this many days at the start of a month employees may still mark (and, at Level 1, change)
+    # LAST month's dates: the month itself plus 5 days. 0 switches it off. Admins can always mark any past date.
     BACKMONTH_GRACE_DAYS: int = Field(default=5, ge=0, le=28)
     MIN_BOTTLE_COUNT: int = 0
     MAX_BOTTLE_COUNT: int = 300
