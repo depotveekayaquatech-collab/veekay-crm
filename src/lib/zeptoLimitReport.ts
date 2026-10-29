@@ -29,13 +29,13 @@ export interface LimitVendor {
   stores: LimitStore[];
 }
 
-const n = (v: number) => v.toLocaleString("en-IN");
+const n = (v: number | null | undefined) => (v ?? 0).toLocaleString("en-IN");
 export const NO_VENDOR = "(No vendor name)";
 
 /** One store's three lines (four with its name). */
 export function formatLimitStore(s: LimitStore): string {
   const head = `Store - ${s.store_name}${s.external_code ? ` (${s.external_code})` : ""}`;
-  if (s.monthly_limit === null || s.pending === null) return [head, "Monthly limit - No capping set", `Supplied till date - ${n(s.bottles)}`].join("\n");
+  if (s.monthly_limit == null || s.pending == null) return [head, "Monthly limit - No capping set", `Supplied till date - ${n(s.bottles)}`].join("\n");
   const over = (s.over_by ?? 0) > 0 ? ` (over by ${n(s.over_by ?? 0)})` : "";
   return [head, `Monthly limit - ${n(s.monthly_limit)}`, `Supplied till date - ${n(s.bottles)}`, `Pending limit - ${n(s.pending)}${over}`].join("\n");
 }
@@ -43,7 +43,7 @@ export function formatLimitStore(s: LimitStore): string {
 /** One vendor's block: its name, then each store. With several stores that have a limit, a closing total of the limit, what was supplied and what is pending. */
 export function formatLimitVendor(v: LimitVendor): string {
   const blocks = [`Vendor name - ${v.vendor_name ?? NO_VENDOR}`, ...v.stores.map(formatLimitStore)];
-  const capped = v.stores.filter((s) => s.monthly_limit !== null && s.pending !== null);
+  const capped = v.stores.filter((s) => s.monthly_limit != null && s.pending != null);
   if (capped.length > 1) {
     const sum = (f: (s: LimitStore) => number) => capped.reduce((t, s) => t + f(s), 0);
     blocks.push([`Total of ${capped.length} stores`, `Monthly limit - ${n(sum((s) => s.monthly_limit ?? 0))}`, `Supplied till date - ${n(sum((s) => s.bottles))}`, `Pending limit - ${n(sum((s) => s.pending ?? 0))}`].join("\n"));
