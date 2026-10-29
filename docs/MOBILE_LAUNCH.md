@@ -1,7 +1,7 @@
 # Launching the mobile app for testers
 
 The code is ready. This is the order to do things in when you set up the server and database. For the server itself follow
-[`DEPLOY.md`](../DEPLOY.md); this page covers what is specific to the app, in the order it matters.
+[`DEPLOY_FLY_VERCEL.md`](../DEPLOY_FLY_VERCEL.md); this page covers what is specific to the app, in the order it matters.
 
 ## 0. What "synced" means here
 
@@ -13,14 +13,14 @@ checks every role sees the same facts.
 
 ## 1. Server and database (do this first)
 
-1. Deploy as in `DEPLOY.md` (`alembic upgrade head` runs on every deploy; the app needs migrations up to **0032**).
+1. Deploy as in `DEPLOY_FLY_VERCEL.md` (`alembic upgrade head` runs on every deploy; the app needs migrations up to **0032**).
 2. **Set `SYNC_TRIGGER_KEY`** (a long random string) and schedule the 10:00 sync from outside:
    - The API's own scheduler lives inside the API process. **On a free / sleeping plan that process is asleep at 10:00, so the daily sync would silently not run.**
    - Create a cron job at **10:00 IST (04:30 UTC)** that calls `POST https://<api>/api/v1/sync/trigger` with header `X-Sync-Key: <your key>`. Render Cron Jobs or cron-job.org both work. It wakes the server, runs the sync once (a second call within 30 minutes does nothing), and records it.
    - Or use an always-on paid plan and skip the cron; the in-process scheduler then runs it.
    - The same daily 10:00 run also sends the **bill-due reminders** to vendors and POCs (3 days before a bill is due, on the due date, and when it is 7, 14 and 30 days late; each reminder once per bill). So keep the 10:00 run going even if you have no sheets configured yet.
 3. Set `STORE_SYNC_SHEETS` and `ORDER_SYNC_SHEETS` (see `backend/.env.example`). Check `GET /api/v1/sync/status` shows your sheets and a next run.
-4. Real file storage (`STORAGE_BACKEND=s3`) and paid Postgres with backups, as `DEPLOY.md` says. **Ticket photos, bills and payment proofs from the app are stored there.**
+4. Real file storage (`STORAGE_BACKEND=s3`) and paid Postgres with backups, as `DEPLOY_FLY_VERCEL.md` says. **Ticket photos, bills and payment proofs from the app are stored there.**
 5. First admin: `ADMIN001` with `BOOTSTRAP_ADMIN_PASSWORD` (production creates no demo users).
 6. Create the vendor / POC logins on the new database: `python scripts/create_external_accounts.py --platform all`.
    Employees are added on the web **Team** page.

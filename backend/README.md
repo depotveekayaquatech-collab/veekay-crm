@@ -1,62 +1,28 @@
-# Veekay CRM — Backend (Phase 1)
+# Veekay CRM: backend
 
-FastAPI + PostgreSQL foundation: organizations (tenant/partner isolation),
-users, roles, permissions, JWT auth with refresh rotation, failed-login
-lockout, and an append-only audit log table.
+FastAPI + PostgreSQL API. Full explanation (layers, roles, entry rules, deploy, tests): [../docs/PROJECT_GUIDE.md](../docs/PROJECT_GUIDE.md).
 
-## Setup
+## Run locally
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # then set a real JWT_SECRET_KEY and DATABASE_URL
-
-# create the database, then:
-alembic upgrade head
-
+python -m venv .venv && .venv\Scripts\activate        # source .venv/bin/activate on Mac/Linux
+pip install -r requirements-dev.txt
+cp .env.example .env        # set DATABASE_URL and a long random JWT_SECRET_KEY
+alembic upgrade head        # create / update the tables (migrations 0001 ... latest)
+python scripts/seed.py      # permissions and roles; in development also demo logins ADMIN001 / DEV001 / EMP001 / EMP002 (password Pass@123)
 uvicorn app.main:app --reload
 ```
 
-Visit `http://localhost:8000/docs` for the interactive API docs.
+API docs: `http://localhost:8000/docs` (switched off in production).
 
-## What's here
+## Where things are
 
-- `app/core/security.py` — the ONLY place passwords are hashed and JWTs
-  are issued/verified.
-- `app/api/deps.py` — the ONLY place "is this user allowed to do this"
-  is decided (`require_permission(...)`, `require_same_organization(...)`).
-  Every future route should depend on these rather than re-checking roles
-  inline.
-- `app/models/` — Organization, Role, Permission, User, UserRole,
-  AuditLog. Orders/Tickets/Stores land here in Phase 3–4.
-- `app/services/auth_service.py` — login/refresh/lockout business logic,
-  kept out of the route layer so it's unit-testable without an HTTP layer.
-- `alembic/versions/0001_phase1_foundation.py` — initial schema. Written
-  by hand since there's no live Postgres to autogenerate against here;
-  review it against your actual Postgres version before running.
+* `app/api/v1/endpoints/` the URL list; `app/api/deps.py` login and permission checks
+* `app/services/` all business rules; `app/models/` tables; `app/schemas/` request/response shapes
+* `app/core/` settings (`config.py`), who may see/edit entries (`entry_access.py`), files (`storage.py`), timed jobs (`scheduler.py`)
+* `alembic/versions/` database migrations; `scripts/` maintenance tools; `tests/` pytest suite (real PostgreSQL, `veekay_test` is rebuilt each run)
 
-## Seeding roles/permissions
+## Deploy
 
-Run this once after `alembic upgrade head`, before your first login:
-
-```bash
-python scripts/seed.py
-```
-
-It creates the `veekay` organization, `admin` and `employee` roles with a
-starter permission set, and two users:
-
-- `admin@veekay.com` / `ChangeMe123!` (admin role)
-- `employee@veekay.com` / `ChangeMe123!` (employee role)
-
-Change both passwords before this goes anywhere near production. Add more
-roles (`super_admin`, `regional_manager`, `blinkit_admin`, `zepto_admin`,
-...) the same way as usage grows (spec section 6).
-
-## Not yet implemented (by design — later phases)
-
-Employees CRUD, Orders, Tickets, Google Apps Script integration adapter,
-Stores/Regions, partner exports, background jobs, rate limiting, file
-upload handling, dashboard aggregation endpoints. The architecture
-(service → repository, permission-based routes, organization scoping)
-is meant to make all of these additive, not a rewrite.
+`fly deploy` from this folder. It runs `alembic upgrade head` and `scripts/seed.py` as the release command before the new version goes live.
+In production, demo users are never created; the first admin comes from the `BOOTSTRAP_ADMIN_PASSWORD` secret.

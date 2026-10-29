@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 30,
+    "latestVersionCode": 31,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code30.apk",
-    "notes": "Entries now show in colour: green for a first entry, yellow after one change, red after two or more, blue for a Team Lead and purple for an admin. Your stores with days still to mark are easier to find.",
-    "apkSizeBytes": 56643697,
-    "apkSha256": "dadd989d50931c488e567008d2041718706ce2fd2535e2710f10f65a87834294"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code31.apk",
+    "notes": "New My performance screen: see your percentage day by day and the stores still to mark. Entries show in colour (green first entry, yellow changed once, red changed twice or more, blue Team Lead, violet admin). Your level now shows on your profile.",
+    "apkSizeBytes": 56648657,
+    "apkSha256": "b79d691203cf3f7b4e505efee921e5da9d036082590a89a7518117dd0e8f5781"
   }
 }

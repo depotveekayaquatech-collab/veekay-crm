@@ -1,78 +1,33 @@
-# React + TypeScript + Vite
+# Veekay CRM / Aquatrack
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Bottle-delivery operations for Veekay Aquatech: daily store entries, performance, attendance, compliance documents, cards, tickets, cash purchases and payroll.
+Three programs share one database:
 
-Currently, two official plugins are available:
+| Part | Folder | Stack | Hosted on |
+|---|---|---|---|
+| Backend API | `backend/` | Python, FastAPI, PostgreSQL | Fly.io (`veekay-crm-api`) |
+| Web app (CRM + vendor portal) | `src/` (repo root) | React, TypeScript, Vite, Tailwind | Vercel |
+| Android app (Aquatrack) | `mobile/` | Expo, React Native | built on a PC, served from the Vercel site |
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+**Start here: [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)**: what lives where, how everything works, and step-by-step processes (run, test, deploy, build the app).
 
-## React Compiler
+Quick commands
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+```bash
+# web app (repo root)
+npm install && npm run dev        # http://localhost:5174, forwards /api to the backend
+npm run build                     # the real type-check + production build
+npm test                          # unit tests
 
-Note: This will impact Vite dev & build performances.
-You can also try [the experimental native React Compiler support in plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md#rust-react-compiler) by using `compiler: true` in the plugin options instead of using the Babel plugin.
+# backend (backend/)
+python -m venv .venv && .venv\Scripts\activate && pip install -r requirements-dev.txt
+alembic upgrade head && python scripts/seed.py
+uvicorn app.main:app --reload     # http://localhost:8000
+python -m pytest                  # needs a local PostgreSQL
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+# phone app (mobile/)
+npm ci && npm run typecheck && npm test
+npm run build:apk-local           # signed APK in mobile/build/apk (see mobile/RELEASE.md)
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+Deploying: backend `cd backend && fly deploy`; web: push to `main` (Vercel); Android: build, `npm run release:publish -- --min <current minimum> --notes "..."`, then push.
