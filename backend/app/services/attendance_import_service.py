@@ -34,6 +34,7 @@ BLANK_MARKS = {"", "A", "ABSENT", "-", "--", "—", "NA", "N/A"}
 ID_HEADERS = {"employee id", "emp id", "empid", "employee code", "emp code", "employee no", "id", "code", "login id", "staff id"}
 NAME_HEADERS = {"employee name", "emp name", "name", "employee", "full name", "staff name"}
 MAX_LISTED = 60
+HEADER_SEARCH_ROWS = 200       # the table may sit below a title, notes or blank rows (a real sheet had its header on row 31)
 MAX_BYTES = 10 * 1024 * 1024
 
 
@@ -57,7 +58,7 @@ def _day_of(cell: Any, month: date) -> int | None:
 
 def _locate(rows: list[tuple], month: date) -> tuple[int, int | None, int | None, dict[int, int]] | None:
     """(header row index, id column, name column, {column index: day}) from the first rows of a sheet."""
-    for i, row in enumerate(rows[:20]):
+    for i, row in enumerate(rows[:HEADER_SEARCH_ROWS]):
         id_col = name_col = None
         for j, cell in enumerate(row):
             h = _norm(cell)

@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 29,
+    "latestVersionCode": 30,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code29.apk",
-    "notes": "New Inventory screen: your stores grouped by vendor with phone numbers, card and bill counts for the month, and each store's POC and vendor details. Entries saved or corrected in the CRM show in the app every time you open it.",
-    "apkSizeBytes": 56645033,
-    "apkSha256": "8a18c4c1ee702d05314aa816301851ec16de516b5b3266927489b07769d6455a"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code30.apk",
+    "notes": "Entries now show in colour: green for a first entry, yellow after one change, red after two or more, blue for a Team Lead and purple for an admin. Your stores with days still to mark are easier to find.",
+    "apkSizeBytes": 56643697,
+    "apkSha256": "dadd989d50931c488e567008d2041718706ce2fd2535e2710f10f65a87834294"
   }
 }

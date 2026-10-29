@@ -188,3 +188,32 @@ def test_an_excel_sheet_with_numeric_day_headers_works(client, dev, db, staff):
                     files={"file": ("oct.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
     assert r.status_code == 200, r.text
     assert len(_records(db, ua)) == 16 and r.json()["days_in_sheet"] == list(range(1, 17))
+
+
+def test_the_table_may_start_far_down_the_sheet_and_hold_holiday_and_weekly_off_cells(client, dev, db, staff):
+    """A real monthly sheet: a title and blank rows above, the header on row 31, then P / p / A / H and SUNDAY cells."""
+    from openpyxl import Workbook
+
+    (ca, ua), (cb, ub) = staff["a"], staff["b"]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "ATTENDANCE"
+    ws["A3"] = "Attendance register"                                     # something above the table, then blank rows down to the header
+
+    def put(row: int, values: list) -> None:
+        for col, v in enumerate(values, start=1):
+            ws.cell(row=row, column=col, value=v)
+
+    put(31, ["Employee\nID", "Name", *range(1, 17)])                      # the header on row 31, with "Employee ID" wrapped over two lines
+    put(32, [ca, "A", "p", "H", "A", "SUNDAY", "P", "P", "P", "P", "P", "A", "SUNDAY", "P", "P", "P", "P", "P"])
+    put(33, [cb, "B", "P", "H", "P", "SUNDAY", *["P"] * 12])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    pre = _post(client, dev, buf.getvalue(), apply=False, name="attendance (2).xlsx")
+    assert pre.status_code == 200, pre.text
+    assert pre.json()["people"] == 2 and pre.json()["present_cells"] == 11 + 14      # A: p + days 5-9 + days 12-16; B: days 1, 3 and 5-16
+    done = _post(client, dev, buf.getvalue(), apply=True, name="attendance (2).xlsx")
+    assert done.status_code == 200, done.text
+    a_days = _records(db, ua)
+    assert {1, 5, 9, 12, 16} <= set(a_days) and not ({2, 3, 4, 10, 11} & set(a_days))    # H, A and SUNDAY cells write nothing
