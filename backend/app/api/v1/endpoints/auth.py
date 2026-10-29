@@ -183,6 +183,7 @@ def get_me(
         is_admin=ADMIN_ROLE_CODE in roles,
         must_change_password=user.must_change_password,
         can_correct_own_entries=settings.EMPLOYEE_CAN_CORRECT_OWN,
+        can_edit_previous="entries.edit_previous" in permissions,
         entry_level=entry_access.level_of(db, user, permissions).value,
     )
 

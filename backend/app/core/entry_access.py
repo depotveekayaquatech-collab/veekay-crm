@@ -45,6 +45,9 @@ PERM_REVIEW = "entries.review"
 # Per-person, read-only: a Level 1 employee who ticks this still marks like any Level 1 employee (own stores' scope, one entry per store and day, no
 # corrections) but SEES every entry of the stores they can mark: the calendar numbers and the month's bottles. No history, no Store Audit, no edits.
 PERM_VIEW_ALL = "entries.view_all"
+# Per-person: a Level 1 employee who ticks this may change or clear ANY entry of the stores they mark, whoever entered it or changed it last, in the dates still open to
+# them (this month, and last month for the first days of the next). Every change is audited like any correction: stamped with who made it, the earlier number kept.
+PERM_EDIT_PREVIOUS = "entries.edit_previous"
 
 
 class Level(StrEnum):
@@ -206,6 +209,13 @@ def scope_for(db: Session, user: User, perms: set[str]) -> EntryScope:
     if PERM_TEAM in perms:
         return EntryScope(Level.TEAM_LEAD, user.organization_id, user.id, team_ids(db, user), None, True, True, False, False, can_verify=True)
     return EntryScope(Level.CONTRIBUTOR, user.organization_id, user.id, frozenset({user.id}), None, False, False, False, False)
+
+
+def team_only(db: Session, user: User, perms: set[str]) -> frozenset[uuid.UUID] | None:
+    """For a Team Lead: the people they may look at (themselves and who reports to them), for views of PEOPLE (attendance, leave) rather than entries.
+    None for everyone else: those views are then governed by their own permission as before."""
+    scope = scope_for(db, user, perms)
+    return scope.creator_ids if scope.level is Level.TEAM_LEAD else None
 
 
 def level_of(db: Session, user: User, perms: set[str]) -> Level:

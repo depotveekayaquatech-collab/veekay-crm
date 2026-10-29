@@ -8,10 +8,13 @@ export interface CellState {
   inRange?: boolean;
   /** Small text under the day number, for example a saved count. */
   badge?: string | number | null;
-  /** Colour of the badge: done (green) by default. */
-  badgeTone?: "done" | "muted" | "changed";
+  /** Colour of the badge: done (green) by default; the entry tones come from the server (first entry, changed once, changed twice or more, Team Lead, admin). */
+  badgeTone?: "done" | "muted" | "changed" | "l1_first" | "l1_second" | "l1_third" | "l2" | "admin";
   today?: boolean;
 }
+
+// The colour of an entry's number. Yellow is "changed once", so the administrator colour is violet (orange sits too close to red).
+const TONE_COLOR: Record<string, string> = { l1_first: colors.success, l1_second: "#B7860B", l1_third: colors.danger, l2: "#2559C9", admin: "#7C3AED" };
 
 const WEEK = ["M", "T", "W", "T", "F", "S", "S"];
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -56,7 +59,7 @@ export function MonthGrid({
               >
                 <Text style={{ fontSize: 15, fontWeight: s.selected || s.today ? "800" : "600", color: fg }}>{d}</Text>
                 {s.badge != null ? (
-                  <Text style={{ fontSize: 10, fontWeight: "700", marginTop: 1, color: s.selected ? colors.white : s.badgeTone === "muted" ? colors.textFaint : s.badgeTone === "changed" ? colors.warning : colors.success }}>{s.badge}</Text>
+                  <Text style={{ fontSize: 10, fontWeight: "700", marginTop: 1, color: s.selected ? colors.white : s.badgeTone === "muted" ? colors.textFaint : s.badgeTone === "changed" ? colors.warning : (s.badgeTone && TONE_COLOR[s.badgeTone]) || colors.success }}>{s.badge}</Text>
                 ) : null}
               </Pressable>
             </View>

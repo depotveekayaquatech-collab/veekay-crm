@@ -47,6 +47,7 @@ export default function MarkMany() {
   const correct = useCorrectEntry();
   const { staff } = useAuth();
   const canFixOwn = !!staff?.can_correct_own_entries;       // off by default: a saved entry is corrected by a Team Lead or an admin
+  const canEditAny = !!staff?.can_edit_previous;            // given by an admin: change any day of the open dates, whoever entered it (always kept in the history)
   // One key per submission: it stays the same while the person retries after a timeout, so the server answers from what it already saved.
   const submissionKey = useSubmissionKey();
   // The server's confirmation of the last submission. Nothing is called "saved" until the server says so.
@@ -94,8 +95,14 @@ export default function MarkMany() {
   /** Tapping a green (already marked) day opens a correction box for it; only the person who marked a day can change it. */
   function openFix(iso: string) {
     const d = byDate.get(iso);
-    if (!d || !d.marked) return;
+    if (!d || !d.marked || cal.data?.can_mark === false) return;     // a closed month is view only, whatever the person may otherwise change
     Haptics.selectionAsync().catch(() => undefined);
+    if (canEditAny) {                                          // nothing below applies: whoever entered it, and whoever changed it last
+      setPicked([]);
+      setFixing(iso);
+      setFixValue(String(d.count ?? ""));
+      return;
+    }
     if (d.masked) {
       Alert.alert("Already marked by a colleague", "Someone else marked this day. You can't change it. If it looks wrong, tell your Team Lead.");
       return;
@@ -221,7 +228,7 @@ export default function MarkMany() {
       selected: selected.includes(iso) || fixing === iso,
       today: d.is_today,
       badge: d.masked ? "•" : d.marked ? d.count : null,
-      badgeTone: d.masked || d.by_higher ? "muted" : d.changed ? "changed" : "done",
+      badgeTone: d.masked ? "muted" : d.tone ?? (d.by_higher ? "muted" : d.changed ? "changed" : "done"),
     };
   };
 
@@ -238,7 +245,7 @@ export default function MarkMany() {
                 <Text style={[font.small, { marginTop: 2 }]}>Another store has exactly this name, so your entries may not show on the other copy. Tell your admin before you keep marking it.</Text>
               </View>
             ) : null}
-            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. {canFixOwn ? "Tap a green number to correct what you marked." : "A green number is yours and saved on the server; a grey number was entered by someone else (you can see it, not change it); a dot means a day whose number is not shown to you."}</Text>
+            <Text style={[font.small, { marginTop: 2 }]}>Tap the dates to mark. {canEditAny ? "Tap any marked day to change it. Every change is kept in the history." : canFixOwn ? "Tap a green number to correct what you marked." : "A green number is yours and saved on the server; a grey number was entered by someone else (you can see it, not change it); a dot means a day whose number is not shown to you."}</Text>
             {lastOpenUntil ? (
               <View style={{ marginTop: 12, gap: 8 }}>
                 <Chips<"this" | "last"> options={[{ label: "This month", value: "this" }, { label: "Last month", value: "last" }]} value={period} onChange={switchPeriod} />

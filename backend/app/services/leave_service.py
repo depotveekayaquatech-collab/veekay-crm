@@ -177,9 +177,11 @@ def cancel(db: Session, user: User, leave_id: uuid.UUID) -> dict:
 # the reviewer's side
 # --------------------------------------------------------------------------
 
-def list_all(db: Session, reviewer: User, status_filter: str | None, q: str | None) -> dict:
+def list_all(db: Session, reviewer: User, status_filter: str | None, q: str | None, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
     today = attendance_service.today_local()
     stmt = select(LeaveRequest).where(LeaveRequest.organization_id == reviewer.organization_id)
+    if only_ids is not None:      # a Team Lead reviews their own team's requests only
+        stmt = stmt.where(LeaveRequest.user_id.in_(only_ids))
     if status_filter and status_filter.upper() in STATUSES:
         stmt = stmt.where(LeaveRequest.status == status_filter.upper())
     rows = db.execute(stmt.order_by(
@@ -189,15 +191,14 @@ def list_all(db: Session, reviewer: User, status_filter: str | None, q: str | No
     if q and q.strip():
         needle = q.strip().lower()
         items = [i for i in items if i["person"] and needle in f"{i['person']['name']} {i['person']['code']}".lower()]
-    pending = db.execute(
-        select(LeaveRequest.id).where(LeaveRequest.organization_id == reviewer.organization_id, LeaveRequest.status == "PENDING")
-    ).all()
+    pending_stmt = select(LeaveRequest.id).where(LeaveRequest.organization_id == reviewer.organization_id, LeaveRequest.status == "PENDING")
+    pending = db.execute(pending_stmt.where(LeaveRequest.user_id.in_(only_ids)) if only_ids is not None else pending_stmt).all()
     return {"items": items, "pending": len(pending)}
 
 
-def review(db: Session, reviewer: User, leave_id: uuid.UUID, approve: bool, note: str | None) -> dict:
+def review(db: Session, reviewer: User, leave_id: uuid.UUID, approve: bool, note: str | None, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
     lr = db.get(LeaveRequest, leave_id)
-    if lr is None or lr.organization_id != reviewer.organization_id:
+    if lr is None or lr.organization_id != reviewer.organization_id or (only_ids is not None and lr.user_id not in only_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Leave request not found.")
     if lr.user_id == reviewer.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't review your own leave request.")

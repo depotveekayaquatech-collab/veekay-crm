@@ -173,11 +173,13 @@ def import_revert(payload: RevertImportRequest, user: User = Depends(get_current
 )
 def correct_my_entry(
     payload: AdminEntryRequest,
+    perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OrderCalendar:
-    """An employee corrects (or clears, with no count) an entry they marked themselves, in the dates they can still mark."""
-    result = order_service.correct_own_entry(db, user, payload)
+    """An employee corrects (or clears, with no count) an entry they marked themselves, in the dates they can still mark; with entries.edit_previous, ANY entry of
+    their stores in those dates, whoever entered it. Always audited."""
+    result = order_service.correct_own_entry(db, user, payload, perms)
     read_cache.invalidate()
     return result
 
@@ -227,18 +229,39 @@ def daily_overview(
     return read_cache.get_or_set(("overview", user.organization_id, partner, 1 if day_offset == 1 else 0), settings.DASHBOARD_CACHE_SECONDS, compute)
 
 
-@router.get("/performance", dependencies=[Depends(require_permission("orders.overview"))])
+@router.get("/performance", dependencies=[Depends(require_permission("orders.view"))])
 def performance(
     response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
     """Each employee's share of the entries they should have marked this month, counted from the 1st to yesterday, recounted on every call (so entries
-    marked late lift the earlier days). Never cached."""
-    from app.services import performance_service
+    marked late lift the earlier days). Never cached. An administrator, a reviewer or anyone with the daily overview sees everyone; a Team Lead sees their
+    own team only; every other employee sees only themselves."""
+    from app.services import assignment_service, performance_service
 
+    if assignment_service.is_partner_account(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
     response.headers["Cache-Control"] = "no-store"
     today = order_service._today()
-    return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today)
+    return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today, perms)
+
+
+@router.get("/performance/pending", dependencies=[Depends(require_permission("orders.view"))])
+def performance_pending(
+    response: Response, partner: str, day: date = Query(..., alias="date"), employee_id: uuid.UUID | None = None,
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """The stores of one employee (default: the caller) with days still to mark from the 1st of the month up to `date`, each with its missing dates: what
+    brings the percentage to 100 as of that date. Only yourself, or your team for a Team Lead, unless you see everyone. Never cached."""
+    from app.services import assignment_service, performance_service
+
+    if assignment_service.is_partner_account(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
+    response.headers["Cache-Control"] = "no-store"
+    return performance_service.pending_stores(
+        db, user, perms, partner.strip().lower(), employee_id, day, order_service._today(), is_admin=_is_admin(perms))
 
 
 @router.get("/performance/vendors", dependencies=[Depends(require_permission("orders.view"))])

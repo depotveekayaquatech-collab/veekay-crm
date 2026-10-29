@@ -57,7 +57,7 @@ export default function Orders() {
   const shown = useMemo(() => {
     const n = needle.trim().toLowerCase();
     if (filter === "lastmonth") {
-      return lastMissing
+      return stores
         .filter((s) => !vendor || vendorKey(s.vendor_name) === vendor)
         .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""} ${s.vendor_name ?? ""}`.toLowerCase().includes(n))
         .sort((a, b) => (b.last_month_missing ?? 0) - (a.last_month_missing ?? 0) || a.name.localeCompare(b.name));
@@ -67,7 +67,7 @@ export default function Orders() {
       .filter((s) => !n || `${s.name} ${s.external_code} ${s.city ?? ""} ${s.state ?? ""} ${s.vendor_name ?? ""}`.toLowerCase().includes(n));
     // the pending list starts with the stores that have waited longest
     return filter === "pending" ? [...list].sort((a, b) => (b.pending_days ?? 0) - (a.pending_days ?? 0) || a.name.localeCompare(b.name)) : list;
-  }, [scope, filter, needle, markedOf, lastMissing, vendor]);
+  }, [scope, filter, needle, markedOf, stores, vendor]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surfaceSubtle }}>
@@ -97,13 +97,13 @@ export default function Orders() {
               <Text style={{ flex: 1, fontWeight: "700", color: colors.brand700 }}>My entries: check what you saved in the last days</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.brand600} />
             </Pressable>
-            {lastOpenUntil && lastMissing.length > 0 ? (
+            {lastOpenUntil ? (
               <Pressable onPress={() => setFilter("lastmonth")} accessibilityRole="button" android_ripple={{ color: colors.brand100 }}
                 style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: radius.md, backgroundColor: colors.warningSoft }}>
                 <Ionicons name="calendar-outline" size={22} color={colors.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "800", color: colors.warning }}>Last month is still open until {fmtDate(lastOpenUntil)}</Text>
-                  <Text style={font.small}>{lastMissing.length} store{lastMissing.length === 1 ? " has" : "s have"} days of last month with no entry yet. Tap to fill them.</Text>
+                  <Text style={font.small}>{lastMissing.length > 0 ? `${lastMissing.length} store${lastMissing.length === 1 ? " has" : "s have"} days of last month with no entry yet. Tap to check or fill them.` : "Every store has all its days of last month. Tap to check them."}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.warning} />
               </Pressable>
@@ -114,12 +114,12 @@ export default function Orders() {
               <Ionicons name="search" size={18} color={colors.textFaint} />
               <TextInput value={needle} onChangeText={setNeedle} placeholder="Search store, code, city or vendor" placeholderTextColor={colors.textFaint} accessibilityLabel="Search stores" style={{ flex: 1, fontSize: 16, color: colors.text }} />
             </View>
-            <Chips<Filter> options={[{ label: `Pending ${scope.length - scopeDone}`, value: "pending" }, { label: `Done ${scopeDone}`, value: "done" }, { label: `All ${scope.length}`, value: "all" }, ...(lastOpenUntil ? [{ label: `Last month ${lastMissing.length}`, value: "lastmonth" as Filter }] : [])]} value={filter} onChange={setFilter} />
+            <Chips<Filter> options={[{ label: `Pending ${scope.length - scopeDone}`, value: "pending" }, { label: `Done ${scopeDone}`, value: "done" }, { label: `All ${scope.length}`, value: "all" }, ...(lastOpenUntil ? [{ label: lastMissing.length ? `Last month ${lastMissing.length}` : "Last month", value: "lastmonth" as Filter }] : [])]} value={filter} onChange={setFilter} />
           </View>
         }
         ListEmptyComponent={
           q.isLoading ? <ListSkeleton /> : q.isError ? <ErrorNote message={q.error.message} onRetry={() => q.refetch()} /> : (
-            <Empty title={filter === "lastmonth" && !needle ? "Last month is complete" : filter === "pending" && !needle ? `All ${vendor ? "of this vendor's " : ""}stores are marked for ${day}` : "No store matches"} text={filter === "lastmonth" && !needle ? "Every store has all its days of last month." : filter === "pending" && !needle ? "Nice work. You can still mark earlier days of this month from a store's page." : "Try a different filter or search."} />
+            <Empty title={filter === "lastmonth" && !needle ? "No stores" : filter === "pending" && !needle ? `All ${vendor ? "of this vendor's " : ""}stores are marked for ${day}` : "No store matches"} text={filter === "lastmonth" && !needle ? "There are no stores to show." : filter === "pending" && !needle ? "Nice work. You can still mark earlier days of this month from a store's page." : "Try a different filter or search."} />
           )
         }
         renderItem={({ item: s }) => (
@@ -146,7 +146,7 @@ export default function Orders() {
               {filter === "lastmonth" ? (
                 <View style={{ marginTop: 6, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.warning }} />
-                  <Text style={{ fontSize: 12, fontWeight: "800", color: colors.warning }}>{s.last_month_missing} day{s.last_month_missing === 1 ? "" : "s"} of last month missing</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: colors.warning }}>{(s.last_month_missing ?? 0) > 0 ? `${s.last_month_missing} day${s.last_month_missing === 1 ? "" : "s"} of last month missing` : "Last month complete: tap to check"}</Text>
                 </View>
               ) : !markedOf(s) ? <View style={{ marginTop: 6 }}><PendingPill days={s.pending_days ?? 0} /></View> : null}
             </View>

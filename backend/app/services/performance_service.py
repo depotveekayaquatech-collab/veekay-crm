@@ -25,6 +25,7 @@ from app.models.store import Store, StoreStatus
 from app.models.store_vendor_period import StoreVendorPeriod
 from app.models.user import User, UserRole
 from app.repositories.employee_repository import EmployeeRepository
+from app.core.entry_access import Level, scope_for
 from app.services import assignment_service, holiday_service
 
 
@@ -43,19 +44,49 @@ def parse_month(value: str | None, today: date) -> date:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Month must look like 2026-10.") from exc
 
 
-def performance(db: Session, admin: User, partner_slug: str, month: date, today: date) -> dict:
+def people_in_view(db: Session, user: User, perms: set[str]) -> tuple[str, frozenset[uuid.UUID] | None]:
+    """Whose performance this person may look at: ("all", None) = everyone on the platform (an administrator, a reviewer, anyone given the daily overview);
+    ("team", ids) = a Team Lead sees their own team (themselves and the people who report to them) and nobody else, even with the overview;
+    ("self", {their id}) = every other employee sees only themselves. Derived from the roles and permissions of THIS request, never from the request."""
+    scope = scope_for(db, user, perms)
+    if scope.level in (Level.ADMINISTRATOR, Level.REVIEWER):
+        return "all", None
+    if scope.level is Level.TEAM_LEAD:
+        return "team", scope.creator_ids
+    if "orders.overview" in perms:
+        return "all", None
+    return "self", frozenset({user.id})
+
+
+def _partner(db: Session, partner_slug: str) -> Organization:
     partner = db.execute(select(Organization).where(Organization.slug == partner_slug)).scalar_one_or_none()
     if partner is None or partner.kind != OrganizationKind.PARTNER.value:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{partner_slug} is not a configured platform.")
+    return partner
 
+
+def _judged_days(db: Session, org_id: uuid.UUID, month: date, today: date) -> tuple[list[date], date, date, dict[date, str]]:
+    """(the days that count, the last finished day, the last day of the month, the company holidays of the month). A day counts once it is over; a holiday never counts."""
     last_of_month = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
     as_of = min(today - timedelta(days=1), last_of_month)
-    holidays = holiday_service.between(db, admin.organization_id, month, last_of_month)
-    # a company holiday is not a day anyone is expected to mark
+    holidays = holiday_service.between(db, org_id, month, last_of_month)
     days = [d for d in (month + timedelta(days=i) for i in range((as_of - month).days + 1)) if d not in holidays] if as_of >= month else []
+    return days, as_of, last_of_month, holidays
+
+
+def performance(db: Session, admin: User, partner_slug: str, month: date, today: date, perms: set[str] | None = None) -> dict:
+    partner = _partner(db, partner_slug)
+    view, only = people_in_view(db, admin, perms) if perms is not None else ("all", None)
+
+    # a company holiday is not a day anyone is expected to mark
+    days, as_of, last_of_month, holidays = _judged_days(db, admin.organization_id, month, today)
 
     employees = EmployeeRepository(db).all_for_platform(admin.organization_id, partner.id)
+    if only is not None:
+        employees = [e for e in employees if e.id in only]
     scopes, all_ids = assignment_service.employee_store_scopes(db, partner, employees)
+    if only is not None:      # the overall figure is about the stores of the people in view, each counted once
+        all_ids = list({sid for ids in scopes.values() for sid in ids})
 
     covered: dict[date, set[uuid.UUID]] = {d: set() for d in days}
     if days and all_ids:
@@ -133,10 +164,60 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
     return {
         "partner_slug": partner.slug, "partner_label": partner.name, "month": f"{month:%Y-%m}", "month_label": month.strftime("%B %Y"),
         "from": days[0] if days else None, "as_of": days[-1] if days else None, "days": len(days), "today": today,
-        "holidays": {d.isoformat(): n for d, n in holidays.items() if d <= as_of},
+        "holidays": {d.isoformat(): n for d, n in holidays.items() if d <= as_of}, "view": view,
         "summary": {"employees": len(rows), "stores": len(all_ids), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
                     "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50)},
         "employees": rows + storeless,      # people with no store of their own come last, and are not part of the summary
+    }
+
+
+def pending_stores(
+    db: Session, user: User, perms: set[str], partner_slug: str, employee_id: uuid.UUID | None, day: date, today: date, *, is_admin: bool,
+) -> dict:
+    """The stores of one employee that are holding their percentage down UP TO `day`: every store with at least one counted day without an entry between the
+    1st of that month and `day` (same scope, same "has an entry" rule and same holidays as performance()), each with the dates it is missing. Marking those
+    dates brings the employee's percentage to 100 as of `day`. `employee_id` defaults to the caller; only people in the caller's view can be asked about.
+    Each store says whether the caller can open it (to mark it) and the response whether its month is still open to them."""
+    from app.services import order_service
+
+    partner = _partner(db, partner_slug)
+    _, only = people_in_view(db, user, perms)
+    employee_id = employee_id or user.id
+    if only is not None and employee_id not in only:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only see the performance of yourself or your team.")
+    if day >= today:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A day is counted once it is over. Pick an earlier date.")
+    emp = next((e for e in EmployeeRepository(db).all_for_platform(user.organization_id, partner.id) if e.id == employee_id), None)
+    if emp is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found on this platform.")
+
+    month = day.replace(day=1)
+    days_all, _, _, holidays = _judged_days(db, user.organization_id, month, today)
+    days = [d for d in days_all if d <= day]
+    scopes, _ = assignment_service.employee_store_scopes(db, partner, [emp])
+    ids = set(scopes.get(emp.id, []))
+
+    missing: dict[uuid.UUID, list[date]] = {}
+    if ids and days:
+        have: dict[date, set[uuid.UUID]] = {d: set() for d in days}
+        for sid, d in db.execute(select(OrderEntry.store_id, OrderEntry.order_date).where(
+                OrderEntry.store_id.in_(ids), OrderEntry.order_date >= days[0], OrderEntry.order_date <= days[-1])):
+            if d in have:
+                have[d].add(sid)
+        for d in days:
+            for sid in ids - have[d]:
+                missing.setdefault(sid, []).append(d)
+    left = {s.id: s for s in db.execute(select(Store).where(Store.id.in_(list(missing)))).scalars()} if missing else {}
+    openable = set(left) if is_admin else set(left) & assignment_service.visible_store_ids(db, user)
+    rows = [{
+        "store_id": sid, "store_name": s.name, "external_code": s.external_code, "crm_code": s.crm_code, "state": s.state, "city": s.city,
+        "vendor_name": s.vendor_name, "can_open": sid in openable, "missing_days": len(missing[sid]), "missing_dates": missing[sid],
+    } for sid, s in left.items()]
+    rows.sort(key=lambda r: (-r["missing_days"], r["store_name"].lower()))
+    return {
+        "employee_id": emp.id, "employee_name": emp.full_name, "employee_code": emp.employee_code, "date": day, "from": days[0] if days else None,
+        "holiday": holidays.get(day), "scope_stores": len(ids), "judged_days": len(days), "missing_total": sum(r["missing_days"] for r in rows),
+        "month_open": is_admin or order_service.employee_can_mark_month(day.year, day.month, today), "stores": rows,
     }
 
 

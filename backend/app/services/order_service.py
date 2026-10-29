@@ -48,7 +48,7 @@ from app.schemas.order import (
     TrendPoint,
 )
 from app.core import audit_context
-from app.core.entry_access import ROLE_RANK, EntryScope, owned_clause, owns_value, sees_every_entry, set_by_someone_above, viewer_rank, visible_clause
+from app.core.entry_access import PERM_EDIT_PREVIOUS, ROLE_RANK, EntryScope, owned_clause, owns_value, sees_every_entry, set_by_someone_above, viewer_rank, visible_clause
 from app.services import activity_service, assignment_service, order_journal_service, vendor_history_service
 from app.services.entry_changes import last_changes, last_changes_for, status_for_contributor
 
@@ -229,6 +229,25 @@ def my_stores(db: Session, employee: User, *, is_admin: bool = False) -> list[My
     ]
 
 
+_SENIOR_TONE_ROLES = {"administrator", "developer", "custom_admin", "entry_reviewer"}
+
+
+def entry_tone(entry: OrderEntry, *, is_admin: bool) -> str | None:
+    """The colour of a day's number: who set it, and for a Data Entry person's own number, how many times it has been changed (every change adds 1 to the version).
+    A developer's cash adjustment is hidden from everyone below an administrator, so for them the day is coloured as if it were not there."""
+    if entry.cash_adjustment:
+        if is_admin:
+            return "admin"
+        return "l1_first" if entry.source == EntrySource.EMPLOYEE.value else None
+    author = entry.last_modified_by_role if entry.last_modified_at is not None else entry.created_by_role
+    if author == "team_lead":
+        return "l2"
+    if author in _SENIOR_TONE_ROLES or (not entry.creator_verified and entry.last_modified_at is None and entry.source == EntrySource.ADMIN.value):
+        return "admin"
+    version = entry.version or 1
+    return "l1_first" if version <= 1 else "l1_second" if version == 2 else "l1_third"
+
+
 def get_calendar(
     db: Session, user: User, store_id: uuid.UUID, year: int, month: int, *, is_admin: bool, scope: "EntryScope | None" = None
 ) -> OrderCalendar:
@@ -288,6 +307,7 @@ def get_calendar(
                 creator_verified=entry.creator_verified if (entry and is_admin) else None,
                 verification=status_for_contributor(entry, state_names) if (entry and shown) else None,
                 changed=changes.get(entry.id) if (entry and shown) else None,
+                tone=entry_tone(entry, is_admin=is_admin) if (entry and shown) else None,
             )
         )
 
@@ -394,10 +414,13 @@ def _write_employee_entry(db: Session, employee: User, store: Store, order_date:
     return "created"
 
 
-def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -> OrderCalendar:
-    """An employee changes (or clears, with no count) an entry THEY marked themselves, in the dates they can still mark. Anyone else's entry,
-    and a day that holds only a developer adjustment, stays an admin's job. Every change is logged with what was there before."""
-    if not settings.EMPLOYEE_CAN_CORRECT_OWN:
+def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest, perms: set[str] | None = None) -> OrderCalendar:
+    """An employee changes (or clears, with no count) an entry THEY marked themselves, in the dates they can still mark (when the server allows it at all).
+    With the entries.edit_previous permission they may change ANY entry of their stores in those dates, whoever entered it or changed it last (an admin, a Team Lead,
+    a colleague, a sheet): that is the one thing the permission is for. Without it, anyone else's entry stays a Team Lead's or an admin's job. Either way every change
+    is stamped with who made it, kept in the entry history with what was there before, and logged."""
+    anyone = PERM_EDIT_PREVIOUS in (perms or set())
+    if not settings.EMPLOYEE_CAN_CORRECT_OWN and not anyone:
         _journal(db, employee, payload.store_id, [(payload.order_date, payload.bottle_count, "rejected", "employees cannot change a submitted entry", None)], action="correct")
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
@@ -413,7 +436,8 @@ def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -
     existing = repo.get(store.id, payload.order_date)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no entry on this date to correct. Mark it instead.")
-    if existing.cash_adjustment == existing.bottle_count or existing.created_by_user_id != employee.id:
+    own = existing.created_by_user_id == employee.id
+    if not anyone and (existing.cash_adjustment == existing.bottle_count or not own):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only correct entries you marked yourself. Ask an admin to correct this one.")
     mine = existing.bottle_count - existing.cash_adjustment            # the employee's own part (a developer adjustment may sit on top)
     new = payload.bottle_count
@@ -425,6 +449,9 @@ def correct_own_entry(db: Session, employee: User, payload: AdminEntryRequest) -
             f"Bottle count must be a whole number from {settings.MIN_BOTTLE_COUNT} to {settings.MAX_BOTTLE_COUNT}.",
         )
     meta = {**_store_meta(store), "order_date": payload.order_date.isoformat(), "previous_count": mine}
+    if anyone and not own:
+        meta.update({"entered_by": existing.created_by_name or existing.created_by_code, "permission": PERM_EDIT_PREVIOUS})
+        audit_context.bind(db, employee, reason="Changed with the permission to change earlier entries")     # the entry history says why, next to who and when
     if new is None:
         if existing.cash_adjustment:
             existing.bottle_count = existing.cash_adjustment            # only the adjustment is left

@@ -29,9 +29,25 @@ export function MarkOrdersPage() {
   const [pickedId, setStoreId] = useState(params.get("store") ?? "");
   // Someone with a single store has nothing to pick — open it straight away.
   const storeId = pickedId || (stores?.length === 1 ? stores[0].id : "");
-  const [period, setPeriod] = useState<{ year?: number; month?: number }>({});
+  // A link from Performance names the month of the day to mark ("?store=…&month=2026-10"): the calendar opens there.
+  const [period, setPeriod] = useState<{ year?: number; month?: number }>(() => {
+    const m = /^(\d{4})-(\d{2})$/.exec(params.get("month") ?? "");
+    return m && params.get("store") ? { year: Number(m[1]), month: Number(m[2]) } : {};
+  });
   const [savedView, setView] = usePersistentState<"quick" | "store">("orders.view", "quick");
-  const view = params.get("store") || !canMark ? "store" : savedView;
+  // The first days of a month: last month stays open (to mark, to check, and to change with the permission). A tab switches the whole page to it.
+  const [mode, setMode] = useState<"this" | "last">("this");
+  const [missingOnly, setMissingOnly] = useState(false);
+  const openUntil = stores?.find((s) => s.lastMonthOpenUntil)?.lastMonthOpenUntil ?? null;
+  const prevMonth = useMemo(() => {
+    const t = stores?.[0]?.today;
+    if (!t) return null;
+    const d = new Date(`${t.slice(0, 7)}-01T12:00:00`);
+    d.setMonth(d.getMonth() - 1);
+    return { year: d.getFullYear(), month: d.getMonth() + 1, label: d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }) };
+  }, [stores]);
+  const lastMode = mode === "last" && Boolean(openUntil) && Boolean(prevMonth);
+  const view = lastMode ? "store" : params.get("store") || !canMark ? "store" : savedView;
   const mark = useMarkOrder();
   const correctOwn = useCorrectOwnEntry();
   const markMany = useMarkManyOrders();
@@ -60,23 +76,41 @@ export function MarkOrdersPage() {
     () =>
       ofPartner.filter(
         (s) =>
-          (!region || s.regionId === region) && (!vendor || (s.vendorName ?? "").toLowerCase() === vendor),
+          (!region || s.regionId === region) && (!vendor || (s.vendorName ?? "").toLowerCase() === vendor) && !(lastMode && missingOnly && s.lastMonthMissing === 0),
       ),
-    [ofPartner, region, vendor],
+    [ofPartner, region, vendor, lastMode, missingOnly],
   );
 
   const selectedStore = stores?.find((s) => s.id === storeId) ?? null;
 
   function choose(id: string) {
     setStoreId(id);
-    setPeriod({});
+    setPeriod(lastMode && prevMonth ? { year: prevMonth.year, month: prevMonth.month } : {});
   }
+
+  function switchMode(next: "this" | "last") {
+    setMode(next);
+    setPeriod(next === "last" && prevMonth ? { year: prevMonth.year, month: prevMonth.month } : {});
+  }
+
+  const storesMissing = (stores ?? []).filter((s) => s.lastMonthMissing > 0).length;
 
   return (
     <div className="flex flex-col gap-5">
       <CappingAlertBanner />
       <div className="flex flex-wrap items-center gap-3">
-        {canMark && <SegmentedControl
+        {openUntil && prevMonth && (
+          <SegmentedControl
+            label="Month"
+            value={lastMode ? "last" : "this"}
+            onChange={(v) => switchMode(v as "this" | "last")}
+            options={[
+              { value: "this", label: "This month" },
+              { value: "last", label: `Last month${storesMissing ? ` (${storesMissing})` : ""}` },
+            ]}
+          />
+        )}
+        {canMark && !lastMode && <SegmentedControl
           label="View"
           value={view}
           onChange={setView}
@@ -120,6 +154,20 @@ export function MarkOrdersPage() {
         )}
       </div>
 
+      {lastMode && prevMonth && openUntil && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-status-warning/30 bg-status-warning-soft/60 px-4 py-3 text-sm">
+          <p className="text-gray-800">
+            <b>{prevMonth.label}</b> is open until <b>{new Date(`${openUntil}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</b>. Pick a store to check or mark its days.
+            {" "}{storesMissing > 0 ? `${storesMissing} of your stores still have days with no entry.` : "Every store has all its days."}
+            {user?.canEditPrevious ? " You can change any day; every change is kept in the history." : ""} After that only an admin can change it.
+          </p>
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+            <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
+            Only stores with days missing
+          </label>
+        </div>
+      )}
+
       {isLoading && (
         <div className="grid gap-5 lg:grid-cols-[21rem_1fr]">
           <Skeleton className="h-96" />
@@ -153,15 +201,23 @@ export function MarkOrdersPage() {
                 ) : calLoading || !calendar ? (
                   <Skeleton className="h-96" />
                 ) : (
+                  <>
+                  {!calendar.canMark && !isAdmin && (
+                    <p role="status" className="mb-3 rounded-lg bg-surface-subtle px-3.5 py-2.5 text-sm text-gray-700">
+                      {calendar.monthLabel} is closed for entries. You can see what was entered, but only an admin can add or change entries now.
+                    </p>
+                  )}
                   <OrderCalendar
                     calendar={calendar}
                     marking={mark.isPending || markMany.isPending || correctOwn.isPending}
                     onNavigate={(year, month) => setPeriod({ year, month })}
-                    onMark={canMark ? (date, count) => mark.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
-                    onCorrect={canMark && !isAdmin && user?.canCorrectOwnEntries ? (date, count) => correctOwn.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
-                    onMarkMany={canMark ? (entries) => markMany.mutateAsync({ storeId: selectedStore.id, entries }) : undefined}
+                    onMark={canMark && (isAdmin || calendar.canMark) ? (date, count) => mark.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
+                    correctAny={Boolean(user?.canEditPrevious)}
+                    onCorrect={canMark && !isAdmin && calendar.canMark && (user?.canCorrectOwnEntries || user?.canEditPrevious) ? (date, count) => correctOwn.mutateAsync({ storeId: selectedStore.id, date, count }) : undefined}
+                    onMarkMany={canMark && (isAdmin || calendar.canMark) ? (entries) => markMany.mutateAsync({ storeId: selectedStore.id, entries }) : undefined}
                     isAdmin={isAdmin}
                   />
+                  </>
                 )}
               </>
             )}

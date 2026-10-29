@@ -173,7 +173,7 @@ def test_vendor_wise_lists_each_vendors_stores_with_their_bottles(client, db, ad
     assert emp.status_code in (401, 403)
 
 
-def test_an_employee_sees_only_the_vendors_of_their_own_stores_and_not_the_employee_performance(client, db, admin, make_user, make_store):
+def test_an_employee_sees_only_the_vendors_of_their_own_stores_and_only_themselves_in_the_employee_performance(client, db, admin, make_user, make_store):
     from .conftest import plant_entry
 
     code, pw, uid = make_user(platform="blinkit", region="NORTH", grants=("orders.view", "orders.mark"))
@@ -192,8 +192,9 @@ def test_an_employee_sees_only_the_vendors_of_their_own_stores_and_not_the_emplo
     # the administrator sees the whole platform, adjustment included, as the other pages do
     full = _vendors(client, admin)
     assert "Far Aqua Vendor" in full and full["Near Aqua Vendor"]["bottles"] == 13
-    # and the employee-by-employee performance stays closed to them
-    assert client.get(f"{API}/orders/performance", params={"partner": "blinkit"}, headers=emp).status_code == 403
+    # and the employee-by-employee performance shows only themselves, never a colleague
+    own = client.get(f"{API}/orders/performance", params={"partner": "blinkit"}, headers=emp)
+    assert own.status_code == 200 and own.json()["view"] == "self" and [e["employee_id"] for e in own.json()["employees"]] == [str(uid)]
 
 
 def test_a_platform_login_is_not_shown_the_vendors(client, db, make_user):

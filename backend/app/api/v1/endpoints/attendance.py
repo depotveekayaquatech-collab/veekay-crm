@@ -8,7 +8,8 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_permissions, get_current_user, require_permission
+from app.core.entry_access import team_only
 from app.db.session import get_db
 from app.models.user import User
 from app.services import attendance_import_service, attendance_service, holiday_service, leave_service
@@ -100,23 +101,24 @@ def mine(month: str | None = None, user: User = Depends(get_current_user), db: S
 @router.get("/day", dependencies=[Depends(require_permission("attendance.view"))])
 def day(
     date_: date | None = Query(None, alias="date"),
+    perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """Everyone's attendance for one day (default today): who checked in, when, from where — and who is absent or on leave."""
-    return attendance_service.day_overview(db, user, date_ or attendance_service.today_local())
+    return attendance_service.day_overview(db, user, date_ or attendance_service.today_local(), team_only(db, user, perms))
 
 
 @router.get("/month", dependencies=[Depends(require_permission("attendance.view"))])
-def month(month: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+def month(month: str | None = None, perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Month grid: per person, per day — check in, check out, hours, location, leave."""
-    return attendance_service.month_summary(db, user, attendance_service.parse_month(month))
+    return attendance_service.month_summary(db, user, attendance_service.parse_month(month), team_only(db, user, perms))
 
 
 @router.get("/month-brief", dependencies=[Depends(require_permission("attendance.view"))])
-def month_brief(month: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+def month_brief(month: str | None = None, perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """The month for the phone app: each person's present dates and leave dates, with the counts."""
-    return attendance_service.month_brief(db, user, attendance_service.parse_month(month))
+    return attendance_service.month_brief(db, user, attendance_service.parse_month(month), team_only(db, user, perms))
 
 
 @router.post("/import", dependencies=[Depends(require_permission("attendance.edit"))])
@@ -193,16 +195,18 @@ def cancel_leave(leave_id: uuid.UUID, user: User = Depends(get_current_user), db
 
 @router.get("/leaves", dependencies=[Depends(require_permission("leave.review"))])
 def all_leaves(
-    status: str | None = None, q: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    status: str | None = None, q: str | None = None, perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
-    return leave_service.list_all(db, user, status, q)
+    return leave_service.list_all(db, user, status, q, team_only(db, user, perms))
 
 
 @router.post("/leaves/{leave_id}/review", dependencies=[Depends(require_permission("leave.review"))])
 def review_leave(
-    leave_id: uuid.UUID, payload: LeaveReview, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    leave_id: uuid.UUID, payload: LeaveReview, perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
-    return leave_service.review(db, user, leave_id, payload.approve, payload.note)
+    return leave_service.review(db, user, leave_id, payload.approve, payload.note, team_only(db, user, perms))
 
 
 # ---------------------------------------------------------------- offices

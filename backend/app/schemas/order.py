@@ -21,6 +21,9 @@ class CalendarDay(BaseModel):
     masked: bool = False
     # Set by someone more senior (Team Lead, administrator, the developer): you can see it, you cannot change it.
     by_higher: bool = False
+    # The colour of the entry, for whoever may see its number: l1_first (the Data Entry person's first entry), l1_second (changed once), l1_third (changed twice
+    # or more), l2 (a Team Lead's), admin (a Reviewer's, an administrator's or the developer's). None when the day is empty or its number is not shown.
+    tone: str | None = None
     # Administrators only:
     entry_id: uuid.UUID | None = None
     version: int | None = None

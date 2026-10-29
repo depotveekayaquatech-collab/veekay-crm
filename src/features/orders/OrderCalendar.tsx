@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { CalendarDay, OrderCalendar as Cal } from "@/types/order";
 import { fmtMomentShort } from "@/features/entries/format";
+import { ENTRY_TONES, ENTRY_TONE_ORDER } from "@/features/orders/entryTone";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -62,6 +63,7 @@ function ChangedByList({ days }: { days: CalendarDay[] }) {
 
 function dayTone(d: CalendarDay, clickable: boolean): string {
   if (d.marked && d.masked) return "border-surface-border bg-surface-muted text-gray-500";   // a colleague marked it: shown as done, no number
+  if (d.marked && d.tone) return `${ENTRY_TONES[d.tone].border} ${ENTRY_TONES[d.tone].text}`;       // the colour says who set it and how often it changed
   if (d.marked) {
     return d.source === "admin"
       ? "border-status-warning/30 bg-status-warning-soft text-status-warning"
@@ -85,10 +87,12 @@ interface Props {
   marking?: boolean;
   /** Month stepping. Omit to hide the arrows. */
   onNavigate?: (year: number, month: number) => void;
+  /** May change a day somebody else entered (the entries.edit_previous permission), not only the person's own. */
+  correctAny?: boolean;
   isAdmin?: boolean;
 }
 
-export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickDay, marking, onNavigate, isAdmin }: Props) {
+export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickDay, marking, onNavigate, isAdmin, correctAny }: Props) {
   const [selected, setSelected] = useState<CalendarDay | null>(null);
   const [count, setCount] = useState("");
 
@@ -166,7 +170,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
     }
     if (d.isFuture) return;
     if (d.marked) {
-      if (!onCorrect || isAdmin || d.source !== "employee") return;     // only the person who marked a day can change it (admins use their own path)
+      if (!onCorrect || isAdmin || (d.source !== "employee" && !correctAny)) return;     // only the person who marked a day can change it, unless they were given the permission to change any (admins use their own path)
       setSelected(d);
       setCount(String(d.count ?? ""));
       return;
@@ -360,7 +364,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
             const isClickable =
               Boolean(onPickDay) ||
               (canMark && (isAdmin ? !d.isFuture : !d.marked && !d.isFuture)) ||
-              (Boolean(onCorrect) && !isAdmin && d.marked && d.source === "employee" && !d.isFuture);
+              (Boolean(onCorrect) && !isAdmin && d.marked && (d.source === "employee" || Boolean(correctAny)) && !d.isFuture);
             const isSel = selected?.date === d.date;
             const isPicked = selectedDates.has(d.date);
 
@@ -372,8 +376,8 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 disabled={!isClickable}
                 title={d.masked ? "Marked by a colleague. This number is not shown to you." : d.marked ? `${d.count} bottles · entered by ${d.enteredBy ?? d.source ?? "unknown"}${d.enteredAt ? ` on ${new Date(d.enteredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}${d.changed ? ` · changed by ${d.changed.byName ?? "a senior colleague"} (${d.changed.byRoleLabel}), ${d.changed.oldCount} to ${d.changed.newCount}` : ""}${d.verification ? ` · ${d.verification.label}` : ""}` : d.isFuture ? undefined : "Not marked"}
                 style={
-                  !isPicked && d.marked && !d.masked && d.source !== "admin"
-                    ? { backgroundColor: `rgb(var(--success) / ${0.1 + 0.3 * ((d.count ?? 0) / maxCount)})` }
+                  !isPicked && d.marked && !d.masked && (d.tone || d.source !== "admin")
+                    ? { backgroundColor: `rgb(${d.tone ? ENTRY_TONES[d.tone].rgb : "var(--success)"} / ${0.12 + 0.28 * ((d.count ?? 0) / maxCount)})` }
                     : undefined
                 }
                 className={`relative flex h-14 flex-col sm:h-[4.25rem] items-center justify-center rounded-lg border text-sm transition-[transform,box-shadow,background-color,border-color] disabled:cursor-default ${
@@ -404,6 +408,17 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
             );
           })}
         </div>
+
+        {calendar.days.some((d) => d.tone) && (
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-semibold text-gray-600" aria-label="What the colours mean">
+            {ENTRY_TONE_ORDER.map((t) => (
+              <li key={t} className="flex items-center gap-1.5">
+                <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: `rgb(${ENTRY_TONES[t].rgb})` }} />
+                {ENTRY_TONES[t].label}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* Single date mark form */}
         {!multiMode && selected && (onMark || (selected.marked && onCorrect)) && (

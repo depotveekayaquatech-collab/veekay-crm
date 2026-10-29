@@ -11,7 +11,7 @@ import { pushToast } from "@/lib/toast";
 import { copyText } from "@/lib/clipboard";
 import { formatReport, pickEmployees, type Who } from "@/lib/performanceReport";
 import { usePersistentState } from "@/hooks/usePersistentState";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePartners } from "@/features/stores/useStores";
 import { Avatar, FilterChip, Panel, ProgressBar, ProgressRing, SearchBox, SegmentedControl, StatCard } from "@/features/orders/ui";
@@ -31,9 +31,28 @@ interface Row {
   is_team_lead: boolean;
 }
 interface Performance {
+  /** Whose performance this is: everyone, the caller's team (a Team Lead), or only the caller. */
+  view: "all" | "team" | "self";
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number; today: string;
   summary: { employees: number; stores: number; expected: number; done: number; percent: number; below_50: number };
   employees: Row[];
+}
+
+interface PendingStores {
+  employee_id: string; employee_name: string; employee_code: string; date: string; from: string | null; holiday: string | null; scope_stores: number;
+  judged_days: number; missing_total: number;
+  /** False when the month is closed to this person (they can look, only an admin can mark). */
+  month_open: boolean;
+  stores: { store_id: string; store_name: string; external_code: string; crm_code: string | null; state: string | null; city: string | null; vendor_name: string | null; can_open: boolean; missing_days: number; missing_dates: string[] }[];
+}
+
+function usePendingStores(partner: string, employeeId: string, date: string) {
+  return useQuery({
+    queryKey: ["performance-pending", partner, employeeId, date],
+    queryFn: () => apiRequest<PendingStores>(`/orders/performance/pending?partner=${encodeURIComponent(partner)}&employee_id=${employeeId}&date=${date}`),
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
 }
 
 function usePerformance(partner: string, month: string, enabled = true) {
@@ -49,6 +68,57 @@ function usePerformance(partner: string, month: string, enabled = true) {
 const tone = (p: number): "success" | "warning" | "danger" => (p >= 85 ? "success" : p >= 50 ? "warning" : "danger");
 const dayChip = (p: number) => (p >= 85 ? "bg-status-success/15 text-status-success" : p >= 50 ? "bg-status-warning-soft text-status-warning" : "bg-status-danger-soft text-status-danger");
 const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+
+/**
+ * The stores holding the percentage below 100 UP TO the chosen day: every store with a counted day still unmarked from the 1st to that day, with the dates it
+ * is missing. Marking them all brings the employee to 100% as of that day. A store opens its calendar at that month, ready to mark.
+ */
+function PendingForDay({ partner, employeeId, date }: { partner: string; employeeId: string; date: string }) {
+  const q = usePendingStores(partner, employeeId, date);
+  const month = date.slice(0, 7);
+  if (q.isLoading) return <Skeleton className="mt-3 h-24" />;
+  if (q.isError || !q.data) return <div className="mt-3"><ErrorState message="Couldn't load the pending stores." onRetry={() => q.refetch()} /></div>;
+  const d = q.data;
+  const range = d.from && d.from !== date ? `${shortDay(d.from)} to ${shortDay(date)}` : shortDay(date);
+  return (
+    <div className="mt-3 rounded-xl border border-surface-border bg-surface p-3" aria-live="polite">
+      <p className="text-sm font-bold text-heading">
+        {d.stores.length === 0
+          ? `${range}: nothing left to mark, 100% as of ${shortDay(date)}`
+          : `${range}: ${d.missing_total} day${d.missing_total === 1 ? "" : "s"} still to mark in ${d.stores.length} store${d.stores.length === 1 ? "" : "s"}`}
+      </p>
+      {d.stores.length > 0 && (
+        <p className="mt-0.5 text-xs text-gray-500">
+          Marking all of these takes the percentage to 100% as of {shortDay(date)}.{" "}
+          {d.month_open ? "Pick a store to open its calendar and mark its missing days." : "This month is closed for entries, so you can look at these stores but only an admin can mark them now."}
+        </p>
+      )}
+      <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {d.stores.map((s) => {
+          const body = (
+            <>
+              <span className="flex items-start justify-between gap-2">
+                <span className="block truncate text-sm font-semibold text-gray-900">{s.store_name}</span>
+                <span className="shrink-0 rounded-full bg-status-warning-soft px-2 py-0.5 text-[11px] font-bold text-status-warning">{s.missing_days} day{s.missing_days === 1 ? "" : "s"}</span>
+              </span>
+              <span className="block truncate text-xs text-gray-500">{[s.external_code, s.city, s.state].filter(Boolean).join(" · ")}{s.vendor_name ? ` · ${s.vendor_name}` : ""}</span>
+              <span className="mt-0.5 block text-xs text-gray-600">Missing: {s.missing_dates.map(shortDay).join(", ")}</span>
+            </>
+          );
+          return (
+            <li key={s.store_id}>
+              {s.can_open ? (
+                <Link to={`/orders?store=${s.store_id}&month=${month}`} className="block rounded-lg border border-surface-border px-3 py-2 hover:border-brand-500 hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500">{body}</Link>
+              ) : (
+                <div className="rounded-lg border border-dashed border-surface-border px-3 py-2" title="Not one of your own stores, so you can't open it here">{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function shiftMonth(month: string, by: number): string {
   const [y, m] = month.split("-").map(Number);
@@ -122,19 +192,22 @@ export function PerformancePage() {
 function PerformanceBody() {
   const { user, hasPermission } = useAuth();
   const overview = hasPermission("orders.overview");
+  const [pickedDay, setPickedDay] = useState<{ employeeId: string; date: string } | null>(null);
   const { data: fetched = [] } = usePartners(overview);
   const partners = overview ? fetched : user?.platformSlug ? [{ slug: user.platformSlug, name: user.platformLabel ?? user.platformSlug }] : [];
   const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const [month, setMonth] = useState("");                         // "" = the server's default (the month of yesterday)
   const partner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
   const [chosenView, setView] = usePersistentState<"employees" | "vendors">("performance.view", "employees");
-  const view = overview ? chosenView : "vendors";
+  const view = chosenView;                                       // everyone sees both; what the Employees view lists depends on the person (see `d.view`)
   const q = usePerformance(partner, month, view === "employees");
   const vq = useVendorPerformance(partner, month, view === "vendors");
   const [query, setQuery] = useState("");
   const [behindOnly, setBehindOnly] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const d = q.data;
+  const alone = d?.view === "self";                                // an employee sees only themselves: their row is open, with no team tools
+  const openId = alone ? (d?.employees[0]?.employee_id ?? null) : open;
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -148,8 +221,8 @@ function PerformanceBody() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        {partners.length > 1 && <SegmentedControl label="Platform" value={partner} onChange={(v) => { setPartner(v); setOpen(null); }} options={partners.map((p) => ({ value: p.slug, label: p.name }))} />}
-        {overview && <SegmentedControl label="View" value={view} onChange={(v) => setView(v as "employees" | "vendors")} options={[{ value: "employees", label: "Employees" }, { value: "vendors", label: "Vendors" }]} />}
+        {partners.length > 1 && <SegmentedControl label="Platform" value={partner} onChange={(v) => { setPartner(v); setOpen(null); setPickedDay(null); }} options={partners.map((p) => ({ value: p.slug, label: p.name }))} />}
+        <SegmentedControl label="View" value={view} onChange={(v) => setView(v as "employees" | "vendors")} options={[{ value: "employees", label: "Employees" }, { value: "vendors", label: "Vendors" }]} />
         <div className="ml-auto flex items-center gap-1">
           <Button size="sm" variant="secondary" aria-label="Previous month" disabled={!current} onClick={() => setMonth(shiftMonth(current, -1))}>‹</Button>
           <span className="min-w-[8rem] text-center text-sm font-extrabold text-heading">{shown?.month_label ?? "…"}</span>
@@ -172,6 +245,7 @@ function PerformanceBody() {
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">{d.partner_label}</p>
                 <h3 className="mt-0.5 text-xl font-extrabold text-heading">{d.month_label}</h3>
                 <p className="mt-1 text-sm text-gray-500">
+                  {d.view === "team" ? "Your team: you and the people who report to you. " : alone ? "Your own performance. " : ""}
                   {d.days === 0
                     ? "No day of this month has finished yet."
                     : <>Counted from {shortDay(d.from!)} to {shortDay(d.as_of!)} ({d.days} day{d.days === 1 ? "" : "s"}). Recounted from the entries every time you open this page, so days an employee marks late raise their earlier days too.</>}
@@ -185,7 +259,7 @@ function PerformanceBody() {
                     Export CSV
                   </Button>
                 </div>
-                <GroupReport d={d} />
+                {!alone && <GroupReport d={d} />}
               </div>
             </div>
           </section>
@@ -195,19 +269,19 @@ function PerformanceBody() {
               <ProgressBar percent={d.summary.percent} className="mt-3" />
             </StatCard>
             <StatCard label={`${d.partner_label} overall`} value={`${d.summary.percent}%`} hint={`${d.summary.stores.toLocaleString()} live stores, each day counted once`} tone="brand" icon={IconCheckCircle} />
-            <StatCard label="Under 50%" value={d.summary.below_50} hint={d.summary.below_50 > 0 ? "employees behind this month" : "everyone is on track"} tone={d.summary.below_50 > 0 ? "warning" : "success"} icon={IconUsers} />
+            {alone ? <StatCard label="Missing" value={(d.employees[0]?.missing ?? 0).toLocaleString()} hint="store-days still to mark this month" tone={(d.employees[0]?.missing ?? 0) > 0 ? "warning" : "success"} icon={IconUsers} /> : <StatCard label="Under 50%" value={d.summary.below_50} hint={d.summary.below_50 > 0 ? "employees behind this month" : "everyone is on track"} tone={d.summary.below_50 > 0 ? "warning" : "success"} icon={IconUsers} />}
           </div>
 
           <Panel
             flush
-            title={<>Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span></>}
-            subtitle="Lowest first. Entries made = typed in by that person. Covered = an entry exists for their stores, whoever entered it. Open a row to see every day."
-            action={
+            title={alone ? "You" : <>Employees <span className="ml-1 font-medium text-gray-400">{rows.length}</span></>}
+            subtitle={alone ? "Covered = an entry exists for your stores, whoever entered it. Tap a day to see the stores still to mark up to that day." : "Lowest first. Entries made = typed in by that person. Covered = an entry exists for their stores, whoever entered it. Open a row to see every day, and tap a day to see the stores still to mark up to that day."}
+            action={alone ? undefined : (
               <div className="flex flex-wrap items-center gap-2">
                 <FilterChip active={behindOnly} onClick={() => setBehindOnly((v) => !v)} count={d.summary.below_50}>Under 50% only</FilterChip>
                 <SearchBox hotkey value={query} onChange={setQuery} placeholder="Search employee, code or region" className="w-full sm:w-64" />
               </div>
-            }
+            )}
           >
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
@@ -222,7 +296,7 @@ function PerformanceBody() {
                   {rows.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-500">No employees match.</td></tr>}
                   {rows.map((e) => (
                     <Fragment key={e.employee_id}>
-                      <tr className="cursor-pointer border-b border-surface-border hover:bg-surface-subtle/70" onClick={() => setOpen(open === e.employee_id ? null : e.employee_id)}>
+                      <tr className="cursor-pointer border-b border-surface-border hover:bg-surface-subtle/70" onClick={() => { setOpen(open === e.employee_id ? null : e.employee_id); setPickedDay(null); }}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar name={e.employee_name} />
@@ -250,20 +324,28 @@ function PerformanceBody() {
                           </>
                         )}
                       </tr>
-                      {open === e.employee_id && !e.no_stores && (
+                      {openId === e.employee_id && !e.no_stores && (
                         <tr className="border-b border-surface-border bg-surface-subtle/50">
                           <td colSpan={6} className="px-5 py-4">
                             <p className="mb-2 text-xs font-semibold text-gray-700">Entered by {e.employee_name} this month, in any store of {d.partner_label}: <span className="tabular-nums">{e.entries_made.toLocaleString()}</span></p>
-                            <p className="mb-2 text-xs font-semibold text-gray-500">Each day: the share of this employee's stores that have an entry for that day today. The small number is their average from the 1st up to that day.</p>
+                            <p className="mb-2 text-xs font-semibold text-gray-500">Each day: the share of this employee's stores that have an entry for that day today. The small number is their average from the 1st up to that day. Tap a day to see every store still to mark from the 1st up to that day.</p>
                             <div className="flex flex-wrap gap-1.5">
-                              {e.daily.map((x) => (
-                                <span key={x.date} title={`${shortDay(x.date)}: ${x.done} of ${x.expected} stores marked · average so far ${x.cumulative}%`} className={`rounded-lg px-2.5 py-1.5 text-center text-xs font-semibold ${dayChip(x.percent)}`}>
-                                  <span className="block text-[10px] opacity-70">{shortDay(x.date)}</span>
-                                  {x.percent}%
-                                  <span className="block text-[10px] opacity-70">avg {x.cumulative}%</span>
-                                </span>
-                              ))}
+                              {e.daily.map((x) => {
+                                const picked = pickedDay?.employeeId === e.employee_id && pickedDay.date === x.date;
+                                return (
+                                  <button key={x.date} type="button" aria-pressed={picked} onClick={() => setPickedDay(picked ? null : { employeeId: e.employee_id, date: x.date })}
+                                    title={`${shortDay(x.date)}: ${x.done} of ${x.expected} stores marked · average so far ${x.cumulative}%${x.cumulative < 100 ? " · tap to see the stores still to mark up to this day" : ""}`}
+                                    className={`rounded-lg px-2.5 py-1.5 text-center text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 ${dayChip(x.percent)} ${picked ? "ring-2 ring-brand-600" : "hover:brightness-95"}`}>
+                                    <span className="block text-[10px] opacity-70">{shortDay(x.date)}</span>
+                                    {x.percent}%
+                                    <span className="block text-[10px] opacity-70">avg {x.cumulative}%</span>
+                                  </button>
+                                );
+                              })}
                             </div>
+                            {pickedDay?.employeeId === e.employee_id && e.daily.some((x) => x.date === pickedDay.date) && (
+                              <PendingForDay partner={partner} employeeId={e.employee_id} date={pickedDay.date} />
+                            )}
                           </td>
                         </tr>
                       )}

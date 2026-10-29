@@ -28,7 +28,13 @@ export interface MyStore {
   /** Somebody (you or a colleague) marked the day. */
   todayMarked: boolean;
   yesterdayMarked: boolean;
+  /** For the first days of a month: this store's days of LAST month with no entry yet, and the last day last month stays open (null once it has closed). */
+  lastMonthMissing: number;
+  lastMonthOpenUntil: string | null;
 }
+
+/** The colour of a day's number: first entry / changed once / changed twice or more (Data Entry), a Team Lead's, or a Reviewer's / administrator's / developer's. */
+export type EntryTone = "l1_first" | "l1_second" | "l1_third" | "l2" | "admin";
 
 export interface CalendarDay {
   day: number;
@@ -56,6 +62,8 @@ export interface CalendarDay {
   verification: DayVerification | null;
   /** The latest change somebody made to the number after it was entered: who (name and role), when, and old -> new. */
   changed: DayChange | null;
+  /** The colour of the number (null for an empty day, or a number that is not shown to you). */
+  tone: EntryTone | null;
 }
 
 export interface DayVerification {
@@ -84,6 +92,10 @@ export interface OrderCalendar {
   month: number;
   monthLabel: string;
   days: CalendarDay[];
+  /** False when this month is closed for the signed-in person: the current month plus 5 days of the next is open; after that they can see entries but not mark or change them. */
+  canMark: boolean;
+  /** For last month: the last day it stays open; null for the current month. */
+  openUntil: string | null;
 }
 
 export interface MarkManyEntry {
@@ -311,6 +323,8 @@ interface CalendarWire {
   year: number;
   month: number;
   month_label: string;
+  can_mark?: boolean;
+  open_until?: string | null;
   days: {
     day: number;
     date: string;
@@ -330,6 +344,7 @@ interface CalendarWire {
     creator_verified?: boolean | null;
     verification?: { status: DayVerification["status"]; label: string; by_name: string | null; at: string | null } | null;
     changed?: DayChangeWire | null;
+    tone?: EntryTone | null;
   }[];
 }
 
@@ -342,6 +357,8 @@ export function toCalendar(w: CalendarWire): OrderCalendar {
     year: w.year,
     month: w.month,
     monthLabel: w.month_label,
+    canMark: w.can_mark ?? true,
+    openUntil: w.open_until ?? null,
     days: w.days.map((d) => ({
       day: d.day,
       date: d.date,
@@ -361,6 +378,7 @@ export function toCalendar(w: CalendarWire): OrderCalendar {
       creatorVerified: d.creator_verified ?? null,
       verification: d.verification ? { status: d.verification.status, label: d.verification.label, byName: d.verification.by_name, at: d.verification.at } : null,
       changed: toDayChange(d.changed),
+      tone: d.tone ?? null,
     })),
   };
 }
@@ -389,6 +407,8 @@ interface MyStoreWire {
   yesterday_changed?: DayChangeWire | null;
   today_marked?: boolean;
   yesterday_marked?: boolean;
+  last_month_missing?: number;
+  last_month_open_until?: string | null;
 }
 
 type DayChangeWire = { by_name: string | null; by_role: string | null; by_role_label: string; at: string; old_count: number; new_count: number; reason: string | null };
@@ -421,6 +441,8 @@ export function toMyStore(w: MyStoreWire): MyStore {
     yesterdayChanged: toDayChange(w.yesterday_changed),
     todayMarked: w.today_marked ?? w.today_count !== null,
     yesterdayMarked: w.yesterday_marked ?? w.yesterday_count !== null,
+    lastMonthMissing: w.last_month_missing ?? 0,
+    lastMonthOpenUntil: w.last_month_open_until ?? null,
   };
 }
 

@@ -442,7 +442,7 @@ def _entry(r: AttendanceRecord, now: datetime) -> dict:
     }
 
 
-def day_overview(db: Session, admin: User, day: date) -> dict:
+def day_overview(db: Session, admin: User, day: date, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
     from app.services import leave_service
 
     now = _now()
@@ -453,7 +453,7 @@ def day_overview(db: Session, admin: User, day: date) -> dict:
     ).scalars()}
     leaves = leave_service.approved_between(db, org, day, day)
 
-    people = {u.id: u for u in _attendees(db, org, roles)}  # deactivated and deleted accounts never show, even for days they worked
+    people = {u.id: u for u in _attendees(db, org, roles) if only_ids is None or u.id in only_ids}  # deactivated and deleted accounts never show, even for days they worked
 
     holiday = holiday_service.between(db, org, day, day).get(day)
     off = day.weekday() == WEEKLY_OFF or holiday is not None
@@ -508,7 +508,7 @@ def parse_month(value: str | None) -> date:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Month must look like 2026-10.") from exc
 
 
-def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.UUID | None, detail: bool) -> dict:
+def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.UUID | None, detail: bool, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
     from app.services import leave_service
 
     now = _now()
@@ -529,7 +529,7 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
     if only_user:
         people = {only_user: db.get(User, only_user)}
     else:
-        people = {u.id: u for u in _attendees(db, org_id, roles)}  # deactivated and deleted accounts never show, even for days they worked
+        people = {u.id: u for u in _attendees(db, org_id, roles) if only_ids is None or u.id in only_ids}  # deactivated and deleted accounts never show, even for days they worked
 
     n_days = calendar.monthrange(month.year, month.month)[1]
     all_dates = [date(month.year, month.month, i) for i in range(1, n_days + 1)]
@@ -574,9 +574,9 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
     }
 
 
-def month_brief(db: Session, admin: User, month: date) -> dict:
+def month_brief(db: Session, admin: User, month: date, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
     """The month for a phone: per person only the dates they were present or on leave, and the counts. (The full grid carries every check-in's location.)"""
-    full = _month_rows(db, admin.organization_id, month, only_user=None, detail=False)
+    full = _month_rows(db, admin.organization_id, month, only_user=None, detail=False, only_ids=only_ids)
     rows = []
     for r in full["rows"]:
         present = sorted(d for d, e in r["days"].items() if e["status"] != "ON_LEAVE")
@@ -589,8 +589,8 @@ def month_brief(db: Session, admin: User, month: date) -> dict:
     return {"month": full["month"], "dates": full["dates"], "today": full["today"], "weekly_off_weekday": WEEKLY_OFF, "holidays": full["holidays"], "rows": rows}
 
 
-def month_summary(db: Session, admin: User, month: date) -> dict:
-    return _month_rows(db, admin.organization_id, month, only_user=None, detail=False)
+def month_summary(db: Session, admin: User, month: date, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
+    return _month_rows(db, admin.organization_id, month, only_user=None, detail=False, only_ids=only_ids)
 
 
 def my_month(db: Session, user: User, month: date) -> dict:

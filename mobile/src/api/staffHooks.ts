@@ -27,6 +27,8 @@ export interface CalendarDay { day: number; date: string; marked: boolean; count
   masked?: boolean;
   /** Someone more senior (Team Lead, administrator, the developer) entered it: you can see it, you cannot change it. */
   by_higher?: boolean;
+  /** The colour of the number: first entry / changed once / changed twice or more (Data Entry), Team Lead, Reviewer-Admin-Developer. */
+  tone?: "l1_first" | "l1_second" | "l1_third" | "l2" | "admin" | null;
   /** Where the entry stands (Submitted / Verified by Team Lead / Reviewed by Reviewer). */
   verification?: EntryStatus | null;
   /** The latest change somebody made to the number after it was entered: who, in which role, when, old and new. */
