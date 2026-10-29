@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 31,
+    "latestVersionCode": 32,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code31.apk",
-    "notes": "New My performance screen: see your percentage day by day and the stores still to mark. Entries show in colour (green first entry, yellow changed once, red changed twice or more, blue Team Lead, violet admin). Your level now shows on your profile.",
-    "apkSizeBytes": 56648657,
-    "apkSha256": "b79d691203cf3f7b4e505efee921e5da9d036082590a89a7518117dd0e8f5781"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code32.apk",
+    "notes": "Zepto vendors: the message you send now shows each store's monthly limit, what was supplied till date and the pending limit. Other platforms are unchanged.",
+    "apkSizeBytes": 56651829,
+    "apkSha256": "37f2be1cb56d4bac52757c5c9644d51dd76a4cacb74bd1442eb91537c52ea55a"
   }
 }

@@ -7,6 +7,9 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { IconSearch } from "@/components/ui/icons";
+import { copyText } from "@/lib/clipboard";
+import { pushToast } from "@/lib/toast";
+import { formatLimitReport, groupByVendor } from "@/lib/zeptoLimitReport";
 import { dateLabel } from "@/features/capping/helpers";
 import { field } from "@/features/capping/styles";
 import { getCappingUsage, type CapLevel, type UsageRow } from "@/services/capping";
@@ -47,6 +50,35 @@ function UsageBar({ row }: { row: UsageRow }) {
         <div className={`h-full ${color}`} style={{ width: `${w}%` }} />
       </div>
       <span className="w-12 text-right text-xs font-semibold tabular-nums">{row.percent}%</span>
+    </div>
+  );
+}
+
+/** The Zepto vendor message for the stores shown: per vendor, each store's monthly limit, what was supplied so far and the pending limit. Copy it, or preview it first. */
+function PasteText({ rows, monthLabel, current }: { rows: UsageRow[]; monthLabel: string; current: boolean }) {
+  const [show, setShow] = useState(false);
+  const text = useMemo(() => {
+    const asOn = current ? ` (as on ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })})` : "";
+    const stores = rows.map((r) => ({ vendor_name: r.vendorName, store_name: r.outletName, external_code: r.outletId, monthly_limit: r.monthlyCap, bottles: r.used, pending: r.remaining, over_by: r.excess }));
+    return formatLimitReport(`Zepto - Vendor limit, ${monthLabel}${asOn}`, groupByVendor(stores));
+  }, [rows, monthLabel, current]);
+
+  async function copy() {
+    const ok = await copyText(text);
+    pushToast(ok ? `Copied for ${rows.length} store${rows.length === 1 ? "" : "s"}. Paste it where you need it.` : "Couldn't copy. Open the preview and copy it by hand.", ok ? "success" : "error");
+  }
+
+  return (
+    <div className="rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Text to paste</p>
+      <p className="mt-1 text-xs text-gray-500">Vendor by vendor: monthly limit (capping × 30), supplied till date and the pending limit, for the stores listed below.</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={() => void copy()} disabled={!rows.length}>Copy text</Button>
+        <button type="button" className="text-xs font-semibold text-brand-600 hover:text-brand-700" onClick={() => setShow((v) => !v)} aria-expanded={show}>
+          {show ? "Hide preview" : "Preview"}
+        </button>
+      </div>
+      {show && rows.length > 0 && <textarea readOnly value={text} rows={Math.min(14, text.split("\n").length + 1)} className="mt-2 w-full resize-y rounded-lg border border-surface-border bg-surface p-3 font-mono text-xs" aria-label="Text preview" />}
     </div>
   );
 }
@@ -149,6 +181,8 @@ export function UsageTab({ onUpdate }: { onUpdate: (storeId: string) => void }) 
               <span className="ml-auto">{shown.length} of {rows.length} stores</span>
             </div>
           </section>
+
+          <PasteText rows={shown} monthLabel={data.monthLabel} current={data.month === data.months[0]} />
 
           {shown.length === 0 ? (
             <EmptyState title="No stores match" description={rows.length ? "Change the search or filters." : "There are no live Zepto stores yet."} />

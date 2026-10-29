@@ -94,7 +94,9 @@ export interface PendingStores {
   stores: { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; vendor_name: string | null; can_open: boolean; missing_days: number; missing_dates: string[] }[];
 }
 
-export interface VendorStoreRow { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; live: boolean; bottles: number; days_marked: number }
+export interface VendorStoreRow { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; live: boolean; bottles: number; days_marked: number;
+  /** Zepto only (null elsewhere, or with no capping): daily capping x 30, and what is still pending of it. */
+  daily_cap: number | null; monthly_limit: number | null; pending: number | null; over_by: number | null }
 export interface VendorRow { vendor_name: string | null; vendor_number: string | null; store_count: number; bottles: number; stores: VendorStoreRow[] }
 export interface VendorPerformance {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; to: string | null;

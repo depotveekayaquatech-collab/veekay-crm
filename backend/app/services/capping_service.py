@@ -147,7 +147,7 @@ def _rows(db: Session, user: User, partner: Organization, month: date, store_ids
     today = _today()
     end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
     q = (
-        select(Store.id, Store.external_code, Store.name, Store.state, Store.city, StoreCap.daily_cap)
+        select(Store.id, Store.external_code, Store.name, Store.state, Store.city, StoreCap.daily_cap, Store.vendor_name)
         .select_from(Store)
         .outerjoin(StoreCap, StoreCap.store_id == Store.id)
         .where(Store.organization_id == user.organization_id, Store.partner_organization_id == partner.id, Store.status == StoreStatus.LIVE.value)
@@ -167,14 +167,14 @@ def _rows(db: Session, user: User, partner: Organization, month: date, store_ids
     owners = _owners(db, user.organization_id, partner)
 
     rows = []
-    for sid, code, name, state, city, daily in stores:
+    for sid, code, name, state, city, daily, vendor in stores:
         used, entries, highest, last = usage.get(sid, (0, 0, 0, None))
         day, allowed = pace_for(daily, month, today)
         level = alert_for(used, daily, day)
         cap = monthly_limit(daily)          # everything below is measured against the monthly limit (daily x 30)
         owner = owners.get(sid)
         rows.append({
-            "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
+            "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city, "vendor_name": " ".join(vendor.split()) if vendor else None,
             "owner_code": owner[0] if owner else None, "owner_name": owner[1] if owner else None,
             "daily_cap": daily, "monthly_cap": cap, "used": used, "entries": entries, "highest_day": highest, "last_entry": last,
             "remaining": None if cap is None else max(cap - used, 0),

@@ -9,10 +9,15 @@ import { downloadCsv } from "@/lib/csv";
 import { copyText } from "@/lib/clipboard";
 import { pushToast } from "@/lib/toast";
 import { formatVendorReport } from "@/lib/vendorReport";
+import { formatLimitReport } from "@/lib/zeptoLimitReport";
 import { Panel, SearchBox, StatCard } from "@/features/orders/ui";
 import { apiRequest } from "@/services/api";
 
-export interface VendorStore { store_id: string; store_name: string; external_code: string; state: string | null; city: string | null; live: boolean; bottles: number; days_marked: number }
+/** monthly_limit / pending / over_by are Zepto's capping figures (daily capping x 30); null on other platforms and for a store with no capping. */
+export interface VendorStore {
+  store_id: string; store_name: string; external_code: string; state: string | null; city: string | null; live: boolean; bottles: number; days_marked: number;
+  daily_cap: number | null; monthly_limit: number | null; pending: number | null; over_by: number | null;
+}
 export interface Vendor { vendor_name: string | null; vendor_number: string | null; store_count: number; bottles: number; stores: VendorStore[] }
 export interface VendorPerformanceData {
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; to: string | null;
@@ -40,7 +45,9 @@ function VendorReport({ d, vendors }: { d: VendorPerformanceData; vendors: Vendo
   const [show, setShow] = useState(false);
   const period = d.from && d.to ? ` (${shortDay(d.from)} to ${shortDay(d.to)})` : "";
   const text = useMemo(
-    () => formatVendorReport(`${d.partner_label} - Vendor bottle count, ${d.month_label}${period}`, vendors),
+    () => d.partner_slug === "zepto"
+      ? formatLimitReport(`${d.partner_label} - Vendor limit, ${d.month_label}${d.to ? ` (as on ${shortDay(d.to)})` : ""}`, vendors)
+      : formatVendorReport(`${d.partner_label} - Vendor bottle count, ${d.month_label}${period}`, vendors),
     [d, vendors, period],
   );
 
@@ -94,14 +101,15 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
   if (!d) return null;
 
   const period = d.from && d.to ? `${shortDay(d.from)} to ${shortDay(d.to)}` : "no day yet";
+  const zepto = d.partner_slug === "zepto";                 // Zepto vendors have a monthly limit (capping x 30) to supply against
   const options = [{ value: "", label: `All vendors (${d.vendors.length})` }, ...d.vendors.map((v) => ({ value: label(v), label: `${label(v)} (${v.store_count} store${v.store_count === 1 ? "" : "s"})` }))];
 
   function exportCsv() {
     const chosen = vendor ? [vendor] : list;
     downloadCsv(
       `vendor-bottles-${d!.partner_slug}-${d!.month}${vendor ? `-${label(vendor).replace(/\W+/g, "-").toLowerCase()}` : ""}.csv`,
-      ["Vendor", "Vendor number", "Store", "Store code", "City", "State", "Bottles", "Days marked"],
-      chosen.flatMap((v) => v.stores.map((s) => [label(v), v.vendor_number, s.store_name, s.external_code, s.city, s.state, s.bottles, s.days_marked])),
+      ["Vendor", "Vendor number", "Store", "Store code", "City", "State", "Bottles", "Days marked", ...(zepto ? ["Monthly limit", "Pending limit"] : [])],
+      chosen.flatMap((v) => v.stores.map((s) => [label(v), v.vendor_number, s.store_name, s.external_code, s.city, s.state, s.bottles, s.days_marked, ...(zepto ? [s.monthly_limit, s.pending] : [])])),
     );
   }
 
@@ -130,7 +138,9 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-5 py-3">Store</th><th className="px-4 py-3">Place</th><th className="px-4 py-3 text-right">Days marked</th><th className="px-5 py-3 text-right">Bottles</th>
+                    <th className="px-5 py-3">Store</th><th className="px-4 py-3">Place</th><th className="px-4 py-3 text-right">Days marked</th>
+                    {zepto && <><th className="px-4 py-3 text-right">Monthly limit</th><th className="px-4 py-3 text-right">Pending limit</th></>}
+                    <th className="px-5 py-3 text-right">{zepto ? "Supplied" : "Bottles"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -142,12 +152,18 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
                       </td>
                       <td className="px-4 py-3 text-gray-600">{place(s) || "—"}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{s.days_marked}</td>
+                      {zepto && (
+                        <>
+                          <td className="px-4 py-3 text-right tabular-nums">{s.monthly_limit === null ? "—" : s.monthly_limit.toLocaleString("en-IN")}</td>
+                          <td className={`px-4 py-3 text-right font-semibold tabular-nums ${s.pending === 0 ? "text-status-danger" : ""}`}>{s.pending === null ? "—" : s.pending.toLocaleString("en-IN")}</td>
+                        </>
+                      )}
                       <td className="px-5 py-3 text-right text-base font-extrabold tabular-nums text-heading">{s.bottles.toLocaleString()}</td>
                     </tr>
                   ))}
                   {vendor.store_count > 1 && (
                     <tr className="bg-surface-subtle/60 font-bold">
-                      <td className="px-5 py-3" colSpan={3}>Total, {vendor.store_count} stores</td>
+                      <td className="px-5 py-3" colSpan={zepto ? 5 : 3}>Total, {vendor.store_count} stores</td>
                       <td className="px-5 py-3 text-right text-base tabular-nums text-heading">{vendor.bottles.toLocaleString()}</td>
                     </tr>
                   )}

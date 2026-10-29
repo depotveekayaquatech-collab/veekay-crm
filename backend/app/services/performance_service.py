@@ -22,11 +22,12 @@ from app.models.order_entry_event import OrderEntryEvent
 from app.models.role import Role
 from app.models.organization import Organization, OrganizationKind
 from app.models.store import Store, StoreStatus
+from app.models.store_cap import StoreCap
 from app.models.store_vendor_period import StoreVendorPeriod
 from app.models.user import User, UserRole
 from app.repositories.employee_repository import EmployeeRepository
 from app.core.entry_access import Level, scope_for
-from app.services import assignment_service, holiday_service
+from app.services import assignment_service, capping_service, holiday_service
 
 
 def _pct(done: int, expected: int) -> float:
@@ -228,6 +229,25 @@ def _vendor_key(name: str | None) -> str:
     return " ".join((name or "").split()).lower()
 
 
+def _add_zepto_limits(db: Session, partner: Organization, groups: dict[str, dict], stores: dict[uuid.UUID, Store]) -> None:
+    """Zepto only: each vendor store gets its capping (`daily_cap`), the month's limit it stands for (`monthly_limit`, the Capping page's number: daily x 30) and what is
+    still `pending` (limit - everything supplied at the store this month, 0 once it is used up; `over_by` is the excess). The pending figure counts the store's bottles
+    from EVERY vendor that supplied it, because the limit belongs to the store. Other platforms get null for all four, so the rows keep one shape."""
+    zepto = partner.slug == capping_service.PLATFORM
+    caps = dict(db.execute(select(StoreCap.store_id, StoreCap.daily_cap).where(StoreCap.store_id.in_(list(stores) or [uuid.uuid4()]))).all()) if zepto else {}
+    supplied: Counter = Counter()
+    for g in groups.values():
+        for sid, r in g["stores"].items():
+            supplied[sid] += r["bottles"]
+    for g in groups.values():
+        for sid, r in g["stores"].items():
+            limit = capping_service.monthly_limit(caps.get(sid))
+            r["daily_cap"] = caps.get(sid)
+            r["monthly_limit"] = limit
+            r["pending"] = None if limit is None else max(limit - supplied[sid], 0)
+            r["over_by"] = None if limit is None else max(supplied[sid] - limit, 0)
+
+
 def vendors(db: Session, user: User, partner_slug: str, month: date, today: date, *, full: bool = True) -> dict:
     """Vendor-wise: for each vendor of a platform, its stores and the bottles marked at each store this month (1st to today, as the inventory page counts).
     A store that changed vendor part-way through the month counts each vendor's bottles only for the dates that vendor supplied it (store_vendor_periods);
@@ -281,6 +301,8 @@ def vendors(db: Session, user: User, partner_slug: str, month: date, today: date
     for sid, st in stores.items():  # a live store with no entries yet still belongs to its vendor
         if st.status == StoreStatus.LIVE.value:
             row(st.vendor_name, st.vendor_number, sid)
+
+    _add_zepto_limits(db, partner, groups, stores)
 
     out = []
     for g in groups.values():

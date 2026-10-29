@@ -112,6 +112,8 @@ export interface UsageRow {
   outletName: string;
   state: string | null;
   city: string | null;
+  /** The store's vendor; null when none is set. */
+  vendorName: string | null;
   ownerCode: string | null;
   ownerName: string | null;
   /** Bottles per day: the capping in force today. */
