@@ -106,7 +106,7 @@ export function SummaryReport() {
               <button
                 key={g.value}
                 onClick={() => setGroupBy(g.value)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                   groupBy === g.value ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
@@ -131,7 +131,7 @@ export function SummaryReport() {
               { label: "Top performer", value: top ? top.label : "—", small: true, hint: top ? `${top.sharePercent}% of volume` : undefined },
             ].map((k, i) => (
               <div key={k.label} className={`tile tile-${["brand", "aqua", "success", "warning"][i]} rounded-xl border border-surface-border bg-surface p-5 shadow-card`}>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.label}</p>
+                <p className="text-[11px] font-bold text-gray-500">{k.label}</p>
                 <p className={`mt-1.5 truncate font-bold tabular-nums text-heading ${k.small ? "text-xl leading-9" : "text-[1.7rem] leading-none"}`}>
                   {k.value}
                 </p>

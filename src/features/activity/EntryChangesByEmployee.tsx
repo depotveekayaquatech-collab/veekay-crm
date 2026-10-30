@@ -46,7 +46,7 @@ function ChangedEntries({ creatorId, month, kind }: { creatorId: string; month: 
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-sm">
         <thead>
-          <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <tr className="text-left text-xs font-semibold text-gray-500">
             <th className="py-2 pr-3">Date</th><th className="py-2 pr-3">Store</th><th className="py-2 pr-3">First number</th><th className="py-2 pr-3">Now</th>
             <th className="py-2 pr-3">Changes</th><th className="py-2">Last changed by</th>
           </tr>
@@ -132,7 +132,7 @@ export function EntryChangesByEmployee() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead>
-                    <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                       <th className="px-5 py-3">Employee</th><th className="px-3 py-3">Entries</th><th className="px-3 py-3">Never changed</th>
                       <th className="px-3 py-3">Changed once</th><th className="px-3 py-3">Changed more than once</th><th className="px-3 py-3">All changes</th><th className="px-3 py-3">Changed</th>
                     </tr>

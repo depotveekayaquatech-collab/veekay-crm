@@ -17,7 +17,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-500">
       <span>
-        {from}–{to} of {total}
+        {from} to {to} of {total}
       </span>
       <div className="flex items-center gap-2">
         <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>

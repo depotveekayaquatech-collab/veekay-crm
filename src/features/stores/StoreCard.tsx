@@ -1,12 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { STATUS, platformTone } from "@/features/stores/storeDisplay";
 import type { Store } from "@/types/store";
-
-const STATUS: Record<Store["status"], { label: string; tone: "success" | "warning" | "neutral" }> = {
-  LIVE: { label: "Live", tone: "success" },
-  PENDING: { label: "Pending", tone: "warning" },
-  CLOSE: { label: "Closed", tone: "neutral" },
-};
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -15,8 +10,6 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
     </p>
   );
 }
-
-const platformTone = (slug: string | null) => (slug === "blinkit" ? "success" : slug === "zepto" ? "info" : "neutral");
 
 export function StoreCard({
   store, canManage, onView, onEdit, onClose,
@@ -77,9 +70,9 @@ export function StoreCard({
 
       <footer className="mt-auto flex flex-wrap gap-2 pt-1">
         <Button size="sm" variant="secondary" onClick={onView} className="flex-1">View details</Button>
-        {canManage && <Button size="sm" onClick={onEdit} className="flex-1">Edit info</Button>}
+        {canManage && <Button size="sm" variant="secondary" onClick={onEdit} className="flex-1">Edit info</Button>}
         {canManage && store.status !== "CLOSE" && (
-          <Button size="sm" variant="danger" onClick={onClose}>Close</Button>
+          <Button size="sm" variant="ghost" onClick={onClose} className="text-status-danger hover:bg-status-danger-soft hover:text-status-danger">Close</Button>
         )}
       </footer>
     </article>

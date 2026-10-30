@@ -115,7 +115,7 @@ export function LiveStoresExplorer({
           <div className="grid grid-cols-2 gap-3 px-5 py-4 lg:grid-cols-4" aria-live="polite">
             {kpis.map((k) => (
               <div key={k.label} className="rounded-lg border border-surface-border bg-surface px-4 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.label}{name ? ` · ${name}` : ""}</p>
+                <p className="text-[11px] font-bold text-gray-500">{k.label}{name ? ` · ${name}` : ""}</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-heading">{k.value.toLocaleString("en-IN")}</p>
               </div>
             ))}
@@ -133,7 +133,7 @@ export function LiveStoresExplorer({
           <div className="max-h-[34rem] overflow-auto">
             <table className="w-full min-w-[620px] text-sm">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr className="border-y border-surface-border text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                <tr className="border-y border-surface-border text-left text-[11px] font-bold text-gray-500">
                   <th className="px-5 py-2.5">Place</th>
                   <th className="px-3 py-2.5 text-right">Live stores</th>
                   <th className="px-3 py-2.5 text-right">Vendors</th>

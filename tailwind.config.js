@@ -20,6 +20,8 @@ export default {
         // Deep navy (indigo at night) for the sidebar / dark surfaces.
         ink: { 950: "rgb(var(--ink-950) / <alpha-value>)", 900: "rgb(var(--ink-900) / <alpha-value>)", 800: "rgb(var(--ink-800) / <alpha-value>)", 700: "rgb(var(--ink-700) / <alpha-value>)", 600: "rgb(var(--ink-600) / <alpha-value>)" },
         // Headings: dark navy on light, near-white on dark.
+        // The card-count screen's own blue (kept exactly as it was, now named).
+        count: { DEFAULT: "rgb(var(--count) / <alpha-value>)", ink: "rgb(var(--count-ink) / <alpha-value>)", wash: "rgb(var(--count-wash) / <alpha-value>)", tint: "rgb(var(--count-tint) / <alpha-value>)" },
         heading: "rgb(var(--heading) / <alpha-value>)",
         surface: { DEFAULT: "rgb(var(--surface) / <alpha-value>)", subtle: "rgb(var(--surface-subtle) / <alpha-value>)", muted: "rgb(var(--surface-muted) / <alpha-value>)", border: "rgb(var(--surface-border) / <alpha-value>)" },
         // Semantic status colours (info intentionally reuses the brand blue).
@@ -33,15 +35,7 @@ export default {
       },
       borderRadius: { sm: "6px", md: "8px", lg: "12px", xl: "16px" },
       fontFamily: {
-        sans: [
-          '"Plus Jakarta Sans"',
-          "system-ui",
-          "-apple-system",
-          "Segoe UI",
-          "Roboto",
-          "Helvetica Neue",
-          "sans-serif",
-        ],
+        sans: ["var(--font-sans)"],
       },
       boxShadow: {
         xs: "0 1px 2px 0 rgba(11, 18, 34, 0.04)",
@@ -51,7 +45,6 @@ export default {
         md: "0 6px 16px -4px rgba(11, 18, 34, 0.12), 0 2px 6px -2px rgba(11, 18, 34, 0.06)",
         lg: "0 20px 44px -12px rgba(11, 18, 34, 0.28)",
         glow: "0 8px 24px -4px rgb(var(--btn-a) / 0.4)",
-        "glow-aqua": "0 8px 24px -4px rgba(14, 142, 164, 0.35)",
         focus: "0 0 0 3px rgba(37, 99, 235, 0.20)",
       },
       keyframes: {

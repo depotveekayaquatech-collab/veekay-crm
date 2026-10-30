@@ -36,7 +36,7 @@ export function StoreDrawer({ storeId, filters, onClose }: { storeId: string; fi
       <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Store days" className="relative flex h-full w-full max-w-[560px] animate-slide-in-right flex-col bg-surface-subtle shadow-lg outline-none">
         <header className="flex items-start justify-between gap-3 border-b border-surface-border bg-surface px-5 py-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Day by day</p>
+            <p className="text-[11px] font-semibold text-gray-500">Day by day</p>
             <h2 className="truncate text-base font-extrabold text-heading">{d?.store.name ?? "…"}</h2>
             {d && <p className="text-xs text-gray-500">{d.store.outlet_id} · {fmtShort(filters.from)} to {fmtShort(filters.to)}</p>}
           </div>
@@ -51,7 +51,7 @@ export function StoreDrawer({ storeId, filters, onClose }: { storeId: string; fi
               <div className="grid grid-cols-3 gap-2 text-center">
                 {[["Longest streak", d.longest ? `${d.longest.length} d` : "none"], ["Zero days", d.total_zero], ["Unmarked", d.unmarked]].map(([k, v]) => (
                   <div key={k} className="rounded-xl border border-surface-border bg-surface px-2 py-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{k}</p>
+                    <p className="text-[11px] font-bold text-gray-400">{k}</p>
                     <p className="text-lg font-extrabold tabular-nums text-heading">{v}</p>
                   </div>
                 ))}
@@ -60,7 +60,7 @@ export function StoreDrawer({ storeId, filters, onClose }: { storeId: string; fi
               {d.last_nonzero && <p className="text-xs text-gray-500">Last day with orders: {fmtDay(d.last_nonzero)}</p>}
 
               <div>
-                <div className="grid grid-cols-7 gap-1.5 text-center text-[10px] font-semibold uppercase text-gray-400">
+                <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold text-gray-400">
                   {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((w) => <div key={w}>{w}</div>)}
                 </div>
                 <div className="mt-1 grid grid-cols-7 gap-1.5">

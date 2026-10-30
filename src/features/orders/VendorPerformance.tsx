@@ -68,7 +68,7 @@ function VendorReport({ d, vendors }: { d: VendorPerformanceData; vendors: Vendo
 
   return (
     <div className="rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Text to paste</p>
+      <p className="text-xs font-bold text-gray-500">Text to paste</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void copy()} disabled={!vendors.length}>Copy text</Button>
         <Button size="sm" variant="secondary" onClick={download} disabled={!vendors.length}>
@@ -137,7 +137,7 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                     <th className="px-5 py-3">Store</th><th className="px-4 py-3">Place</th><th className="px-4 py-3 text-right">Days marked</th>
                     {zepto && <><th className="px-4 py-3 text-right">Monthly limit</th><th className="px-4 py-3 text-right">Pending limit</th></>}
                     <th className="px-5 py-3 text-right">{zepto ? "Supplied" : "Bottles"}</th>
@@ -188,7 +188,7 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                     <th className="px-5 py-3">Vendor</th><th className="px-4 py-3 text-right">Stores</th><th className="px-5 py-3 text-right">Bottles</th>
                   </tr>
                 </thead>

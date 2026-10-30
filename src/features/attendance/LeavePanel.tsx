@@ -98,7 +98,7 @@ export function LeavePanel() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {TYPES.map((t) => (
               <div key={t.value} className="tile tile-brand rounded-xl border border-surface-border bg-surface p-4 shadow-card">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t.label}</p>
+                <p className="text-[11px] font-bold text-gray-500">{t.label}</p>
                 <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-heading">{data.taken[t.value] ?? 0}</p>
                 <p className="mt-1 text-[11px] text-gray-400">days taken in {year}</p>
               </div>
@@ -114,7 +114,7 @@ export function LeavePanel() {
           <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[620px] text-sm">
               <thead>
-                <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                   <th className="px-4 py-3">Dates</th>
                   <th className="px-3 py-3">Type</th>
                   <th className="px-3 py-3 text-right">Days</th>

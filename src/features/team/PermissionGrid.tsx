@@ -29,7 +29,7 @@ export function PermissionGrid({ groups, value, onChange }: Props) {
         return (
           <div key={g.key} className="rounded-lg border border-surface-border p-3">
             <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">{g.label}</p>
+              <p className="text-xs font-bold text-gray-500">{g.label}</p>
               <button type="button" className="text-[11px] font-semibold text-brand-600 hover:text-brand-700" onClick={() => toggleGroup(codes, !all)}>
                 {all ? "Clear" : "Select all"}
               </button>

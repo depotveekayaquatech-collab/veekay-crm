@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useCalendar, useMarkManyOrders } from "@/features/orders/useOrders";
 import type { MyStore } from "@/types/order";
+import { IconZap } from "@/components/ui/icons";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -113,7 +114,7 @@ export function MultiDateMarkModal({
         <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 font-bold text-sm">
-              ⚡
+              <IconZap className="h-4 w-4" />
             </span>
             <div>
               <h2 id="multi-date-modal-title" className="text-base font-extrabold text-heading">
@@ -157,7 +158,7 @@ export function MultiDateMarkModal({
           {/* 2. Date selection */}
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              <label className="text-xs font-bold text-gray-700">
                 2. Select Dates ({selectedDates.size} selected)
               </label>
               <div className="flex items-center gap-1.5">
@@ -199,7 +200,7 @@ export function MultiDateMarkModal({
             </div>
 
             {calLoading && (
-              <div className="h-48 animate-pulse rounded-xl bg-surface-subtle border border-surface-border" />
+              <div className="h-48 animate-pulse motion-reduce:animate-none rounded-xl bg-surface-subtle border border-surface-border" />
             )}
 
             {calendar && (
@@ -227,7 +228,7 @@ export function MultiDateMarkModal({
                         disabled={!isSelectable}
                         onClick={() => toggleDate(d.date)}
                         title={d.marked ? `Already marked: ${d.count}` : d.isFuture ? "Future date" : d.date}
-                        className={`relative flex h-10 flex-col items-center justify-center rounded-lg border text-xs font-bold transition-all ${
+                        className={`relative flex h-10 flex-col items-center justify-center rounded-lg border text-xs font-bold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                           isPicked
                             ? "border-brand-600 bg-brand-600 text-white shadow-xs scale-105 z-10"
                             : d.marked
@@ -254,7 +255,7 @@ export function MultiDateMarkModal({
           {selectedDates.size > 0 && (
             <div className="rounded-xl border border-brand-100 bg-brand-50/50 p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label htmlFor="multi-bottle-input" className="text-xs font-bold text-brand-900 uppercase tracking-wider">
+                <label htmlFor="multi-bottle-input" className="text-xs font-bold text-brand-900">
                   3. Bottle Count (0–{MAX_BOTTLES})
                 </label>
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-brand-700 cursor-pointer">

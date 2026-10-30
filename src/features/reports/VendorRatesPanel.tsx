@@ -16,7 +16,7 @@ function Lines({ lines }: { lines: RateLine[] }) {
   return (
     <div className="max-h-72 overflow-auto rounded-lg border border-surface-border">
       <table className="w-full min-w-[420px] text-sm">
-        <thead className="sticky top-0 bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+        <thead className="sticky top-0 bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
           <tr><th className="px-3 py-2">Store / city</th><th className="px-3 py-2">Current</th><th className="px-3 py-2">New</th><th className="px-3 py-2">Stores</th></tr>
         </thead>
         <tbody>
@@ -154,7 +154,7 @@ export function VendorRatesPanel() {
               <p className="p-4 text-sm text-gray-500">No rates uploaded for this platform yet.</p>
             ) : (
               <table className="w-full min-w-[420px] text-sm">
-                <thead className="sticky top-0 bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                <thead className="sticky top-0 bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                   <tr><th className="px-3 py-2">City / store</th><th className="px-3 py-2">Rate per bottle</th><th className="px-3 py-2">Since</th></tr>
                 </thead>
                 <tbody>

@@ -60,7 +60,7 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Stores that exist more than once</h2>
+        <h2 className="text-sm font-bold text-gray-500">Stores that exist more than once</h2>
         {data.groups.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-surface-border bg-surface p-8 text-center text-sm text-gray-500">
             No duplicate stores. Every store has its own name and Outlet ID.
@@ -136,7 +136,7 @@ export function DuplicateStores({ onEdit, canMerge }: { onEdit: (s: Store) => vo
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Rows the last upload could not use</h2>
+        <h2 className="text-sm font-bold text-gray-500">Rows the last upload could not use</h2>
         {issues.isLoading ? (
           <Skeleton className="h-24" />
         ) : runs.length === 0 ? (
@@ -180,7 +180,7 @@ function PlatformCheck({ canMove }: { canMove: boolean }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Possibly on the wrong platform</h2>
+      <h2 className="text-sm font-bold text-gray-500">Possibly on the wrong platform</h2>
       {q.isLoading ? (
         <Skeleton className="h-24" />
       ) : q.isError || !q.data ? (

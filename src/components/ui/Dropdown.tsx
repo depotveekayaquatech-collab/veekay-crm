@@ -183,7 +183,7 @@ export function Dropdown({
         aria-invalid={invalid || undefined}
         disabled={disabled}
         onClick={() => (open ? close() : openPanel())}
-        className={`group flex h-10 w-full font-medium normal-case tracking-normal items-center justify-between gap-2 rounded-lg border bg-surface pl-3 pr-2.5 text-left text-sm shadow-sm outline-none transition-all disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-400 ${
+        className={`group flex h-10 w-full font-medium normal-case tracking-normal items-center justify-between gap-2 rounded-lg border bg-surface pl-3 pr-2.5 text-left text-sm shadow-sm outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform] disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-400 ${
           invalid
             ? "border-status-danger"
             : open

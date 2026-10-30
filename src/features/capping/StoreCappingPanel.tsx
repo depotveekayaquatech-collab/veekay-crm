@@ -25,7 +25,7 @@ function History({ storeId }: { storeId: string }) {
     <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface">
       <table className="w-full min-w-[420px] border-collapse text-sm">
         <thead>
-          <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold text-gray-500">
             {["Capping", "From", "Set by"].map((h) => <th key={h} className="border-b border-surface-border px-3 py-2.5 first:pl-4">{h}</th>)}
           </tr>
         </thead>

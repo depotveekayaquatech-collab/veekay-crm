@@ -22,7 +22,7 @@ const names = (people: Person[]) => (people.length ? people.map((p) => p.name).j
 function Level({ label, tone, children }: { label: string; tone: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${tone}`}>{label}</span>
+      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span>
       <span className="text-sm text-gray-800">{children}</span>
     </div>
   );

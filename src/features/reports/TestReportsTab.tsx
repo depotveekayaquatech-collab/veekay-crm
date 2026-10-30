@@ -122,7 +122,7 @@ export function TestReportsTab() {
             } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-gray-500`}
           >
             {p.name}
-            {!p.enabled && <span className="rounded-full bg-surface px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-gray-500">Off</span>}
+            {!p.enabled && <span className="rounded-full bg-surface px-1.5 py-px text-[11px] font-bold text-gray-500">Off</span>}
           </button>
         ))}
       </div>
@@ -237,7 +237,7 @@ export function TestReportsTab() {
                 {states.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
-                      No states yet — {data.platform.name} has no live stores.
+                      No states yet. {data.platform.name} has no live stores.
                     </td>
                   </tr>
                 )}

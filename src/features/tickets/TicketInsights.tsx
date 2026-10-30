@@ -150,7 +150,7 @@ export function TicketInsights() {
                 <div className="stacked-table overflow-x-auto">
                   <table className="w-full min-w-[640px] text-sm">
                     <thead>
-                      <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                         <th className="px-5 py-2.5">Store</th>
                         <th className="px-4 py-2.5">Region · State</th>
                         <th className="px-4 py-2.5">Vendor</th>

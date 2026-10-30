@@ -58,7 +58,7 @@ export function TicketDetailModal({ id, onClose }: { id: string; onClose: () => 
             )}
 
             <div>
-              <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">Activity</h4>
+              <h4 className="mb-2 text-xs font-bold text-gray-400">Activity</h4>
               <ol className="flex flex-col gap-3">
                 <li className="text-xs text-gray-500">
                   Raised by <span className="font-semibold text-gray-700">{t.createdByName ?? "someone"}</span>{t.source === "google" ? " via Google" : ""} · {timeAgo(t.createdAt)}
@@ -119,7 +119,7 @@ export function TicketDetailModal({ id, onClose }: { id: string; onClose: () => 
 
             <dl className="flex flex-col gap-3 rounded-lg border border-surface-border p-3.5">
               <div>
-                <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Store</dt>
+                <dt className="text-[11px] font-bold text-gray-400">Store</dt>
                 <dd className="mt-0.5 font-semibold text-gray-900">{t.store.name}</dd>
                 <dd className="text-xs text-gray-500">{t.store.code} · {t.store.platformName}</dd>
                 <dd className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
@@ -128,22 +128,22 @@ export function TicketDetailModal({ id, onClose }: { id: string; onClose: () => 
                 </dd>
               </div>
               <div>
-                <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Region</dt>
+                <dt className="text-[11px] font-bold text-gray-400">Region</dt>
                 <dd className="mt-0.5 text-gray-900">{t.store.regionName ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Vendor</dt>
+                <dt className="text-[11px] font-bold text-gray-400">Vendor</dt>
                 <dd className="mt-0.5 text-gray-900">{t.store.vendorName ?? "—"} <Phone value={t.store.vendorNumber} /></dd>
               </div>
               {due && (
                 <div>
-                  <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Deadline</dt>
+                  <dt className="text-[11px] font-bold text-gray-400">Deadline</dt>
                   <dd className={`mt-0.5 font-semibold ${due.late ? "text-status-danger" : "text-gray-900"}`}>{due.text}</dd>
                 </div>
               )}
               {!t.canAssign && (
                 <div>
-                  <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Assigned to</dt>
+                  <dt className="text-[11px] font-bold text-gray-400">Assigned to</dt>
                   <dd className="mt-0.5 text-gray-900">{t.assignedToName ?? "Unassigned"}</dd>
                 </div>
               )}

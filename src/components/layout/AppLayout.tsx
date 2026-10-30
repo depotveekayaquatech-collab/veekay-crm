@@ -166,7 +166,7 @@ function BrandMark() {
             PRO
           </span>
         </div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+        <div className="text-xs font-medium text-white/55">
           Aquatrack Ops
         </div>
       </div>
@@ -203,7 +203,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex-1 overflow-y-auto px-3 pb-8 pt-2" aria-label="Main">
         {visibleGroups.map((group) => (
           <div key={group.title} className="mt-4 first:mt-1">
-            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+            <p className="px-3 pb-1.5 text-xs font-semibold text-white/45">
               {group.title}
             </p>
             <div className="space-y-0.5">
@@ -216,9 +216,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   end={!item.prefix}
                   onClick={onNavigate}
                   className={({ isActive }) =>
-                    `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-all ${
+                    `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                       isActive
-                        ? "bg-gradient-to-r from-brand-500/25 via-brand-500/10 to-transparent text-white font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                        ? "bg-white/10 text-white font-semibold"
                         : "text-white/60 hover:bg-white/[0.07] hover:text-white"
                     }`
                   }
@@ -226,7 +226,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   {({ isActive }) => (
                     <>
                       {isActive && (
-                        <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-brand-400 to-aqua-400 shadow-[0_0_8px_rgba(56,189,248,0.7)]" />
+                        <span aria-hidden="true" className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-400" />
                       )}
                       <Icon
                         aria-hidden="true"
@@ -254,10 +254,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-white/[0.07]"
         >
           <div className="relative">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-aqua-600 text-xs font-extrabold text-white ring-2 ring-white/15 shadow-sm">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white ring-2 ring-white/15">
               {initials(user?.fullName ?? "")}
             </span>
-            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-ink-950" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-white">{user?.fullName}</div>
@@ -281,9 +280,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 function PageFallback() {
   return (
     <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading page">
-      <div className="h-8 w-56 animate-pulse rounded-lg bg-surface-border/60" />
-      <div className="h-40 animate-pulse rounded-2xl bg-surface-border/50" />
-      <div className="h-64 animate-pulse rounded-2xl bg-surface-border/40" />
+      <div className="h-8 w-56 animate-pulse motion-reduce:animate-none rounded-lg bg-surface-border/60" />
+      <div className="h-40 animate-pulse motion-reduce:animate-none rounded-2xl bg-surface-border/50" />
+      <div className="h-64 animate-pulse motion-reduce:animate-none rounded-2xl bg-surface-border/40" />
     </div>
   );
 }
@@ -392,7 +391,7 @@ export function AppLayout() {
       )}
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex h-[4.25rem] items-center gap-3 border-b border-surface-border/70 bg-surface/85 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+      <header className="sticky top-0 z-20 flex h-[4.25rem] items-center gap-3 border-b border-surface-border/70 bg-surface px-4 sm:px-6 lg:px-10">
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
@@ -404,15 +403,11 @@ export function AppLayout() {
           <span className="font-semibold text-gray-500">Aquatrack</span>
           <span className="text-gray-400">/</span>
           <h1 className="font-bold text-heading">{currentTitle}</h1>
-          <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Live Ops
-          </span>
         </div>
         <button
           onClick={() => setPaletteOpen(true)}
           aria-label="Search pages and stores"
-          className="ml-auto flex items-center gap-2.5 rounded-lg border border-surface-border bg-surface-subtle/70 px-3.5 py-1.5 text-xs text-gray-500 shadow-xs transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+          className="ml-auto flex items-center gap-2.5 whitespace-nowrap [@media(pointer:coarse)]:min-h-10 rounded-lg border border-surface-border bg-surface-subtle/70 px-3.5 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
         >
           <IconSearch className="h-3.5 w-3.5" aria-hidden="true" />
           <span className="hidden sm:inline">Search pages, stores…</span>
@@ -422,7 +417,7 @@ export function AppLayout() {
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           aria-label="Toggle theme"
           title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-border bg-surface text-gray-500 shadow-xs transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+          className="flex h-9 w-9 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10 items-center justify-center rounded-lg border border-surface-border bg-surface text-gray-500 shadow-xs transition-colors hover:border-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
         >
           {theme === "dark" ? <IconSun className="h-4 w-4 text-amber-400" /> : <IconMoon className="h-4 w-4 text-gray-600" />}
         </button>
@@ -444,6 +439,8 @@ export function AppLayout() {
         onClose={() => setPaletteOpen(false)}
         pages={pages.map((p) => ({ label: navLabel(p, hasPermission), to: p.to }))}
         canSearchStores={hasPermission("stores.view")}
+        canOpenOrders={hasPermission("orders.view")}
+        recentKey={user ? `crm.palette.recent.${user.id}` : undefined}
       />
 
       <main id="main-content" tabIndex={-1} className="mx-auto scroll-mt-24 outline-none w-full max-w-[1680px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">

@@ -64,7 +64,7 @@ export function CorrectEntriesPage() {
           <IconAlertTriangle className="h-5 w-5" aria-hidden="true" />
         </span>
         <p className="text-gray-700">
-          <span className="font-bold text-status-warning">Admin tool.</span> Overwrite or clear any day for any store — every change is recorded in the activity log.
+          <span className="font-bold text-status-warning">Admin tool.</span> Overwrite or clear any day for any store. Every change is recorded in the activity log.
         </p>
       </div>
 
@@ -110,7 +110,7 @@ export function CorrectEntriesPage() {
           {!storeId && <SelectStorePrompt text="Pick a store, then tap any past day to change or clear its count." />}
           {storeId && selected && (
             <div className="flex items-center gap-3.5 overflow-hidden rounded-2xl border border-surface-border bg-surface px-4 py-3.5 shadow-card sm:px-5">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-aqua-400 text-white">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white">
                 <IconStore className="h-5 w-5" aria-hidden="true" />
               </span>
               <div className="min-w-0">

@@ -48,7 +48,7 @@ export function ShortcutsModal({ open, onClose, go }: { open: boolean; onClose: 
       <div className="flex flex-col gap-5">
         {groups.map((g) => (
           <section key={g.title}>
-            <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">{g.title}</h3>
+            <h3 className="mb-2 text-[11px] font-bold text-gray-400">{g.title}</h3>
             <ul className="divide-y divide-surface-border rounded-xl border border-surface-border">
               {g.rows.map((r) => (
                 <li key={r.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm text-gray-700">

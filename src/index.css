@@ -1,3 +1,6 @@
+/* Hallmark · checked: 2026-10-30 · genre: modern-minimal (inferred) · scope: app
+ * floor: tokens for colour and type, no gradients or glow, no tracked caps, no transition-all
+ * built: the project (brand kept: blue + aqua, Plus Jakarta Sans) · redesign: restyle + polish · v2.0.0 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -55,6 +58,19 @@
     --btn-a: 47 111 237;
     --btn-b: 37 89 201;
     --btn-c: 30 70 160;
+    --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --count: 11 111 184;
+    --count-ink: 8 75 124;
+    --count-wash: 234 243 250;
+    --count-tint: 232 242 250;
+    --stat-brand: 29 78 216;
+    --stat-aqua: 3 105 161;
+    --stat-success: 4 120 87;
+    --stat-warning: 180 83 9;
+    --scroll-thumb: 152 160 181;
+    --selection-bg: 221 231 255;
+    --selection-fg: 26 51 106;
+    --lift: 11 18 34;
     color-scheme: light;
   }
   html.dark {
@@ -108,6 +124,14 @@
     --btn-a: 37 99 235;
     --btn-b: 29 78 216;
     --btn-c: 30 64 175;
+    --stat-brand: 30 58 138;
+    --stat-aqua: 12 74 110;
+    --stat-success: 6 78 59;
+    --stat-warning: 120 53 15;
+    --scroll-thumb: 51 65 95;
+    --selection-bg: 30 68 145;
+    --selection-fg: 239 246 255;
+    --lift: 4 6 22;
     color-scheme: dark;
   }
 
@@ -115,6 +139,7 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     font-size: 15.5px;
+    overflow-x: clip;
   }
 
   @media (max-width: 640px) {
@@ -125,12 +150,10 @@
 
   body {
     background-color: rgb(var(--surface-subtle));
-    background-image: radial-gradient(1100px 480px at 100% -10%, rgba(37,99,235,0.06), transparent 60%),
-      radial-gradient(900px 420px at 0% -12%, rgba(14,165,233,0.06), transparent 60%);
-    background-attachment: fixed;
+    overflow-x: clip;
     color: rgb(var(--gray-900));
     letter-spacing: -0.01em;
-    font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -142,70 +165,48 @@
     box-shadow: 0 0 0 2px rgb(var(--surface-subtle)), 0 0 0 4px rgb(var(--brand-500));
   }
 
-  html.dark body {
-    background-image: radial-gradient(1100px 500px at 100% -10%, rgba(37,99,235,0.12), transparent 60%),
-      radial-gradient(900px 450px at 0% -12%, rgba(14,165,233,0.10), transparent 60%);
-  }
-
   ::selection {
-    background-color: #dbeafe;
-    color: #1e3a8a;
+    background-color: rgb(var(--selection-bg));
+    color: rgb(var(--selection-fg));
   }
 
   /* Sleek, unobtrusive scrollbars */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+    scrollbar-color: rgb(var(--scroll-thumb) / 0.45) transparent;
   }
   *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   *::-webkit-scrollbar-thumb {
-    background-color: rgba(148, 163, 184, 0.35);
+    background-color: rgb(var(--scroll-thumb) / 0.45);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(148, 163, 184, 0.6);
+    background-color: rgb(var(--scroll-thumb) / 0.7);
     background-clip: content-box;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-surface-border bg-surface shadow-card transition-all duration-200;
+    @apply rounded-xl border border-surface-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200;
   }
   .tile {
     position: relative;
     overflow: hidden;
   }
-  .tile::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 3px;
-    background: var(--tile, #2563eb);
-  }
-  .tile-brand { --tile: linear-gradient(90deg, #2563eb, #38bdf8); }
-  .tile-aqua { --tile: linear-gradient(90deg, #0284c7, #38bdf8); }
-  .tile-success { --tile: linear-gradient(90deg, #059669, #34d399); }
-  .tile-warning { --tile: linear-gradient(90deg, #d97706, #fbbf24); }
-  html.dark .tile-brand { --tile: linear-gradient(90deg, #3b82f6, #38bdf8); }
-  html.dark .tile-aqua { --tile: linear-gradient(90deg, #0284c7, #38bdf8); }
-  html.dark .tile-success { --tile: linear-gradient(90deg, #10b981, #34d399); }
-  html.dark .tile-warning { --tile: linear-gradient(90deg, #f59e0b, #fbbf24); }
+  /* Tiles used to carry a coloured bar on top. They are plain cards now: a figure and its label carry the meaning, not a stripe. */
+  .tile-brand, .tile-aqua, .tile-success, .tile-warning { --tile: none; }
 
-  /* Filled KPI cards: modern executive gradient cards */
-  .stat-brand { background-image: linear-gradient(135deg, #1d4ed8, #2563eb); }
-  .stat-aqua { background-image: linear-gradient(135deg, #0369a1, #0284c7); }
-  .stat-success { background-image: linear-gradient(135deg, #047857, #059669); }
-  .stat-warning { background-image: linear-gradient(135deg, #b45309, #d97706); }
-  html.dark .stat-brand { background-image: linear-gradient(135deg, #1e3a8a, #1d4ed8); }
-  html.dark .stat-aqua { background-image: linear-gradient(135deg, #0c4a6e, #0369a1); }
-  html.dark .stat-success { background-image: linear-gradient(135deg, #064e3b, #047857); }
-  html.dark .stat-warning { background-image: linear-gradient(135deg, #78350f, #b45309); }
+  /* Filled KPI cards: one solid tone each (no gradient). */
+  .stat-brand { background-color: rgb(var(--stat-brand)); }
+  .stat-aqua { background-color: rgb(var(--stat-aqua)); }
+  .stat-success { background-color: rgb(var(--stat-success)); }
+  .stat-warning { background-color: rgb(var(--stat-warning)); }
   h1, h2, h3 {
     letter-spacing: -0.02em;
     text-wrap: balance;
@@ -272,16 +273,9 @@
 }
 
 /* Dark theme touches that tokens alone can't express. */
-html.dark ::selection {
-  background-color: rgb(var(--brand-200));
-  color: rgb(var(--brand-900));
-}
-/* Night cards float on a deep indigo ground: hairline highlight + soft dark drop. */
+/* Night cards sit on a deep indigo ground: a soft dark drop, elevation by lightness. */
 html.dark .shadow-card {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px -14px rgba(4, 6, 22, 0.75);
-}
-html.dark * {
-  scrollbar-color: #33415f transparent;
+  box-shadow: 0 12px 32px -14px rgb(var(--lift) / 0.75);
 }
 
 /* Theme flip: no element animates its colours, so nothing lags behind the rest of the page. */
@@ -315,6 +309,7 @@ html.theme-switching *::placeholder {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
   }
 }

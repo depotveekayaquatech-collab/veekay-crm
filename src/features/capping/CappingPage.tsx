@@ -98,7 +98,7 @@ export function CappingPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[520px] text-sm">
                   <thead>
-                    <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                       <th className="px-4 py-2.5">Store</th><th className="px-3 py-2.5 text-right">Capping / day</th><th className="px-4 py-2.5" />
                     </tr>
                   </thead>

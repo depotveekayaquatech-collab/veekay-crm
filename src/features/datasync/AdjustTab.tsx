@@ -81,7 +81,7 @@ export function AdjustTab() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl bg-surface-subtle px-4 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Automatic quantity</p>
+            <p className="text-[11px] font-bold text-gray-500">Automatic quantity</p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-heading">{auto ?? "—"}</p>
             <p className="text-xs text-gray-500">Amount ÷ price, always rounded up</p>
           </div>
@@ -153,7 +153,7 @@ export function AdjustTab() {
             <ul className="list-disc rounded-lg bg-status-danger-soft px-4 py-2 pl-8 text-status-danger">
               {result.failed.map((f) => (
                 <li key={f.outletCode}>
-                  Not updated: {f.outletName} — {f.error}
+                  Not updated: {f.outletName}: {f.error}
                 </li>
               ))}
             </ul>

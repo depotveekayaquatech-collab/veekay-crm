@@ -99,7 +99,7 @@ export default function NewExpense() {
         <View style={{ flexDirection: "row", backgroundColor: colors.surfaceMuted, borderRadius: radius.pill, padding: 4 }}>
           {(["OFFICE", "STORE"] as const).map((k) => (
             <Pressable key={k} onPress={() => { setKind(k); setCategory(""); }} accessibilityRole="button" accessibilityState={{ selected: kind === k }}
-              style={{ flex: 1, height: 42, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: kind === k ? colors.surface : "transparent" }}>
+              style={{ flex: 1, height: 44, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: kind === k ? colors.surface : "transparent" }}>
               <Text style={{ fontWeight: "800", color: kind === k ? colors.brand700 : colors.textMuted }}>{k === "OFFICE" ? "Office" : "A store"}</Text>
             </Pressable>
           ))}
@@ -114,7 +114,7 @@ export default function NewExpense() {
               const on = category === r.code;
               return (
                 <Pressable key={r.code} onPress={() => setCategory(r.code)} accessibilityRole="radio" accessibilityState={{ selected: on }}
-                  style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: on ? colors.brand600 : colors.border, backgroundColor: on ? colors.brand50 : colors.surface, justifyContent: "center" }}>
+                  style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: on ? colors.brand600 : colors.border, backgroundColor: on ? colors.brand50 : colors.surface, justifyContent: "center" }}>
                   <Text style={{ fontWeight: "600", color: on ? colors.brand700 : colors.textMuted }}>{r.label}</Text>
                 </Pressable>
               );

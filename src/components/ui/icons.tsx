@@ -93,6 +93,12 @@ export const IconCheckCircle = (p: IconProps) => (
   </Base>
 );
 
+export const IconZap = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M13 2.5 4.5 13.5H11l-1 8 8.5-11H12l1-8Z" />
+  </Base>
+);
+
 export const IconAlertTriangle = (p: IconProps) => (
   <Base {...p}>
     <path d="M10.3 4.3 2.7 18a1.5 1.5 0 0 0 1.3 2.2h16a1.5 1.5 0 0 0 1.3-2.2L13.7 4.3a1.5 1.5 0 0 0-2.6 0Z" />

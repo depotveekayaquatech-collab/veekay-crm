@@ -19,7 +19,7 @@ export function AverageCards({ alert, isLoading, error, onRetry }: { alert: CapA
   const t = TONE[o.status];
   const big = (label: string, v: number | null, breach: boolean, days: number, unit: string) => (
     <div className={`rounded-xl border p-4 shadow-card ${breach ? TONE.over.card : t.card}`}>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-[11px] font-bold text-gray-500">{label}</p>
       <p className={`mt-1 text-3xl font-extrabold tabular-nums ${breach ? TONE.over.value : t.value}`}>
         {v === null ? "—" : fmtAvg(v)} <span className="text-base font-semibold text-gray-500">/ Limit {alert.limit}</span>
       </p>

@@ -140,7 +140,7 @@ export function InventoryPage() {
           { l: "Total pending days", v: s?.totalPendingDays, t: "aqua" },
         ].map((k) => (
           <div key={k.l} className={`tile tile-${k.t} rounded-xl border border-surface-border bg-surface p-5 shadow-card`}>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k.l}</p>
+            <p className="text-[11px] font-bold text-gray-500">{k.l}</p>
             <p className="mt-1.5 flex h-[1.7rem] items-center text-[1.7rem] font-bold leading-none tabular-nums text-heading">
               {k.v ?? <Skeleton className="h-6 w-16" />}
             </p>
@@ -257,7 +257,7 @@ export function InventoryPage() {
               <div className="stacked-table overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead>
-                    <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    <tr className="text-left text-[11px] font-bold text-gray-500">
                       <th className="px-5 py-2.5">Store</th>
                       <th className="px-3 py-2.5">Location</th>
                       <th className="px-3 py-2.5">POC</th>
@@ -289,8 +289,8 @@ export function InventoryPage() {
                         <td className="px-3 py-3 text-right tabular-nums" data-label="Bottles (month)">{st.monthBottles}</td>
                         <td className="px-5 py-3 text-right" data-label="Action">
                           <div className="flex justify-end gap-3 text-sm font-semibold">
-                            <Link to={`/orders?store=${st.id}`} className="text-brand-600 hover:text-brand-700">Mark →</Link>
-                            <Link to={`/compliance?q=${encodeURIComponent(st.externalCode)}`} className="text-aqua-600 hover:text-aqua-700">Docs →</Link>
+                            <Link to={`/orders?store=${st.id}`} className="text-brand-600 hover:text-brand-700">Mark</Link>
+                            <Link to={`/compliance?q=${encodeURIComponent(st.externalCode)}`} className="text-aqua-600 hover:text-aqua-700">Docs</Link>
                           </div>
                         </td>
                       </tr>

@@ -16,6 +16,7 @@ import { QuickEntry } from "@/features/orders/QuickEntry";
 import { StoreSummary } from "@/features/orders/StoreSummary";
 import { RegionFilter, SegmentedControl, SelectStorePrompt, StorePicker } from "@/features/orders/ui";
 import { useCalendar, useCorrectOwnEntry, useMarkManyOrders, useMarkOrder, useMyStores } from "@/features/orders/useOrders";
+import { IconZap } from "@/components/ui/icons";
 
 export function MarkOrdersPage() {
   const { data: stores, isLoading, isError, refetch } = useMyStores();
@@ -148,7 +149,7 @@ export function MarkOrdersPage() {
             onClick={() => setMultiModalOpen(true)}
             className="sm:ml-auto flex items-center gap-1.5 font-bold"
           >
-            <span>⚡</span>
+            <IconZap className="h-4 w-4" />
             <span>Mark multiple dates</span>
           </Button>
         )}

@@ -76,7 +76,7 @@ export default function Documents() {
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${KIND_NAME[d.kind]}`}
                   hitSlop={8}
-                  style={{ marginTop: 10, minHeight: 36, justifyContent: "center", alignSelf: "flex-start" }}
+                  style={{ marginTop: 10, minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}
                 >
                   <Text style={{ color: colors.brand600, fontWeight: "700", fontSize: 15 }}>{opening === d.id ? "Opening…" : "Open file"}</Text>
                 </Pressable>

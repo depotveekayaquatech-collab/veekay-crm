@@ -27,7 +27,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             aria-invalid={Boolean(error)}
             aria-describedby={describedBy}
-            className={`h-10 w-full rounded-lg border bg-surface px-3.5 text-sm text-gray-900 shadow-xs outline-none transition-all placeholder:text-gray-400 focus:ring-3 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-500 ${
+            className={`h-10 w-full rounded-lg border bg-surface px-3.5 text-sm text-gray-900 shadow-xs outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform] placeholder:text-gray-400 focus:ring-3 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-gray-500 ${
               error
                 ? "border-status-danger focus:border-status-danger focus:ring-status-danger/20"
                 : "border-surface-border focus:border-brand-500 focus:ring-brand-500/15"

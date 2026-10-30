@@ -233,19 +233,19 @@ function DailyMatrix() {
                 <thead>
                   <tr>
                     <th className="sticky left-0 top-0 z-30 w-10 border-b border-surface-border bg-ink-800 px-2 py-2.5 text-center text-[11px] font-bold text-white/70">#</th>
-                    <th className="sticky left-10 top-0 z-30 min-w-[15rem] border-b border-r border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-white/70">Store</th>
-                    <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-white/70">Channel</th>
-                    <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-white/70">State / City</th>
+                    <th className="sticky left-10 top-0 z-30 min-w-[15rem] border-b border-r border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold text-white/70">Store</th>
+                    <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold text-white/70">Channel</th>
+                    <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold text-white/70">State / City</th>
                     {data.dates.map((d) => {
                       const h = dateHead(d, longRange);
                       return (
                         <th key={d} title={d} className="sticky top-0 z-20 min-w-[2.6rem] border-b border-surface-border bg-ink-800 px-1.5 py-1.5 text-center">
                           <div className="text-[11px] font-bold text-white">{h.top}</div>
-                          {h.sub && <div className="text-[9px] font-medium uppercase text-white/50">{h.sub}</div>}
+                          {h.sub && <div className="text-[9px] font-medium text-white/50">{h.sub}</div>}
                         </th>
                       );
                     })}
-                    <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-white">Total</th>
+                    <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-right text-[11px] font-bold text-white">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -275,7 +275,7 @@ function DailyMatrix() {
                     </tr>
                   ))}
                   <tr>
-                    <td colSpan={4} className="sticky bottom-0 left-0 z-20 border-t border-surface-border bg-surface-muted px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-600">
+                    <td colSpan={4} className="sticky bottom-0 left-0 z-20 border-t border-surface-border bg-surface-muted px-3 py-2.5 text-xs font-bold text-gray-600">
                       Total · all {data.total} stores
                     </td>
                     {dayTotals.map((t, i) => (
@@ -307,7 +307,7 @@ export function DeliveryReport() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-status-success">Delivery reports</p>
+          <p className="text-[11px] font-bold text-status-success">Delivery reports</p>
           <h2 className="mt-1 text-2xl font-bold text-heading">{view === "matrix" ? "Daily distribution report" : "Delivery summary"}</h2>
           <p className="mt-1 text-sm text-gray-500">
             {view === "matrix"
@@ -320,7 +320,7 @@ export function DeliveryReport() {
             <button
               key={id}
               onClick={() => setView(id)}
-              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-all ${view === id ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform] ${view === id ? "bg-surface text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
             >
               {label}
             </button>

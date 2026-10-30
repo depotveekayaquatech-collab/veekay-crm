@@ -5,18 +5,19 @@ type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 hover:from-brand-500 hover:via-brand-500 hover:to-aqua-500 text-white shadow-sm hover:shadow-glow active:scale-[0.98] border border-white/15 disabled:opacity-50 disabled:shadow-none",
+    "bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 border border-transparent disabled:opacity-55",
   secondary:
-    "bg-surface text-gray-800 border border-surface-border shadow-xs hover:border-gray-400 hover:bg-surface-subtle active:scale-[0.98] disabled:opacity-50 disabled:text-gray-400",
+    "bg-surface text-gray-800 border border-surface-border hover:border-gray-400 hover:bg-surface-subtle disabled:opacity-55",
   danger:
-    "bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white shadow-xs active:scale-[0.98] border border-rose-400/20 disabled:opacity-50",
+    "bg-status-danger text-white hover:brightness-90 active:brightness-75 border border-transparent disabled:opacity-55",
   ghost:
-    "bg-transparent text-gray-700 hover:bg-surface-subtle hover:text-gray-900 active:scale-[0.98]",
+    "bg-transparent text-gray-700 hover:bg-surface-subtle hover:text-gray-900 disabled:opacity-55",
 };
 
 const sizeClasses: Record<Size, string> = {
-  sm: "h-8 px-3 text-xs gap-1.5",
-  md: "h-10 px-4 text-sm gap-2",
+  // 32 / 40 / 44px on a mouse; every size is 44px tall on a touch screen so a thumb can hit it.
+  sm: "h-8 px-3 text-xs gap-1.5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-sm",
+  md: "h-10 px-4 text-sm gap-2 [@media(pointer:coarse)]:h-11",
   lg: "h-11 px-5 text-sm gap-2",
 };
 
@@ -47,7 +48,7 @@ export function Button({
       {...rest}
     >
       {isLoading && (
-        <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none rounded-full border-2 border-current border-t-transparent" />
       )}
       {children}
     </button>

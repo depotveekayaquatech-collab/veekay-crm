@@ -73,7 +73,7 @@ function SalaryEditor({ month, row }: { month: string; row: { userId: string; mo
   const locked = row.status === "PAID";
   return (
     <div className="flex items-end gap-2">
-      <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+      <label className="flex flex-col gap-1 text-[11px] font-bold text-gray-500">
         Monthly salary (₹)
         <input
           className={`${field} w-40 normal-case tracking-normal`}
@@ -150,7 +150,7 @@ function PayslipBody({ month, detail, onClose }: { month: string; detail: Paysli
             [paid ? "Paid amount" : "Amount to pay", money(amount)],
           ].map(([l, v], i) => (
             <div key={l} className={`rounded-xl border p-3 ${i === 3 ? "border-brand-500/40 bg-brand-500/5" : "border-surface-border bg-surface"}`}>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{l}</p>
+              <p className="text-[11px] font-bold text-gray-500">{l}</p>
               <p className="mt-1 text-lg font-extrabold tabular-nums text-heading">{v}</p>
             </div>
           ))}
@@ -203,7 +203,7 @@ export function PayslipView() {
                 {data.months.map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
               </SelectField>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Salary release date</p>
+                <p className="text-[11px] font-bold text-gray-500">Salary release date</p>
                 <p className="text-sm font-bold text-gray-900">
                   {longDate(data.period.releaseDate)} <span className="font-normal text-gray-500">· open for {data.period.windowDays} day{data.period.windowDays === 1 ? "" : "s"}, until {longDate(data.period.closesOn)}</span>
                 </p>
@@ -221,7 +221,7 @@ export function PayslipView() {
               ["Employees", `${data.summary.employees}`, `${data.monthLabel}`],
             ].map(([l, v, hint]) => (
               <div key={l} className="rounded-xl border border-surface-border bg-surface p-4 shadow-card">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{l}</p>
+                <p className="text-[11px] font-bold text-gray-500">{l}</p>
                 <p className="mt-1 text-2xl font-extrabold tabular-nums text-heading">{v}</p>
                 <p className="mt-0.5 text-xs text-gray-500">{hint}</p>
               </div>
@@ -236,7 +236,7 @@ export function PayslipView() {
             <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
               <table className="w-full min-w-[820px] border-collapse text-sm">
                 <thead>
-                  <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold text-gray-500">
                     {["Employee", "Salary", "Days present", "Paid days", "Amount", "Status", ""].map((h) => (
                       <th key={h} className="border-b border-surface-border px-3 py-3 first:pl-4">{h}</th>
                     ))}

@@ -173,7 +173,7 @@ function GroupReport({ d, keepCopy }: { d: Performance; keepCopy: boolean }) {
 
   return (
     <div className="mt-4 rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Report for the group</p>
+      <p className="text-xs font-bold text-gray-500">Report for the group</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Dropdown aria-label="Who to include" value={who} onValueChange={(v) => setWho(v as Who)} options={options} searchable className="w-full sm:w-72" />
         <Button size="sm" onClick={() => void copy()} disabled={!picked.length}>Copy report</Button>
@@ -257,11 +257,10 @@ function PerformanceBody() {
       {view === "employees" && d && (
         <>
           <section className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-4 shadow-card sm:p-6">
-            <span aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-gradient-to-br from-brand-500/15 to-aqua-400/10 blur-2xl" />
             <div className="relative flex flex-wrap items-center gap-x-8 gap-y-5">
               <ProgressRing percent={d.summary.percent} size={128} sublabel="marked" />
               <div className="min-w-[14rem] flex-1">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">{d.partner_label}</p>
+                <p className="text-xs font-bold text-brand-600">{d.partner_label}</p>
                 <h3 className="mt-0.5 text-xl font-extrabold text-heading">{d.month_label}</h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {d.view === "team" ? "Your team: you and the people who report to you. " : alone ? "Your own performance. " : ""}
@@ -316,7 +315,7 @@ function PerformanceBody() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                     <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Stores</th><th className="px-4 py-3" title="Entries this person typed in themselves this month, in any store of the platform">Entries made by them</th>
                     <th className="px-4 py-3" title="Store-days of THIS person's stores that have an entry, whoever entered it, out of the store-days they should have">Their stores covered / needed</th>
                     <th className="px-4 py-3">Missing</th><th className="w-64 px-4 py-3">Performance</th>

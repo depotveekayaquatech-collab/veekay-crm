@@ -34,7 +34,7 @@ function Stat({ label, value, tone, active, onClick }: { label: string; value: n
       aria-pressed={active}
       className={`flex flex-col gap-1 rounded-xl border bg-surface p-4 text-left shadow-card transition-colors hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${active ? "border-brand-500 ring-1 ring-brand-500" : "border-surface-border"}`}
     >
-      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
+      <span className="text-[11px] font-bold text-gray-500">{label}</span>
       <span className={`text-2xl font-extrabold tabular-nums ${tone}`}>{value.toLocaleString("en-IN")}</span>
     </button>
   );
@@ -70,7 +70,7 @@ function PasteText({ rows, monthLabel, current }: { rows: UsageRow[]; monthLabel
 
   return (
     <div className="rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Text to paste</p>
+      <p className="text-xs font-bold text-gray-500">Text to paste</p>
       <p className="mt-1 text-xs text-gray-500">Vendor by vendor: monthly limit (capping × 30), supplied till date and the pending limit, for the stores listed below.</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void copy()} disabled={!rows.length}>Copy text</Button>
@@ -190,7 +190,7 @@ export function UsageTab({ onUpdate }: { onUpdate: (storeId: string) => void }) 
             <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
               <table className="w-full min-w-[1100px] border-collapse text-sm">
                 <thead>
-                  <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold text-gray-500">
                     {["Store", "State / City", "Daily cap", "Monthly limit", "Used", "Left", "Usage", "Status", "Entries", "Highest day", "Last entry", "Owner", ""].map((h, i) => (
                       <th key={i} className="border-b border-surface-border px-3 py-3 first:pl-4">{h}</th>
                     ))}

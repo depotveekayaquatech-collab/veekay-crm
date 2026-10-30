@@ -55,7 +55,7 @@ export function EntryPicker({ kind, label, placeholder, value, valueLabel, platf
             id={id} value={text} placeholder={placeholder} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-list`}
             onChange={(e) => { setText(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
             onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
-            className="h-10 w-full rounded-lg border border-surface-border bg-surface px-3.5 text-sm text-gray-900 shadow-xs outline-none transition-all placeholder:text-gray-400 focus:border-brand-500 focus:ring-3 focus:ring-brand-500/15"
+            className="h-10 w-full rounded-lg border border-surface-border bg-surface px-3.5 text-sm text-gray-900 shadow-xs outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform] placeholder:text-gray-400 focus:border-brand-500 focus:ring-3 focus:ring-brand-500/15"
           />
         )}
         {open && !value && (

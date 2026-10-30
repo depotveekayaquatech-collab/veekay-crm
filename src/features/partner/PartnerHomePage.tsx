@@ -114,12 +114,12 @@ export function PartnerHomePage() {
         />
         <div className="relative flex flex-wrap items-end justify-between gap-5">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-aqua-200 ring-1 ring-white/10">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-aqua-200 ring-1 ring-white/10">
               <span className="h-1.5 w-1.5 rounded-full bg-status-success-soft" /> {data.platform.name} partner portal
             </span>
             <h2 className="mt-4 text-[1.9rem] font-bold leading-tight tracking-tight">Welcome, {user?.fullName ?? data.contact}</h2>
             <p className="mt-1.5 max-w-xl text-sm text-white/70">
-              Aquatrack's water deliveries to your {data.platform.name} stores — live numbers, vendor contacts and your open issues, in one place.
+              Aquatrack's water deliveries to your {data.platform.name} stores: live numbers, vendor contacts and your open issues, in one place.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -191,7 +191,7 @@ export function PartnerHomePage() {
             <div className="stacked-table overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                     <th className="px-5 py-2.5">Region</th>
                     <th className="px-4 py-2.5">Stores marked</th>
                     <th className="px-4 py-2.5">Bottles</th>
@@ -229,7 +229,7 @@ export function PartnerHomePage() {
                 {t.overdue > 0 && <span className="font-semibold text-status-danger"> · {t.overdue} overdue</span>}
               </p>
             </div>
-            <Link to="/tickets" className="text-sm font-semibold text-brand-600 hover:text-brand-700">All tickets →</Link>
+            <Link to="/tickets" className="text-sm font-semibold text-brand-600 hover:text-brand-700">All tickets</Link>
           </div>
           {t.recent.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-gray-500">No tickets yet. If a delivery is late or short, raise one and we'll act on it.</p>

@@ -9,7 +9,7 @@ const STATUS_LABEL = { LIVE: "Live", PENDING: "Pending", CLOSE: "Closed" } as co
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</dt>
+      <dt className="text-[11px] font-bold text-gray-500">{label}</dt>
       <dd className="text-sm text-gray-900">{value || <span className="text-gray-400">—</span>}</dd>
     </div>
   );

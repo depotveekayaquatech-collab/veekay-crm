@@ -47,7 +47,7 @@ export function VendorHome() {
           style={{ backgroundImage: "radial-gradient(420px circle at 0% 0%, rgba(47,111,237,0.6), transparent 60%), radial-gradient(360px circle at 100% 100%, rgba(42,169,189,0.5), transparent 60%)" }}
         />
         <div className="relative">
-          <span className="inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-aqua-200 ring-1 ring-white/10">
+          <span className="inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-aqua-200 ring-1 ring-white/10">
             {isPoc ? "Store POC" : "Vendor"}
           </span>
           <h1 className="mt-3 text-xl font-bold leading-tight">Hello, {niceName(account?.full_name ?? "").split(" ")[0]}</h1>

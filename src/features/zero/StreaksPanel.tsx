@@ -14,7 +14,7 @@ import { useZeroFilters } from "@/features/zero/useZeroFilters";
 
 const Tile = ({ label, value, tone = "text-heading" }: { label: string; value: number; tone?: string }) => (
   <div className="rounded-xl border border-surface-border bg-surface px-4 py-3">
-    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+    <p className="text-[11px] font-bold text-gray-400">{label}</p>
     <p className={`text-xl font-extrabold tabular-nums ${tone}`}>{value.toLocaleString()}</p>
   </div>
 );

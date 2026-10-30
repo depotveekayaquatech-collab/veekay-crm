@@ -245,7 +245,7 @@ export function AccountsPage() {
           <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[820px] text-sm">
               <thead>
-                <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                   <th className="w-10 px-4 py-3">
                     <input type="checkbox" aria-label="Select all on this page" checked={allOnPageSelected} onChange={togglePage} className="accent-brand-500" />
                   </th>

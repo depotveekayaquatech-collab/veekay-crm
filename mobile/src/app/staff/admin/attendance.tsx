@@ -91,7 +91,7 @@ function DatesGrid({ month, r }: { month: AttendanceMonth; r: AttendanceMonthRow
                 disabled={!editable}
                 onPress={() => (present.has(iso) ? removeOne(iso) : setPicked((s) => { const n = new Set(s); if (n.has(iso)) n.delete(iso); else n.add(iso); return n; }))}
                 accessibilityRole={editable ? "button" : undefined} accessibilityLabel={`${iso}: ${kind}${on ? ", selected" : ""}`}
-                style={{ height: 34, borderRadius: 8, backgroundColor: bg, alignItems: "center", justifyContent: "center", borderWidth: on ? 2 : 0, borderColor: colors.brand600 }}>
+                style={{ height: 40, borderRadius: 8, backgroundColor: bg, alignItems: "center", justifyContent: "center", borderWidth: on ? 2 : 0, borderColor: colors.brand600 }}>
                 <Text style={{ color: fg, fontWeight: kind === "present" ? "800" : "600", fontSize: 13 }}>{d.getDate()}</Text>
               </Pressable>
             </View>

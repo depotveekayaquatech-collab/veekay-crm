@@ -121,13 +121,13 @@ export function ImportSheetModal({ month: initialMonth, onClose }: { month: stri
                 ["Already from a sheet", preview.already_from_sheet],
               ].map(([label, n]) => (
                 <div key={label as string} className="rounded-xl bg-surface-subtle px-3 py-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+                  <p className="text-[11px] font-semibold text-gray-500">{label}</p>
                   <p className="text-xl font-extrabold tabular-nums text-heading">{n}</p>
                 </div>
               ))}
             </div>
             <p className="text-xs text-gray-500">
-              Days found in the sheet: {preview.days_in_sheet[0]}–{preview.days_in_sheet[preview.days_in_sheet.length - 1]} · sheet "{preview.sheet}"
+              Days found in the sheet: {preview.days_in_sheet[0]} to {preview.days_in_sheet[preview.days_in_sheet.length - 1]}, sheet "{preview.sheet}"
               {preview.future_days_skipped ? ` · ${preview.future_days_skipped} day(s) today or later skipped` : ""}
             </p>
             {nothing && <p className="rounded-lg bg-surface-subtle px-3 py-2 text-gray-600">Nothing to write: every P in this sheet is already recorded from a sheet, or none matched.</p>}

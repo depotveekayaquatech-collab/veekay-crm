@@ -19,7 +19,7 @@ export function VendorHistory({ storeId, minEntries = 2 }: { storeId: string; mi
   if (isLoading || data.length < minEntries) return null; // nothing worth showing until enough vendors exist
   return (
     <div className="sm:col-span-2">
-      <p className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">Vendor history</p>
+      <p className="mb-1 text-xs font-bold text-gray-500">Vendor history</p>
       <ul className="flex flex-col divide-y divide-surface-border rounded-lg border border-surface-border text-sm">
         {data.map((v, i) => (
           <li key={i} className="flex flex-col gap-0.5 px-3 py-2">

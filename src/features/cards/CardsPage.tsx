@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { IconDownload, IconSearch } from "@/components/ui/icons";
+import { IconAlertTriangle, IconDownload, IconSearch } from "@/components/ui/icons";
 import { usePartners } from "@/features/stores/useStores";
 import { usePermission } from "@/hooks/usePermission";
 import { apiBlob, apiRequest } from "@/services/api";
@@ -163,9 +163,9 @@ export function CardsPage() {
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
           Cards
           <SelectField className={`${field} min-w-[16rem]`} value={month} onChange={(e) => setMonth(e.target.value)}>
-            <option value="">Blank — no month on the card</option>
+            <option value="">Blank, no month on the card</option>
             {data?.months.map((m) => (
-              <option key={m.value} value={m.value}>With entry — {m.label}</option>
+              <option key={m.value} value={m.value}>With entry, {m.label}</option>
             ))}
           </SelectField>
         </label>
@@ -219,7 +219,7 @@ export function CardsPage() {
 
       {data && data.isPublicAppUrlProductionReady === false && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm">
-          <span className="mt-0.5 text-lg">⚠️</span>
+          <IconAlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
           <div className="flex-1 text-xs sm:text-sm">
             <span className="font-bold">QR Destination Warning:</span> The QR code printed on these cards currently points to{" "}
             <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono font-semibold text-amber-950">

@@ -95,7 +95,7 @@ function Row({
       {r.status === "CHANGED" && r.previousSource && r.currentSource && (
         <tr className="bg-status-warning-soft/40">
           <Td colSpan={9} className="text-sm">
-            <p className="font-semibold text-status-warning">Review required — the source purchase changed after the last sync.</p>
+            <p className="font-semibold text-status-warning">Review required: the source purchase changed after the last sync.</p>
             <p className="mt-1 text-gray-700">
               Before: {r.previousSource.storeName ?? "—"} · {day(r.previousSource.purchaseDate)} · ₹{r.previousSource.amount} &nbsp;→&nbsp; Now: {r.currentSource.storeName ?? "—"} · {day(r.currentSource.purchaseDate)} · ₹{r.currentSource.amount}
               {r.everApplied && <span className="ml-2 text-gray-500">(+{r.appliedQty} was already added to the order sheet)</span>}
@@ -349,7 +349,7 @@ export function SyncTab() {
           </ul>
           {result.failed.length > 0 && (
             <ul className="list-disc rounded-lg bg-status-danger-soft px-4 py-2 pl-8 text-status-danger">
-              {result.failed.map((f, i) => <li key={i}>Not updated: {f.outletName} · {day(f.purchaseDate)} — {f.error}</li>)}
+              {result.failed.map((f, i) => <li key={i}>Not updated: {f.outletName} · {day(f.purchaseDate)}: {f.error}</li>)}
             </ul>
           )}
         </section>

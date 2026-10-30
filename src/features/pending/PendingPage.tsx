@@ -24,7 +24,7 @@ function CallButton({ label, name, phone }: { label: string; name: string | null
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-subtle px-3 py-2">
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+        <p className="text-[11px] font-bold text-gray-400">{label}</p>
         <p className="truncate text-sm font-semibold text-gray-900">{name ?? "—"}</p>
       </div>
       {phone && (
@@ -204,7 +204,7 @@ export function PendingPage() {
                 <div className="flex flex-wrap gap-1.5">
                   <FilterChip active={urgency === "all"} onClick={() => setUrgency("all")} count={scoped.length}>All</FilterChip>
                   <FilterChip active={urgency === "late"} onClick={() => setUrgency("late")} count={counts.late}>3+ days</FilterChip>
-                  <FilterChip active={urgency === "recent"} onClick={() => setUrgency("recent")} count={counts.recent}>1–2 days</FilterChip>
+                  <FilterChip active={urgency === "recent"} onClick={() => setUrgency("recent")} count={counts.recent}>1 to 2 days</FilterChip>
                   <FilterChip active={urgency === "today"} onClick={() => setUrgency("today")} count={counts.today}>Today only</FilterChip>
                 </div>
               </div>

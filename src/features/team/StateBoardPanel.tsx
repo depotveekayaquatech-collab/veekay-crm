@@ -52,7 +52,7 @@ export function StateBoardPanel() {
 
           <div className="mt-3 grid gap-4 lg:grid-cols-2">
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Unassigned</p>
+              <p className="mb-1.5 text-xs font-semibold text-gray-400">Unassigned</p>
               <div className="max-h-56 space-y-1 overflow-auto">
                 {board.unassigned.length === 0 && <p className="text-sm text-gray-400">All states assigned.</p>}
                 {board.unassigned.map((s) => (
@@ -71,7 +71,7 @@ export function StateBoardPanel() {
               </div>
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Assigned</p>
+              <p className="mb-1.5 text-xs font-semibold text-gray-400">Assigned</p>
               <div className="max-h-56 space-y-1 overflow-auto">
                 {board.assigned.length === 0 && <p className="text-sm text-gray-400">None yet.</p>}
                 {board.assigned.map((s) => (

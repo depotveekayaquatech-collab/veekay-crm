@@ -24,7 +24,7 @@ function timeAgo(ms: number, now: number): string {
   return `${Math.round(s / 60)}m ago`;
 }
 
-const MEDAL = ["from-amber-300 to-amber-500", "from-slate-300 to-slate-400", "from-orange-300 to-orange-500"];
+const MEDAL = ["bg-amber-500", "bg-slate-400", "bg-orange-500"];                       // gold, silver, bronze: solid
 
 export function DailyOverviewPage() {
   const { data: partners = [] } = usePartners();
@@ -130,11 +130,10 @@ export function DailyOverviewPage() {
       {data && (
         <>
           <section className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-4 shadow-card sm:p-6">
-            <span aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-gradient-to-br from-brand-500/15 to-aqua-400/10 blur-2xl" />
             <div className="relative flex flex-wrap items-center gap-x-8 gap-y-5">
               <ProgressRing percent={totals.percent} size={128} sublabel="complete" />
               <div className="min-w-[14rem] flex-1">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">{data.partnerLabel}</p>
+                <p className="text-xs font-bold text-brand-600">{data.partnerLabel}</p>
                 <h3 className="mt-0.5 text-xl font-extrabold text-heading">{data.dateLabel}</h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {totals.done} of {totals.stores} stores marked by {scoped.length} employees
@@ -188,7 +187,7 @@ export function DailyOverviewPage() {
               <ol className="grid gap-3 sm:grid-cols-3">
                 {top.map((e, i) => (
                   <li key={e.employeeId} className="flex items-center gap-3 rounded-xl bg-surface-subtle p-3.5">
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-extrabold text-white shadow ${MEDAL[i]}`} aria-label={`Rank ${i + 1}`}>
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${MEDAL[i]}`} aria-label={`Rank ${i + 1}`}>
                       {i + 1}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -197,7 +196,7 @@ export function DailyOverviewPage() {
                     </div>
                     <p className="text-right text-lg font-extrabold tabular-nums text-heading">
                       {e.bottles}
-                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">bottles</span>
+                      <span className="block text-[11px] font-semibold text-gray-400">bottles</span>
                     </p>
                   </li>
                 ))}
@@ -235,7 +234,7 @@ export function DailyOverviewPage() {
             <div className="stacked-table overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                     <th className="px-5 py-3">Employee</th>
                     <th className="px-4 py-3">Stores</th>
                     <th className="px-4 py-3">Bottles</th>

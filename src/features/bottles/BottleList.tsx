@@ -35,7 +35,7 @@ function Tile({ label, value, tone, active, onClick, hint }: { label: string; va
       aria-pressed={active}
       className={`flex flex-col items-start justify-start rounded-xl border px-4 py-3 text-left shadow-card transition-colors ${active ? "border-brand-500 bg-surface ring-1 ring-brand-500" : "border-surface-border bg-surface hover:border-gray-300"}`}
     >
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-[11px] font-bold text-gray-500">{label}</p>
       <p className={`mt-1 text-xl font-bold tabular-nums ${tone === "danger" && value ? "text-status-danger" : "text-heading"}`}>{value?.toLocaleString("en-IN") ?? "—"}</p>
       <p className="mt-0.5 min-h-[1rem] text-[11px] leading-4 text-gray-500">{hint}</p>
     </button>
@@ -166,7 +166,7 @@ export function BottleModal({ serial, canManage, onClose, onOpen }: { serial: st
                     },
                   })}
                 >
-                  QR damaged — issue new code
+                  QR damaged: issue new code
                 </Button>
                 <Button variant="danger" isLoading={retire.isPending} onClick={() => window.confirm(`Retire ${b.serial}? It can no longer be scanned.`) && retire.mutate({ serial: b.serial, reason })}>
                   Retire bottle

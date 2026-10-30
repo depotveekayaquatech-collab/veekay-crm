@@ -33,7 +33,7 @@ async function send(text: string) {
 function ShareButton({ label, onPress, solid }: { label: string; onPress: () => void; solid?: boolean }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={6} android_ripple={{ color: colors.brand100 }}
-      style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: solid ? colors.brand600 : colors.brand50 }}>
+      style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: solid ? colors.brand600 : colors.brand50 }}>
       <Ionicons name="logo-whatsapp" size={17} color={solid ? colors.white : colors.brand600} />
       <Text style={{ fontWeight: "800", color: solid ? colors.white : colors.brand600 }}>{label}</Text>
     </Pressable>

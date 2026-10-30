@@ -306,7 +306,7 @@ export default function MarkMany() {
                     <Button title="Save" onPress={() => saveFix(false)} disabled={!valid(fixValue) || correct.isPending} loading={correct.isPending} style={{ minHeight: 44, paddingHorizontal: 18 }} />
                   </View>
                 </View>
-                <Pressable onPress={() => setFixing(null)} accessibilityRole="button" style={{ marginTop: 10, minHeight: 36, justifyContent: "center" }}>
+                <Pressable onPress={() => setFixing(null)} accessibilityRole="button" style={{ marginTop: 10, minHeight: 44, justifyContent: "center" }}>
                   <Text style={{ color: colors.brand700, fontWeight: "700" }}>Cancel</Text>
                 </Pressable>
               </Card>
@@ -403,7 +403,7 @@ export default function MarkMany() {
 
 function Shortcut({ label, onPress, tone = "brand" }: { label: string; onPress: () => void; tone?: "brand" | "plain" }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={{ minHeight: 38, paddingHorizontal: 14, borderRadius: radius.pill, justifyContent: "center", backgroundColor: tone === "brand" ? colors.brand50 : colors.surface, borderWidth: 1, borderColor: tone === "brand" ? colors.brand200 : colors.border }}>
+    <Pressable onPress={onPress} accessibilityRole="button" style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: radius.pill, justifyContent: "center", backgroundColor: tone === "brand" ? colors.brand50 : colors.surface, borderWidth: 1, borderColor: tone === "brand" ? colors.brand200 : colors.border }}>
       <Text style={{ fontWeight: "700", fontSize: 13, color: tone === "brand" ? colors.brand700 : colors.textMuted }}>{label}</Text>
     </Pressable>
   );

@@ -27,7 +27,7 @@ function AlertRow({ r }: { r: UsageRow }) {
           <p className="truncate text-sm font-bold text-gray-900" title={r.outletName}>{r.outletName}</p>
           {place && <p className="truncate text-[11px] text-gray-500">{place}</p>}
         </div>
-        <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${over ? "bg-status-danger/10 text-status-danger" : "bg-status-warning/10 text-status-warning"}`}>
+        <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${over ? "bg-status-danger/10 text-status-danger" : "bg-status-warning/10 text-status-warning"}`}>
           {over ? "Over limit" : "Ahead of pace"}
         </span>
       </div>

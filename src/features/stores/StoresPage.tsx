@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SearchBox } from "@/features/orders/ui";
+import { StoreTable } from "@/features/stores/StoreTable";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { useDebounced } from "@/hooks/useDebounced";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -28,12 +31,16 @@ const STATUS_TABS = [
 ];
 
 export function StoresPage() {
+  // A link such as /stores?search=ZPT000360 (from the command palette) opens the list already narrowed to that store, across every status.
+  const [params] = useSearchParams();
+  const [layout, setLayout] = usePersistentState<"cards" | "table">("stores.layout", "cards");      // cards stay the default; the table is a choice, remembered
+  const linked = (params.get("search") ?? "").slice(0, 80);
   const [page, setPage] = useState(1);
   const [regionId, setRegionId] = useState("");
   const [partner, setPartner] = useState("");
-  const [storeStatus, setStoreStatus] = useState("LIVE");
+  const [storeStatus, setStoreStatus] = useState(linked ? "" : "LIVE");
   const [editing, setEditing] = useState<Store | null | undefined>(undefined);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(linked);
   const [viewing, setViewing] = useState<Store | null>(null);
   const search = useDebounced(q.trim());
 
@@ -132,9 +139,9 @@ export function StoresPage() {
                     setStoreStatus(t.value);
                     setPage(1);
                   }}
-                  className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                  className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                     active
-                      ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs"
+                      ? "bg-brand-600 text-white"
                       : "text-gray-600 hover:bg-surface hover:text-gray-900"
                   }`}
                 >
@@ -159,6 +166,14 @@ export function StoresPage() {
                 Clear filters
               </button>
             )}
+            <div role="group" aria-label="Layout" className="hidden items-center gap-0.5 rounded-lg border border-surface-border p-0.5 md:flex">
+              {(["cards", "table"] as const).map((v) => (
+                <button key={v} type="button" aria-pressed={layout === v} onClick={() => setLayout(v)}
+                  className={`min-h-7 rounded-md px-2.5 text-xs font-semibold transition-colors ${layout === v ? "bg-brand-600 text-white" : "text-gray-600 hover:bg-surface-subtle"}`}>
+                  {v === "cards" ? "Cards" : "Table"}
+                </button>
+              ))}
+            </div>
             <span className="text-xs font-medium text-gray-500">
               {data ? `${data.total} store${data.total === 1 ? "" : "s"}` : ""}
             </span>
@@ -225,7 +240,21 @@ export function StoresPage() {
               )}
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <>
+              {layout === "table" && (
+                <div className="hidden md:block">
+                  <StoreTable
+                    stores={data.items}
+                    canManage={canManage}
+                    onView={(store) => setViewing(store)}
+                    onEdit={(store) => setEditing(store)}
+                    onClose={(store) => {
+                      if (window.confirm(`Close ${store.name}? Its order history is kept and you can set it Live again later.`)) close.mutate(store.id);
+                    }}
+                  />
+                </div>
+              )}
+            <div className={`grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 ${layout === "table" ? "md:hidden" : ""}`}>
               {data.items.map((store) => (
                 <StoreCard
                   key={store.id}
@@ -239,6 +268,7 @@ export function StoresPage() {
                 />
               ))}
             </div>
+            </>
           )}
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
         </>

@@ -15,7 +15,7 @@ export function ForcedPasswordChange() {
         <div className="rounded-xl border border-surface-border bg-surface p-6 shadow-card">
           <h1 className="text-xl font-bold text-heading">Choose your own password</h1>
           <p className="mt-1.5 text-sm text-gray-500">
-            Hi {user?.fullName?.split(" ")[0] ?? "there"} — you signed in with a temporary password. Set a new one to continue.
+            Hi {user?.fullName?.split(" ")[0] ?? "there"}, you signed in with a temporary password. Set a new one to continue.
           </p>
           <div className="mt-5">
             <PasswordForm forced />

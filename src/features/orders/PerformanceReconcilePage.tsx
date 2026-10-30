@@ -347,7 +347,7 @@ export function PerformanceReconcilePage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                     <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Earlier</th><th className="px-4 py-3">Later</th><th className="px-4 py-3" title="Entries gained (+) or lost (-). Under it: the change as a share of the earlier entries (%), and how far the performance percentage itself moved (pts = percentage points, e.g. 54.3% to 56.0% is +1.7 pts)">Change</th><th className="px-4 py-3" title="Entries this person marked (created) between the two moments, whoever's stores they were">Marked by them</th>
                     <th className="px-4 py-3">What explains it</th><th className="px-4 py-3">Unexplained</th><th className="px-4 py-3">Status</th>
                   </tr>

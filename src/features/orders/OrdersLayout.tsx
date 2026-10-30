@@ -67,10 +67,9 @@ export function OrdersLayout() {
   return (
     <div className="flex flex-col gap-6">
       <header className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-5 shadow-card sm:p-6">
-        <span aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-gradient-to-br from-brand-500/20 to-aqua-400/10 blur-2xl" />
         <div className="relative flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-600">{today}</p>
+            <p className="text-xs font-bold text-brand-600">{today}</p>
             <h2 className="mt-1 text-2xl font-extrabold text-heading sm:text-[1.75rem]">{dataEntryOnly ? "Data Entry" : "Orders"}</h2>
             <p className="mt-1 text-sm text-gray-500">{dataEntryOnly ? "Mark each store's daily bottle count, and see when a Team Lead or Reviewer changed one of yours." : "Record, review and correct daily bottle counts across every store."}</p>
           </div>
@@ -86,9 +85,9 @@ export function OrdersLayout() {
                 end={t.end}
                 title={`${t.blurb} (press ${i + 1})`}
                 className={({ isActive }) =>
-                  `group flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all ${
+                  `group flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                     isActive
-                      ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs border border-white/15"
+                      ? "bg-brand-600 text-white"
                       : "text-gray-700 hover:bg-surface-subtle hover:text-gray-900 border border-transparent"
                   }`
                 }
@@ -102,7 +101,7 @@ export function OrdersLayout() {
           })}
         </nav>
       </header>
-      <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-surface-border/40" aria-busy="true" />}>
+      <Suspense fallback={<div className="h-64 animate-pulse motion-reduce:animate-none rounded-2xl bg-surface-border/40" aria-busy="true" />}>
         <Outlet />
       </Suspense>
     </div>

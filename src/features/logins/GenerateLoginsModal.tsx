@@ -56,7 +56,7 @@ export function GenerateLoginsModal({ onClose }: { onClose: () => void }) {
           <div className="grid gap-3 text-sm sm:grid-cols-2">
             {([["Vendors", preview.vendors], ["POCs", preview.pocs]] as const).map(([label, p]) => (
               <div key={label} className="rounded-xl border border-surface-border p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+                <p className="text-[11px] font-bold text-gray-500">{label}</p>
                 <p className="text-xl font-extrabold tabular-nums text-heading">{p.accounts.toLocaleString("en-IN")}</p>
                 <p className="text-xs text-gray-500">{p.skipped} placeholder names skipped · {p.sharedNames} names shared by several people</p>
                 <ul className="mt-2 space-y-0.5 text-xs text-gray-700">

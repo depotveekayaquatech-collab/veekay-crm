@@ -70,7 +70,7 @@ export function OfficesView() {
         <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                 <th className="px-4 py-3">Office</th>
                 <th className="px-3 py-3">Location</th>
                 <th className="px-3 py-3">Radius</th>

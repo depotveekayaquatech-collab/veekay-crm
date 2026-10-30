@@ -75,7 +75,7 @@ export function ImportStoresModal({ onClose }: { onClose: () => void }) {
             ].map((x) => (
               <div key={x.l} className="rounded-xl border border-surface-border p-3">
                 <p className={`text-2xl font-bold tabular-nums ${x.c}`}>{x.v}</p>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{x.l}</p>
+                <p className="text-[11px] font-bold text-gray-500">{x.l}</p>
               </div>
             ))}
           </div>

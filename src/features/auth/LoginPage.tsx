@@ -64,14 +64,14 @@ export function LoginPage() {
         </div>
 
         <div className="relative max-w-md">
-          <span className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-aqua-200 ring-1 ring-white/10">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-success animate-pulse" /> Operations workspace
+          <span className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-aqua-200 ring-1 ring-white/10">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-success animate-pulse motion-reduce:animate-none" /> Operations workspace
           </span>
           <h2 className="text-[2.2rem] font-extrabold leading-tight tracking-tight">
             Packaged drinking water logistics, perfected.
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-white/70">
-            Trusted by quick-commerce giants Blinkit and Zepto for over 14 years — keeping hundreds of dark stores
+            Trusted by quick-commerce giants Blinkit and Zepto for over 14 years, keeping hundreds of dark stores
             stocked with pure water every single day.
           </p>
 
@@ -158,7 +158,7 @@ export function LoginPage() {
           {import.meta.env.DEV && (
             <div className="mt-8 rounded-2xl border border-surface-border bg-surface-subtle/80 p-4 shadow-xs">
               <div className="flex items-center justify-between mb-2.5">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Quick Demo Access</p>
+                <p className="text-[11px] font-bold text-gray-500">Quick Demo Access</p>
                 <span className="font-mono text-[11px] text-gray-400">Pass@123</span>
               </div>
               <div className="flex flex-col gap-2">
@@ -174,7 +174,7 @@ export function LoginPage() {
                       setEmployeeCode(demo.code);
                       setPassword("Pass@123");
                     }}
-                    className="group flex items-center justify-between rounded-xl border border-surface-border bg-surface px-3 py-2 text-left text-xs transition-all hover:border-brand-500/50 hover:bg-brand-500/5 active:scale-[0.99]"
+                    className="group flex items-center justify-between rounded-xl border border-surface-border bg-surface px-3 py-2 text-left text-xs transition-[color,background-color,border-color,box-shadow,opacity,transform] hover:border-brand-500/50 hover:bg-brand-500/5 active:scale-[0.99]"
                   >
                     <div className="flex items-center gap-2">
                       <code className="rounded-md border border-brand-500/20 bg-brand-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-brand-600">

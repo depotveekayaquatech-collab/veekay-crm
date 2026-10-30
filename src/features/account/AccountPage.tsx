@@ -101,12 +101,12 @@ export function AccountPage() {
                 ["Email", user?.email],
               ].map(([k, v]) => (
                 <div key={k as string}>
-                  <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k}</dt>
+                  <dt className="text-[11px] font-bold text-gray-500">{k}</dt>
                   <dd className="mt-0.5 font-medium text-gray-900">{v || "—"}</dd>
                 </div>
               ))}
               <div className="sm:col-span-2">
-                <dt className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Roles</dt>
+                <dt className="text-[11px] font-bold text-gray-500">Roles</dt>
                 <dd className="mt-1 flex flex-wrap gap-1.5">
                   {(user?.roles ?? []).map((r) => (
                     <Badge key={r} tone="info">{r.replace(/_/g, " ")}</Badge>

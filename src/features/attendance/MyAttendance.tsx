@@ -129,7 +129,7 @@ function CheckCard({ today }: { today: TodayStatus }) {
       {noLocation && (
         <div className="relative flex flex-wrap items-center gap-3 border-t border-status-warning/25 bg-status-warning-soft/60 px-5 py-3 text-sm sm:px-7">
           <span className="text-gray-700">
-            We couldn't read your location. Location is required to check in — allow location access for this site in your browser and try again.
+            We couldn't read your location. Location is required to check in. Allow location access for this site in your browser and try again.
           </span>
           <span className="ml-auto flex gap-2">
             <Button size="sm" variant="secondary" onClick={() => void go("in")}>Try again</Button>
@@ -171,7 +171,7 @@ export function MyAttendance() {
             ["Absent", me.absentDays, me.absentDays ? "warning" : "success"],
           ].map(([t, v, tone]) => (
             <div key={t as string} className={`tile tile-${tone} rounded-xl border border-surface-border bg-surface p-4 shadow-card`}>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t}</p>
+              <p className="text-[11px] font-bold text-gray-500">{t}</p>
               <p className="mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums text-heading">{v}</p>
             </div>
           ))}
@@ -186,7 +186,7 @@ export function MyAttendance() {
         <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                 <th className="px-4 py-3">Date</th>
                 <th className="px-3 py-3">Check in</th>
                 <th className="px-3 py-3">Check out</th>

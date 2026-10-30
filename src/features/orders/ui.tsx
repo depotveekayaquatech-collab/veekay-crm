@@ -26,7 +26,7 @@ export function SegmentedControl<T extends string>({
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold [@media(pointer:coarse)]:min-h-10 transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
             value === o.value
               ? "bg-surface text-brand-600 dark:text-brand-300 shadow-xs ring-1 ring-surface-border"
               : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
@@ -46,7 +46,7 @@ export function FilterChip({ active, onClick, children, count }: { active: boole
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
         active
           ? "border-brand-500/30 bg-brand-500/10 text-brand-600 ring-1 ring-brand-500/20"
           : "border-surface-border bg-surface text-gray-700 hover:border-gray-400 hover:text-gray-900"
@@ -101,7 +101,7 @@ export function SearchBox({
         aria-label={placeholder}
         autoComplete="off"
         spellCheck={false}
-        className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-9 text-sm shadow-xs outline-none transition-all placeholder:text-gray-400 focus:border-brand-500 focus:ring-3 focus:ring-brand-500/15"
+        className="h-10 w-full rounded-lg border border-surface-border bg-surface pl-9 pr-9 text-sm shadow-xs outline-none transition-[color,background-color,border-color,box-shadow,opacity,transform] placeholder:text-gray-400 focus:border-brand-500 focus:ring-3 focus:ring-brand-500/15"
       />
       {value ? (
         <button type="button" onClick={() => onChange("")} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 hover:bg-surface-muted hover:text-gray-700">
@@ -118,11 +118,11 @@ export function SearchBox({
 export function ProgressBar({ percent, className = "", strict = false }: { percent: number; className?: string; strict?: boolean }) {
   const p = Math.max(0, Math.min(100, percent));
   const tone = strict
-    ? p >= 100 ? "from-status-success to-status-success/70" : p >= 70 ? "from-yellow-500 to-yellow-400" : "from-status-danger to-status-danger/70"
-    : p >= 85 ? "from-status-success to-aqua-400" : p >= 50 ? "from-brand-500 to-aqua-400" : "from-status-warning to-status-warning/70";
+    ? p >= 100 ? "bg-status-success" : p >= 70 ? "bg-status-warning" : "bg-status-danger"
+    : p >= 85 ? "bg-status-success" : p >= 50 ? "bg-brand-500" : "bg-status-warning";
   return (
     <div className={`h-2 overflow-hidden rounded-full bg-surface-muted ${className}`} role="progressbar" aria-valuenow={Math.round(p)} aria-valuemin={0} aria-valuemax={100}>
-      <div className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ${tone}`} style={{ width: `${p}%` }} />
+      <div className={`h-full w-full origin-left transition-transform duration-500 motion-reduce:transition-none ${tone}`} style={{ transform: `scaleX(${p / 100})` }} />
     </div>
   );
 }
@@ -159,7 +159,7 @@ export function ProgressRing({ percent, size = 112, label, sublabel }: { percent
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-extrabold tabular-nums text-heading">{label ?? `${Math.round(p)}%`}</span>
-        {sublabel && <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{sublabel}</span>}
+        {sublabel && <span className="text-[11px] font-semibold text-gray-500">{sublabel}</span>}
       </div>
     </div>
   );
@@ -190,7 +190,7 @@ export function StatCard({
       <span aria-hidden="true" className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-white/10" />
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">{label}</p>
+          <p className="text-[11px] font-bold text-white/80">{label}</p>
           <p className="mt-1.5 text-[1.9rem] font-extrabold leading-none tabular-nums">
             {typeof value === "number" ? <AnimatedNumber value={value} /> : value}
           </p>
@@ -212,7 +212,7 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg"
   const text = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-aqua-400 font-bold text-white ${
+      className={`flex shrink-0 items-center justify-center rounded-full bg-brand-600 font-bold text-white ${
         size === "lg" ? "h-11 w-11 text-sm" : "h-8 w-8 text-[11px]"
       }`}
     >
@@ -304,7 +304,7 @@ export function StorePicker({
                   active ? "bg-brand-50 shadow-[inset_3px_0_0_0_rgb(var(--brand-500))]" : "hover:bg-surface-subtle"
                 }`}
               >
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${active ? "bg-gradient-to-br from-brand-500 to-aqua-400 text-white" : "bg-surface-muted text-gray-500"}`}>
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${active ? "bg-brand-600 text-white" : "bg-surface-muted text-gray-500"}`}>
                   <IconStore className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -327,7 +327,7 @@ export function StorePicker({
 export function SelectStorePrompt({ text = "Pick a store from the list to see its calendar." }: { text?: string }) {
   return (
     <div className="flex min-h-[18rem] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-surface-border bg-surface px-6 py-12 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500/20 to-aqua-400/20 text-brand-600">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-100 text-brand-600">
         <IconStore className="h-7 w-7" aria-hidden="true" />
       </span>
       <p className="text-sm font-bold text-gray-800">No store selected</p>

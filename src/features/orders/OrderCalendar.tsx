@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/Input";
 import type { CalendarDay, OrderCalendar as Cal } from "@/types/order";
 import { fmtMomentShort } from "@/features/entries/format";
 import { ENTRY_TONES, ENTRY_TONE_ORDER } from "@/features/orders/entryTone";
+import { IconZap } from "@/components/ui/icons";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -37,7 +38,7 @@ function ChangedByList({ days }: { days: CalendarDay[] }) {
                   {d.date}: <span className="text-gray-500 line-through">{d.changed!.oldCount}</span> → <span className="text-brand-700">{d.changed!.newCount}</span> bottles
                 </p>
                 <p className="text-xs text-gray-600">
-                  Changed by <b>{d.changed!.byName ?? "a senior colleague"}</b> – {d.changed!.byRoleLabel}, {fmtMomentShort(d.changed!.at)}
+                  Changed by <b>{d.changed!.byName ?? "a senior colleague"}</b>, {d.changed!.byRoleLabel}, {fmtMomentShort(d.changed!.at)}
                   {d.changed!.reason ? ` · "${d.changed!.reason}"` : ""}
                 </p>
               </li>
@@ -276,13 +277,13 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
                 setSelected(null);
                 if (multiMode) clearSelection();
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                 multiMode
                   ? "bg-brand-600 text-white shadow-xs"
                   : "bg-brand-50 text-brand-700 hover:bg-brand-100"
               }`}
             >
-              <span>⚡</span>
+              <IconZap className="h-4 w-4" />
               {multiMode ? `Multi-date mode (${selectedDates.size})` : "Select multiple dates"}
             </button>
           )}
@@ -302,7 +303,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
           { label: "Avg / day", value: stats.avg, tone: "text-heading" },
         ].map((s) => (
           <div key={s.label} className="px-4 py-3 sm:px-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{s.label}</p>
+            <p className="text-[11px] font-bold text-gray-400">{s.label}</p>
             <p className={`mt-0.5 text-lg font-bold tabular-nums ${s.tone}`}>{s.value}</p>
           </div>
         ))}
@@ -351,7 +352,7 @@ export function OrderCalendar({ calendar, onMark, onCorrect, onMarkMany, onPickD
           </div>
         )}
 
-        <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 sm:gap-2">
+        <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold text-gray-400 sm:gap-2">
           {WEEKDAYS.map((w) => (
             <div key={w} className="pb-1">{w}</div>
           ))}

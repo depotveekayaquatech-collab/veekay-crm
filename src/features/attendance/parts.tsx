@@ -76,9 +76,9 @@ export function CategoryChips({
     <button
       key={id}
       onClick={() => onChange(id)}
-      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
         value === id
-          ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs"
+          ? "bg-brand-600 text-white"
           : "bg-surface text-gray-700 ring-1 ring-surface-border hover:bg-surface-subtle hover:text-gray-900"
       }`}
     >
@@ -97,7 +97,7 @@ export function CategoryChips({
 export function GroupRow({ colSpan, label, count }: { colSpan: number; label: string; count: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="border-y border-surface-border bg-surface-muted/70 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-600">
+      <td colSpan={colSpan} className="border-y border-surface-border bg-surface-muted/70 px-4 py-2 text-[11px] font-bold text-gray-600">
         {label} <span className="ml-1 font-semibold text-gray-400">· {count}</span>
       </td>
     </tr>

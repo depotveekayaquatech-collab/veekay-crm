@@ -111,7 +111,7 @@ export default function Scan() {
         <View style={{ flexDirection: "row", backgroundColor: "rgba(0,0,0,0.55)", borderRadius: radius.pill, padding: 4 }}>
           {(["IN", "OUT"] as const).map((d) => (
             <Pressable key={d} onPress={() => setDirection(d)} accessibilityRole="button" accessibilityState={{ selected: direction === d }}
-              style={{ flex: 1, height: 42, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: direction === d ? (d === "IN" ? colors.success : colors.brand600) : "transparent" }}>
+              style={{ flex: 1, height: 44, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: direction === d ? (d === "IN" ? colors.success : colors.brand600) : "transparent" }}>
               <Text style={{ color: "#fff", fontWeight: "800", fontSize: 15 }}>{d === "IN" ? "Scan IN (to a store)" : "Scan OUT (back)"}</Text>
             </Pressable>
           ))}

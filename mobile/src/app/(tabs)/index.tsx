@@ -64,7 +64,7 @@ export default function Home() {
         <View style={{ position: "absolute", top: -70, left: -50, width: 200, height: 200, borderRadius: 100, backgroundColor: colors.brand500, opacity: 0.4 }} />
         <View style={{ position: "absolute", bottom: -80, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: colors.aqua500, opacity: 0.35 }} />
         <View style={{ alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-          <Text style={{ color: colors.aqua200, fontSize: 11, fontWeight: "700", letterSpacing: 1.2 }}>{isPoc ? "STORE POC" : "VENDOR"}</Text>
+          <Text style={{ color: colors.aqua200, fontSize: 12, fontWeight: "700" }}>{isPoc ? "Store POC" : "Vendor"}</Text>
         </View>
         <Text style={{ color: colors.white, fontSize: 22, fontWeight: "800", marginTop: 12 }}>Hello, {niceName(account?.full_name ?? "").split(" ")[0]}</Text>
         <Text style={{ color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{account?.store_count} store{account?.store_count === 1 ? "" : "s"} on your login</Text>

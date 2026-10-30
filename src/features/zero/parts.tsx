@@ -28,7 +28,7 @@ export function StreakCell({ streak, severity }: { streak: Streak | null; severi
     <div>
       <div className="flex items-center gap-1.5">
         <Badge tone={SEVERITY_BADGE[severity]}>{streak.length} day{streak.length === 1 ? "" : "s"}</Badge>
-        {streak.ongoing && <span className="text-[11px] font-bold uppercase tracking-wide text-status-danger">ongoing</span>}
+        {streak.ongoing && <span className="text-[11px] font-bold text-status-danger">ongoing</span>}
       </div>
       <p className="mt-0.5 text-xs text-gray-500">{fmtShort(streak.start)} → {fmtShort(streak.end)}</p>
     </div>

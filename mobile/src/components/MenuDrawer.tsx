@@ -71,7 +71,7 @@ export function MenuDrawer({ open, onClose, sections, who }: { open: boolean; on
           <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
             {sections.map((s, i) => (
               <View key={s.title ?? i} style={{ paddingTop: i === 0 ? 4 : 14 }}>
-                {s.title ? <Text style={{ paddingHorizontal: 20, paddingBottom: 6, fontSize: 11, fontWeight: "800", letterSpacing: 0.8, color: colors.textFaint }}>{s.title.toUpperCase()}</Text> : null}
+                {s.title ? <Text style={{ paddingHorizontal: 20, paddingBottom: 6, fontSize: 12, fontWeight: "700", color: colors.textFaint }}>{s.title}</Text> : null}
                 {s.items.map((it) => {
                   const active = pathname === it.path;
                   return (

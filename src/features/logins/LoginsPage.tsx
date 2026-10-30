@@ -20,7 +20,7 @@ const kindLabel = (k: string) => (k === "vendor" ? "Vendor" : "POC");
 function Stat({ label, value }: { label: string; value: number | undefined }) {
   return (
     <div className="rounded-xl border border-surface-border bg-surface px-4 py-3 shadow-card">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-[11px] font-bold text-gray-500">{label}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-heading">{value?.toLocaleString("en-IN") ?? "—"}</p>
     </div>
   );

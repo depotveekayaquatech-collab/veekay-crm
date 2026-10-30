@@ -40,25 +40,17 @@ import {
 
 type Tone = "brand" | "success" | "warning" | "info";
 
-const toneAccent: Record<Tone, { top: string; iconBg: string; iconColor: string }> = {
+const toneAccent: Record<Tone, { iconColor: string }> = {
   brand: {
-    top: "from-brand-600 via-brand-500 to-aqua-400",
-    iconBg: "bg-brand-500/10 dark:bg-brand-500/15 ring-1 ring-brand-500/20",
     iconColor: "text-brand-600 dark:text-brand-400",
   },
   success: {
-    top: "from-emerald-600 via-emerald-500 to-teal-400",
-    iconBg: "bg-emerald-500/10 dark:bg-emerald-500/15 ring-1 ring-emerald-500/20",
     iconColor: "text-emerald-600 dark:text-emerald-400",
   },
   warning: {
-    top: "from-amber-600 via-amber-500 to-orange-400",
-    iconBg: "bg-amber-500/10 dark:bg-amber-500/15 ring-1 ring-amber-500/20",
     iconColor: "text-amber-600 dark:text-amber-400",
   },
   info: {
-    top: "from-sky-600 via-sky-500 to-blue-400",
-    iconBg: "bg-sky-500/10 dark:bg-sky-500/15 ring-1 ring-sky-500/20",
     iconColor: "text-sky-600 dark:text-sky-400",
   },
 };
@@ -80,29 +72,19 @@ function StatCard({
 }) {
   const t = toneAccent[tone];
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover">
-      <span
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${t.top}`}
-      />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
-          {loading ? (
-            <Skeleton className="mt-2.5 h-8 w-20" />
-          ) : (
-            <p className="mt-2 text-[2.2rem] font-extrabold leading-none tracking-tight text-heading tabular-nums">
-              {typeof value === "number" ? <AnimatedNumber value={value} /> : value}
-            </p>
-          )}
-          {hint && !loading && (
-            <p className="mt-2 text-xs font-medium text-gray-500">{hint}</p>
-          )}
-        </div>
-        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.iconBg} ${t.iconColor} shadow-xs transition-transform duration-200 group-hover:scale-105`}>
-          <Icon className="h-5 w-5" aria-hidden="true" />
-        </span>
+    <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
+      <div className="flex items-center gap-2">
+        <Icon className={`h-4 w-4 shrink-0 ${t.iconColor}`} aria-hidden="true" />
+        <p className="min-w-0 truncate text-xs font-semibold text-gray-500">{label}</p>
       </div>
+      {loading ? (
+        <Skeleton className="mt-2.5 h-8 w-20" />
+      ) : (
+        <p className="mt-2 text-3xl font-extrabold leading-none text-heading tabular-nums sm:text-[2.2rem]">
+          {typeof value === "number" ? <AnimatedNumber value={value} /> : value}
+        </p>
+      )}
+      {hint && !loading && <p className="mt-2 text-xs font-medium text-gray-500">{hint}</p>}
     </div>
   );
 }
@@ -112,7 +94,7 @@ function ProgressBar({ percent }: { percent: number }) {
   const tone = p >= 85 ? "bg-status-success" : p >= 50 ? "bg-status-warning" : "bg-status-danger";
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-      <div className={`h-full rounded-full transition-[width] ${tone}`} style={{ width: `${p}%` }} />
+      <div className={`h-full w-full origin-left transition-transform motion-reduce:transition-none ${tone}`} style={{ transform: `scaleX(${p / 100})` }} />
     </div>
   );
 }
@@ -191,7 +173,7 @@ function ChannelSection({ id, title, children }: { id: string; title: string; ch
     <ChannelContext.Provider value={channel}>
       <section className="flex flex-col gap-3" aria-label={title}>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500">{title}</h2>
+          <h2 className="text-xs font-bold text-gray-500">{title}</h2>
           <div className="w-40 [&_label]:sr-only">
             <Select label={`${title}: platform`} value={channel} onChange={(e) => setPicked(e.target.value)} placeholder="All platforms" options={partners.map((p) => ({ value: p.slug, label: p.name }))} />
           </div>
@@ -215,7 +197,7 @@ function OverviewSection({ insights, isLoading, channelName, channel }: SectionD
       <AlertStrip insights={insights} />
 
       {/* KPI row */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           icon={IconClipboard}
           label="Bottles today"
@@ -300,7 +282,7 @@ function StoreDirectory({ insights, isLoading, channelName, channel }: SectionDa
             <div className={`stacked-table overflow-auto rounded-lg border border-surface-border transition-opacity ${directory.isFetching ? "opacity-70" : ""}`}>
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-surface-subtle">
-                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr className="text-left text-xs font-semibold text-gray-500">
                     <th className="px-4 py-2.5">Store</th>
                     <th className="px-4 py-2.5">Code</th>
                     <th className="px-4 py-2.5">Platform</th>
@@ -449,7 +431,7 @@ function AdminDashboard() {
               <section className="-mx-5 -mb-5 border-t border-surface-border bg-surface-subtle/60 px-5 py-5" aria-label="Test reports">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="text-sm font-bold text-heading">Test reports</h4>
-                  <CardLink to="/reports?tab=test">Manage →</CardLink>
+                  <CardLink to="/reports?tab=test">Manage</CardLink>
                 </div>
                 {testReports.isLoading ? (
                   <Skeleton className="mt-3 h-16" />
@@ -700,13 +682,13 @@ function TeamOverviewSection() {
   const monthLabel = data ? new Date(`${data.month_start}T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "this month";
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard icon={IconUsers} label="Team members" value={data?.members ?? 0} hint={data ? `${data.not_entered_today} yet to enter today` : undefined} tone="brand" loading={isLoading} />
         <StatCard icon={IconStore} label="Stores covered" value={data?.stores ?? 0} hint={`entered in ${monthLabel}`} tone="info" loading={isLoading} />
         <StatCard icon={IconClipboard} label="Bottles this month" value={data?.bottles ?? 0} hint={data ? `${data.entries.toLocaleString()} entries` : undefined} tone="success" loading={isLoading} />
         <StatCard icon={IconChart} label="Bottles today" value={data?.today_bottles ?? 0} hint={data ? `${data.today_entries.toLocaleString()} entries today` : undefined} tone="warning" loading={isLoading} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard icon={IconCheckCircle} label="Waiting for you" value={data?.pending_l2 ?? 0} hint="submitted, not yet verified" tone="warning" loading={isLoading} />
         <StatCard icon={IconShield} label="Verification requested" value={data?.requested ?? 0} hint="a Reviewer asked you to check" tone="warning" loading={isLoading} />
         <StatCard icon={IconCheckCircle} label="Verified by you" value={data?.verified_l2 ?? 0} hint="waiting for the Reviewer" tone="info" loading={isLoading} />
@@ -719,7 +701,7 @@ function TeamOverviewSection() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
               <thead>
-                <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                <tr className="text-left text-[11px] font-bold text-gray-500">
                   <th className="pb-2 pr-3">Employee</th><th className="pb-2 pr-3 text-right">Stores</th><th className="pb-2 pr-3 text-right">Entries</th>
                   <th className="pb-2 pr-3 text-right">Bottles</th><th className="pb-2 pr-3 text-right">Today</th><th className="pb-2 pr-3 text-right">Waiting</th><th className="pb-2">Last entry</th>
                 </tr>
@@ -757,7 +739,7 @@ function EmployeeDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard icon={IconStore} label="My stores" value={stores.length} tone="brand" loading={isLoading} />
         <StatCard icon={IconClipboard} label="Bottles today" value={bottlesToday} tone="success" loading={isLoading} />
         <StatCard

@@ -57,7 +57,7 @@ export default function NewTicket() {
               const on = category === v;
               return (
                 <Pressable key={v} onPress={() => setCategory(v)} accessibilityRole="radio" accessibilityState={{ selected: on }}
-                  style={{ minHeight: 40, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: on ? colors.brand600 : colors.border, backgroundColor: on ? colors.brand50 : colors.surface, justifyContent: "center" }}>
+                  style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: on ? colors.brand600 : colors.border, backgroundColor: on ? colors.brand50 : colors.surface, justifyContent: "center" }}>
                   <Text style={{ fontWeight: "600", color: on ? colors.brand700 : colors.textMuted }}>{l}</Text>
                 </Pressable>
               );

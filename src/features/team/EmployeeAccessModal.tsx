@@ -24,7 +24,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
   const { hasRole } = useAuth();
   const editing = Boolean(employee);
   const { create, update, setScope, setPermissions } = useTeamMutations();
-  const { data: regions = [] } = useAllRegions();
+  const { data: regions = [] } = useAllRegions(employee?.regions.map((r) => r.id));
   const { data: partners = [] } = usePartners();
   const { data: groups = [] } = usePermissionGroups();
 
@@ -173,7 +173,7 @@ export function EmployeeAccessModal({ onClose, employee }: Props) {
         )}
         {isEmployeeModel && (
           <p className="rounded-md bg-surface-subtle px-3 py-2 text-xs text-gray-500">
-            {platformSlug} employees are scoped by <strong>state</strong> — assign states on the
+            {platformSlug} employees are scoped by <strong>state</strong>: assign states on the
             State assignment panel after creating this employee.
           </p>
         )}

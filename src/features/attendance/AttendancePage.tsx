@@ -55,7 +55,7 @@ export function AttendancePage() {
                   role="tab"
                   aria-selected={tab === t.id}
                   onClick={() => setParams(t.id === tabs[0].id ? {} : { tab: t.id }, { replace: true })}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                     tab === t.id ? "bg-surface text-heading shadow-sm ring-1 ring-surface-border" : "text-gray-500 hover:text-gray-800"
                   }`}
                 >

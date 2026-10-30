@@ -50,14 +50,14 @@ function Tile({
   const accent = tone === "danger" ? "warning" : tone;
   const body = (
     <>
-      <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+      <p className="flex items-center gap-1 text-[11px] font-bold text-gray-500">
         {title}
       </p>
       <p className={`mt-1.5 text-[1.6rem] font-bold leading-none tabular-nums ${text}`}>{value}</p>
       {hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}
     </>
   );
-  const cls = `tile tile-${accent} rounded-xl border bg-surface p-4 text-left shadow-card transition-all duration-150 ${
+  const cls = `tile tile-${accent} rounded-xl border bg-surface p-4 text-left shadow-card transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-150 ${
     active ? "border-brand-300 ring-2 ring-brand-500/20" : "border-surface-border"
   } ${onClick ? "hover:-translate-y-0.5 hover:shadow-md" : ""}`;
   return onClick ? (
@@ -76,11 +76,11 @@ function Th({
 }) {
   const active = sortKey && f.sort === sortKey;
   return (
-    <th className={`px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider ${className}`}>
+    <th className={`px-3 py-3 text-left text-[11px] font-bold ${className}`}>
       {sortKey ? (
-        <button onClick={() => onSort(sortKey)} className={`inline-flex items-center gap-1 uppercase tracking-wider ${active ? "text-brand-700" : "text-gray-500 hover:text-gray-800"}`}>
+        <button onClick={() => onSort(sortKey)} className={`inline-flex items-center gap-1 ${active ? "text-brand-700" : "text-gray-500 hover:text-gray-800"}`}>
           {children}
-          <span className="text-[10px]">{active ? (f.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+          <span className="text-[10px]">{active ? (f.dir === "asc" ? "▲" : "▼") : ""}</span>
         </button>
       ) : (
         <span className="text-gray-500">{children}</span>

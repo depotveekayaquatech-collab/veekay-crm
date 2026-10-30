@@ -158,7 +158,7 @@ function List({ isAdmin }: { isAdmin: boolean }) {
           <div className="stacked-table overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
             <table className="w-full min-w-[820px] text-sm">
               <thead>
-                <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold text-gray-500">
                   <th className="px-5 py-3">Ticket</th>
                   <th className="px-4 py-3">Store</th>
                   <th className="px-4 py-3">Issue</th>

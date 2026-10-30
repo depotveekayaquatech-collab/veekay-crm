@@ -103,7 +103,7 @@ export default function Cash() {
         ) : (
           [...groups.entries()].map(([date, rows]) => (
             <View key={date} style={{ marginBottom: 14 }}>
-              <Text style={[font.tiny, { fontWeight: "700", letterSpacing: 0.6, marginBottom: 6 }]}>{fmtDate(date).toUpperCase()}</Text>
+              <Text style={[font.small, { fontWeight: "700", marginBottom: 6 }]}>{fmtDate(date)}</Text>
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 {rows.map((p, i) => (
                   <View key={p.id} style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.border }}>

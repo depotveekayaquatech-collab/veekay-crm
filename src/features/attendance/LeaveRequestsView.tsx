@@ -84,7 +84,7 @@ export function LeaveRequestsView() {
         <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[760px] text-sm">
             <thead>
-              <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-3 py-3">Dates</th>
                 <th className="px-3 py-3">Type</th>

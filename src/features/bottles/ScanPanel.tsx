@@ -115,7 +115,7 @@ export function ScanPanel() {
           {camera ? "Close camera" : "Scan with camera"}
         </Button>
         {camera && !needStore && <CameraScanner onCode={submit} />}
-        <p className="text-xs text-gray-500">A USB / Bluetooth scanner gun works too — it types the code and presses Enter. OUT without a store uses the store the bottle is at.</p>
+        <p className="text-xs text-gray-500">A USB / Bluetooth scanner gun works too: it types the code and presses Enter. OUT without a store uses the store the bottle is at.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -128,7 +128,7 @@ export function ScanPanel() {
               {e.message}
               {e.store ? ` · ${e.store}` : ""}
             </span>
-            {e.warning && <span className="w-full text-xs font-medium text-status-warning">⚠ {e.warning}</span>}
+            {e.warning && <span className="w-full text-xs font-medium text-status-warning">{e.warning}</span>}
           </div>
         ))}
       </div>

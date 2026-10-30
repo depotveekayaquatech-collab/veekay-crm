@@ -69,7 +69,7 @@ function Row({
         <p className="truncate text-sm font-bold text-gray-900">{store.name}</p>
         {changed && existing !== null && (
           <p className="mt-0.5 text-xs font-medium text-status-warning">
-            Changed by {changed.byName ?? "a senior colleague"} – {changed.byRoleLabel}, {fmtMomentShort(changed.at)}: {changed.oldCount} → {changed.newCount}
+            Changed by {changed.byName ?? "a senior colleague"}, {changed.byRoleLabel}, {fmtMomentShort(changed.at)}: {changed.oldCount} → {changed.newCount}
             {changed.reason ? ` ("${changed.reason}")` : ""}
           </p>
         )}
@@ -230,7 +230,6 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
   return (
     <section className="flex flex-col gap-5">
       <div className="relative overflow-hidden rounded-2xl border border-surface-border bg-surface p-4 shadow-card sm:p-6">
-        <span aria-hidden="true" className="pointer-events-none absolute -left-10 -top-16 h-48 w-48 rounded-full bg-gradient-to-br from-aqua-400/15 to-transparent blur-2xl" />
         <div className="relative flex flex-wrap items-center gap-x-8 gap-y-5">
           <ProgressRing percent={percent} sublabel="marked" />
           <div className="min-w-[14rem] flex-1">
@@ -248,15 +247,15 @@ export function QuickEntry({ stores }: { stores: MyStore[] }) {
             </div>
             <div className="mt-4 grid grid-cols-3 gap-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Marked</p>
+                <p className="text-[11px] font-bold text-gray-500">Marked</p>
                 <p className="text-2xl font-extrabold tabular-nums text-heading">{done}<span className="text-base font-semibold text-gray-400"> / {liveStores.length}</span></p>
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">To go</p>
+                <p className="text-[11px] font-bold text-gray-500">To go</p>
                 <p className={`text-2xl font-extrabold tabular-nums ${todo ? "text-status-warning" : "text-status-success"}`}>{todo}</p>
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Bottles</p>
+                <p className="text-[11px] font-bold text-gray-500">Bottles</p>
                 <p className="text-2xl font-extrabold tabular-nums text-heading">{bottles.toLocaleString()}</p>
               </div>
             </div>

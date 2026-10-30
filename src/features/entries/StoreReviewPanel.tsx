@@ -134,14 +134,14 @@ export function StoreReviewPanel({ scope, onOpenEntry }: { scope: StoreReviewSco
             { label: "Reviewed", value: `${r.counts.reviewed_l3}/${r.counts.entries}`, tone: "text-heading" },
           ].map((c) => (
             <div key={c.label} className="px-4 py-3 sm:px-5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{c.label}</p>
+              <p className="text-[11px] font-bold text-gray-400">{c.label}</p>
               <p className={`mt-0.5 text-lg font-bold tabular-nums ${c.tone}`}>{c.value}</p>
             </div>
           ))}
         </div>
 
         <div className="p-3 sm:p-5">
-          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 sm:gap-2">
+          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold text-gray-400 sm:gap-2">
             {WEEKDAYS.map((w) => <div key={w} className="pb-1">{w}</div>)}
           </div>
           <div className="mt-1 grid grid-cols-7 gap-1.5 sm:gap-2">

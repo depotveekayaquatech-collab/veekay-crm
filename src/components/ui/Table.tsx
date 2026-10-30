@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
  * wide table never breaks the page layout. */
 export function Table({ className = "", children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={`overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card ${className}`}>
+    <div className={`overflow-x-auto rounded-xl border border-surface-border bg-surface ${className}`}>
       <table className="w-full min-w-[560px] border-collapse text-sm">{children}</table>
     </div>
   );
@@ -14,7 +14,7 @@ export function Table({ className = "", children }: { className?: string; childr
 export function Th({ className = "", children, ...rest }: ThHTMLAttributes<HTMLTableCellElement> & { children?: ReactNode }) {
   return (
     <th
-      className={`border-b border-surface-border bg-surface-subtle/80 px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 select-none ${className}`}
+      className={`whitespace-nowrap border-b border-surface-border bg-surface-subtle/80 px-4 py-3 text-left text-xs font-semibold text-gray-500 select-none ${className}`}
       {...rest}
     >
       {children}

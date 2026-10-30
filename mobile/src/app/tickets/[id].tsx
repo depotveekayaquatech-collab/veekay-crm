@@ -29,7 +29,7 @@ function Photos({ ticketId, items }: { ticketId: string; items: Attachment[] }) 
           }}
           accessibilityRole="button"
           accessibilityLabel={`View photo ${i + 1}`}
-          style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surfaceMuted }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surfaceMuted }}
         >
           <Ionicons name="image-outline" size={16} color={colors.brand700} />
           <Text style={{ color: colors.brand700, fontWeight: "600", fontSize: 13 }}>{busy === a.id ? "Opening…" : `Photo ${i + 1}`}</Text>

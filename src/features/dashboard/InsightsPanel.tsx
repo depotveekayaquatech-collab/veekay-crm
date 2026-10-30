@@ -107,7 +107,7 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-surface-border bg-status-success-soft/60 px-5 py-3.5 text-sm font-medium text-status-success">
         <IconCheckCircle className="h-5 w-5" />
-        Everything looks healthy — no alerts right now.
+        Everything looks healthy. No alerts right now.
       </div>
     );
 
@@ -118,18 +118,17 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
   };
   return (
     <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-surface-border bg-surface px-4.5 py-3 shadow-card">
-      <span className="mr-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-heading">
+      <span className="mr-1 flex items-center gap-2 text-xs font-bold text-heading">
         <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
           <IconAlertTriangle className="h-3.5 w-3.5" />
         </span>
         Ops attention
       </span>
       {items.map((it) => {
-        const cls = `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${toneClasses[it.tone]}`;
+        const cls = `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${toneClasses[it.tone]}`;
         return it.to ? (
           <Link key={it.key} to={it.to} className={`${cls} hover:-translate-y-px`}>
             <span>{it.text}</span>
-            <span className="opacity-60 text-[10px]">→</span>
           </Link>
         ) : (
           <span key={it.key} className={cls}>{it.text}</span>
@@ -141,14 +140,14 @@ export function AlertStrip({ insights }: { insights?: DashboardInsights }) {
 
 /* ---------------------------- KPI row ------------------------------- */
 
-function Kpi({ label, value, hint, hintTone = "flat", loading, tone = "brand" }: { label: string; value: ReactNode; hint?: string; hintTone?: "up" | "down" | "flat"; loading?: boolean; tone?: "brand" | "aqua" | "success" | "warning" }) {
+function Kpi({ label, value, hint, hintTone = "flat", loading }: { label: string; value: ReactNode; hint?: string; hintTone?: "up" | "down" | "flat"; loading?: boolean }) {
   return (
-    <div className={`tile tile-${tone} rounded-2xl border border-surface-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover`}>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+    <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-card sm:p-5">
+      <p className="truncate text-xs font-semibold text-gray-500">{label}</p>
       {loading ? (
         <Skeleton className="mt-2.5 h-8 w-24" />
       ) : (
-        <p className="mt-2 text-[1.85rem] font-extrabold leading-none tracking-tight tabular-nums text-heading">{value}</p>
+        <p className="mt-2 text-3xl font-extrabold leading-none tabular-nums text-heading sm:text-[1.85rem]">{value}</p>
       )}
       {hint && !loading && <p className={`mt-2 text-xs font-semibold ${toneText[hintTone]}`}>{hint}</p>}
     </div>
@@ -176,12 +175,11 @@ export function PerformanceKpis({ insights }: { insights?: DashboardInsights }) 
   const avgEntry = r30.data && r30.data.totalEntries ? (r30.data.totalBottles / r30.data.totalEntries).toFixed(1) : "—";
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Kpi tone="brand" label="Last 7 days" value={m?.last7.toLocaleString() ?? 0} hint={d7?.text} hintTone={d7?.tone} loading={loading} />
-      <Kpi tone="aqua" label="Last 30 days" value={m?.last30.toLocaleString() ?? 0} hint={d30?.text} hintTone={d30?.tone} loading={loading} />
-      <Kpi tone="success" label="Avg bottles / entry" value={avgEntry} hint={`${r30.data?.avgBottlesPerDay ?? 0} bottles per day (30d)`} loading={loading} />
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <Kpi label="Last 7 days" value={m?.last7.toLocaleString() ?? 0} hint={d7?.text} hintTone={d7?.tone} loading={loading} />
+      <Kpi label="Last 30 days" value={m?.last30.toLocaleString() ?? 0} hint={d30?.text} hintTone={d30?.tone} loading={loading} />
+      <Kpi label="Avg bottles / entry" value={avgEntry} hint={`${r30.data?.avgBottlesPerDay ?? 0} bottles per day (30d)`} loading={loading} />
       <Kpi
-        tone="warning"
         label="Active stores (30d)"
         value={`${activeStores} / ${live}`}
         hint={live ? `${Math.round((activeStores / live) * 100)}% of live stores ordering` : undefined}
@@ -209,7 +207,7 @@ function fmtDay(iso: string): string {
 function Mini({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
   return (
     <div className="rounded-xl bg-surface-subtle px-3.5 py-2.5">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+      <p className="text-[11px] font-bold text-gray-400">{label}</p>
       <p className="mt-0.5 text-lg font-extrabold tabular-nums text-heading">{value}</p>
       {hint && <p className="text-[11px] text-gray-500">{hint}</p>}
     </div>
@@ -457,7 +455,7 @@ function WeekdayChart({ avg }: { avg: number[] }) {
         <div key={WEEKDAYS[i]} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" title={`${WEEKDAYS[i]}: ${v.toFixed(1)} bottles avg`}>
           <span className="text-[11px] font-semibold tabular-nums text-gray-600">{Math.round(v)}</span>
           <div
-            className={`w-full rounded-t-md transition-all ${i === best && v > 0 ? "bg-brand-500" : "bg-brand-200"}`}
+            className={`w-full rounded-t-md transition-[color,background-color,border-color,box-shadow,opacity,transform] ${i === best && v > 0 ? "bg-brand-500" : "bg-brand-200"}`}
             style={{ height: `${Math.max(3, (v / max) * 100)}%` }}
           />
           <span className="text-[11px] font-medium text-gray-500">{WEEKDAYS[i]}</span>

@@ -20,7 +20,7 @@ function ContactCard({ label, name, phone }: { label: string; name: string | nul
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-subtle px-3.5 py-3">
       <div className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+        <p className="text-[11px] font-bold text-gray-400">{label}</p>
         <p className="truncate text-sm font-semibold text-gray-900">{name ?? "—"}</p>
         {phone && <p className="text-xs tabular-nums text-gray-500">{phone}</p>}
       </div>
@@ -42,11 +42,11 @@ export function StoreSummary({ store }: { store: StoreSummaryData }) {
   const place = [store.city, store.state].filter(Boolean).join(", ");
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-card">
-      <div className="h-1.5 bg-gradient-to-r from-brand-500 to-aqua-400" />
+      <div className="h-1.5 bg-brand-500" />
       <div className="p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3.5">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-aqua-400 text-white shadow-md">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md">
               <IconStore className="h-6 w-6" aria-hidden="true" />
             </span>
             <div className="min-w-0">

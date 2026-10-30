@@ -29,7 +29,7 @@ function Card({ title, aside, children }: { title: string; aside?: ReactNode; ch
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
+      <dt className="text-[11px] font-semibold text-gray-500">{label}</dt>
       <dd className="mt-0.5 break-words text-sm text-gray-900">{children}</dd>
     </div>
   );
@@ -91,7 +91,7 @@ function Timeline({ items }: { items: TimelineItem[] }) {
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-sm font-semibold text-gray-900">Status {it.n}:</span>
               <Badge tone={it.tone}>{it.label}</Badge>
-              {it.current && <span className="text-[11px] font-bold uppercase tracking-wide text-brand-600">current</span>}
+              {it.current && <span className="text-[11px] font-bold text-brand-600">current</span>}
             </div>
             <p className="mt-0.5 text-xs text-gray-500">
               {fmtMoment(it.at)} · by <span className="font-medium text-gray-700">{it.actor.known ? it.actor.name : "unknown (direct database change)"}</span>
@@ -165,7 +165,7 @@ export function EntryDrawer({ entryId, onClose }: { entryId: string; onClose: ()
         <header className="border-b border-surface-border bg-surface px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Entry verification</p>
+              <p className="text-[11px] font-semibold text-gray-500">Entry verification</p>
               <h2 className="truncate text-lg font-extrabold text-heading">{data?.store?.name ?? (isLoading ? "Loading…" : "Entry")}</h2>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {data?.store?.entity && <Badge tone="neutral">{data.store.entity}</Badge>}

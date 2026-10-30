@@ -27,7 +27,7 @@ export function DayTable({
     <div className="overflow-x-auto rounded-xl border border-surface-border">
       <table className="w-full min-w-[720px] border-collapse text-sm">
         <thead>
-          <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <tr className="bg-surface-subtle/80 text-left text-[11px] font-bold text-gray-500">
             {["Date", "Attendance", "Check in", "Check out", "Hours", "Where", "Counts", readOnly ? "" : "Mark"].map((h, i) => (
               <th key={i} className="border-b border-surface-border px-3 py-2.5">{h}</th>
             ))}

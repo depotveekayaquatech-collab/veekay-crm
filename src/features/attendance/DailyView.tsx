@@ -18,15 +18,15 @@ import { daysAgo } from "@/lib/dates";
 
 function Tile({ title, value, tone, hint }: { title: string; value: number | string; tone: "brand" | "aqua" | "success" | "warning"; hint?: string }) {
   const topGradients = {
-    brand: "from-brand-500 to-brand-600",
-    aqua: "from-aqua-400 to-brand-500",
+    brand: "bg-brand-500",
+    aqua: "bg-aqua-500",
     success: "from-emerald-400 to-teal-500",
     warning: "from-amber-400 to-orange-500",
   };
   return (
-    <div className={`relative overflow-hidden tile tile-${tone} rounded-2xl border border-surface-border bg-surface p-4 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover`}>
-      <span aria-hidden="true" className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${topGradients[tone]}`} />
-      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{title}</p>
+    <div className={`relative overflow-hidden tile tile-${tone} rounded-2xl border border-surface-border bg-surface p-4 shadow-card transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-200 hover:-translate-y-0.5 hover:shadow-card-hover`}>
+      <span aria-hidden="true" className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] ${topGradients[tone]}`} />
+      <p className="text-[11px] font-bold text-gray-500">{title}</p>
       <p className="mt-1.5 text-[1.65rem] font-extrabold leading-none tabular-nums text-heading tracking-tight">{value}</p>
       {hint && <p className="mt-1 text-[11px] font-medium text-gray-400 truncate">{hint}</p>}
     </div>
@@ -193,9 +193,9 @@ export function DailyView() {
                   <button
                     key={l as string}
                     onClick={() => setDate(daysAgo(n as number))}
-                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                       active
-                        ? "bg-gradient-to-r from-brand-600 via-brand-500 to-brand-600 text-white shadow-xs"
+                        ? "bg-brand-600 text-white"
                         : "text-gray-600 hover:bg-surface hover:text-gray-900"
                     }`}
                   >
@@ -259,7 +259,7 @@ export function DailyView() {
         <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-card">
           <table className="w-full min-w-[920px] text-sm">
             <thead>
-              <tr className="bg-surface-subtle text-left text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <tr className="bg-surface-subtle text-left text-[11px] font-bold text-gray-500">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-3 py-3">Status</th>
                 <th className="px-3 py-3">Check in</th>

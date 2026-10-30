@@ -22,7 +22,7 @@ const STATUSES: { value: StoreStatus; label: string }[] = [
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-surface-border bg-surface-subtle/60 p-4">
-      <h3 className="mb-3 border-b border-surface-border pb-2 text-[11px] font-bold uppercase tracking-wider text-brand-700">{title}</h3>
+      <h3 className="mb-3 border-b border-surface-border pb-2 text-[11px] font-bold text-brand-700">{title}</h3>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </section>
   );
@@ -30,7 +30,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 export function StoreFormModal({ onClose, store }: Props) {
   const { create, update } = useStoreMutations();
-  const { data: regions = [] } = useAllRegions();
+  const { data: regions = [] } = useAllRegions([store?.regionId]);
   const { data: partners = [] } = usePartners();
   const editing = Boolean(store);
 

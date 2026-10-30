@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 32,
+    "latestVersionCode": 33,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code32.apk",
-    "notes": "Zepto vendors: the message you send now shows each store's monthly limit, what was supplied till date and the pending limit. Other platforms are unchanged.",
-    "apkSizeBytes": 56651829,
-    "apkSha256": "37f2be1cb56d4bac52757c5c9644d51dd76a4cacb74bd1442eb91537c52ea55a"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code33.apk",
+    "notes": "Cleaner look: plain sentence-case labels and bigger touch targets on filter chips and toggles. Nothing else changes.",
+    "apkSizeBytes": 56652281,
+    "apkSha256": "e3fe5779ad6191c9144d7f86ef8dbb5607515de3663e5a7185b2c433d310df20"
   }
 }

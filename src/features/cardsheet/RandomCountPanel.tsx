@@ -116,7 +116,7 @@ export function RandomCountPanel({ token, onLocked }: { token: string; onLocked:
       {allStores.data && choices.length === 0 && <p className="text-sm text-status-warning">No stores found for that partner.</p>}
       {store && (
         <p className="text-sm text-gray-700">
-          Selected: <b className="font-mono">{store.externalCode}</b> — <b>{store.name}</b>
+          Selected: <b className="font-mono">{store.externalCode}</b>, <b>{store.name}</b>
         </p>
       )}
       {problem && (totalText !== "" || storeId || start || end) && <p className="text-sm text-status-warning">{problem}</p>}
@@ -135,7 +135,7 @@ export function RandomCountPanel({ token, onLocked }: { token: string; onLocked:
               ["Start date", fmtDay(rows[0].date)], ["End date", fmtDay(rows[rows.length - 1].date)],
               ["Total entered", (total ?? 0).toLocaleString("en-IN")], ["Dates in range", String(rows.length)],
             ].map(([k, v]) => (
-              <div key={k}><dt className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{k}</dt><dd className="mt-0.5 break-words font-semibold text-heading">{v}</dd></div>
+              <div key={k}><dt className="text-[11px] font-bold text-gray-500">{k}</dt><dd className="mt-0.5 break-words font-semibold text-heading">{v}</dd></div>
             ))}
           </dl>
           {sum === total

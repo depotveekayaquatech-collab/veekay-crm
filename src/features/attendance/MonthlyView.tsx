@@ -83,7 +83,7 @@ export function MonthlyView() {
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 top-0 z-30 min-w-[13rem] border-b border-r border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-white/70">Employee</th>
+                <th className="sticky left-0 top-0 z-30 min-w-[13rem] border-b border-r border-surface-border bg-ink-800 px-3 py-2.5 text-left text-[11px] font-bold text-white/70">Employee</th>
                 {data.dates.map((d) => {
                   const dt = new Date(`${d}T12:00:00`);
                   const holiday = data.holidays?.[d];
@@ -91,16 +91,16 @@ export function MonthlyView() {
                   return (
                     <th key={d} title={holiday ? `Holiday: ${holiday}` : undefined} className={`sticky top-0 z-20 min-w-[2.4rem] border-b border-surface-border px-1 py-1.5 text-center ${holiday ? "bg-status-warning/80" : sunday ? "bg-ink-700" : "bg-ink-800"}`}>
                       <div className="text-[11px] font-bold text-white">{d.slice(8)}</div>
-                      <div className="text-[9px] font-medium uppercase text-white/50">{dt.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2)}</div>
+                      <div className="text-[9px] font-medium text-white/50">{dt.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2)}</div>
                     </th>
                   );
                 })}
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white">Days</th>
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white">Hours</th>
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Days late">Late</th>
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Leave days">Leave</th>
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Working days with no check-in and no leave">Absent</th>
-                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-white" title="Days checked in from outside the office">Away</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold text-white">Days</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold text-white">Hours</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold text-white" title="Days late">Late</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold text-white" title="Leave days">Leave</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold text-white" title="Working days with no check-in and no leave">Absent</th>
+                <th className="sticky top-0 z-20 border-b border-surface-border bg-ink-700 px-3 py-2.5 text-center text-[11px] font-bold text-white" title="Days checked in from outside the office">Away</th>
               </tr>
             </thead>
             <tbody>

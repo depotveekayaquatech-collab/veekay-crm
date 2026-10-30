@@ -156,7 +156,7 @@ export function DonutChart({ slices, centerLabel, centerValue }: { slices: Donut
 
   return (
     <div className="flex flex-wrap items-center gap-6">
-      <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0 -rotate-90">
+      <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0 -rotate-90" aria-hidden="true">
         <circle cx="80" cy="80" r={r} fill="none" className="stroke-surface-muted" strokeWidth={18} />
         {total > 0 &&
           slices.map((s) => {
@@ -225,7 +225,7 @@ export function BarList({ items }: { items: BarItem[] }) {
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-              <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-aqua-400 transition-[width]" style={{ width: `${pct}%` }} />
+              <div className="h-full w-full origin-left bg-brand-500 transition-transform motion-reduce:transition-none" style={{ transform: `scaleX(${Math.max(0, Math.min(100, pct)) / 100})` }} />
             </div>
             {it.sub && <p className="mt-0.5 text-xs text-gray-400">{it.sub}</p>}
           </div>

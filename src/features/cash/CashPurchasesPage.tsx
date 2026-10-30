@@ -26,7 +26,7 @@ const EMPTY: CashFilters = { kind: "", start: "", end: "", category: "", q: "" }
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-surface-border bg-surface px-4 py-3 shadow-card">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-[11px] font-bold text-gray-500">{label}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-heading">{value}</p>
     </div>
   );
