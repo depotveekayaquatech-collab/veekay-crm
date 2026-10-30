@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatEmployee, formatReport, pickEmployees, type ReportRow } from "./performanceReport";
+import { basisLine, formatEmployee, formatReport, pickEmployees, type ReportRow } from "./performanceReport";
 
 const row = (o: Partial<ReportRow> = {}): ReportRow => ({ employee_id: "e1", employee_name: "Harshita", stores: 20, expected: 500, done: 460, percent: 92, ...o });
 
@@ -25,6 +25,18 @@ describe("performance report text", () => {
 
   it("is empty when nobody is selected", () => {
     expect(formatReport("x", [])).toBe("");
+  });
+
+  it("says what it counted, so two pasted reports can be compared later", () => {
+    const basis = basisLine(29, "2026-10-30T05:07:00Z");
+    expect(basis).toBe("Counted over 29 days, holidays included. Taken 30 Oct, 10:37 am IST");
+    const lines = formatReport("Blinkit - Employee performance, October 2026", [row()], basis).split("\n");
+    expect(lines.slice(0, 4)).toEqual(["Blinkit - Employee performance, October 2026", "Entries = marked / total needed for 100%", basis, ""]);
+  });
+
+  it("counts a single day in the singular, and adds nothing when no basis is given", () => {
+    expect(basisLine(1)).toBe("Counted over 1 day, holidays included");
+    expect(formatReport("x", [row()])).not.toContain("Counted over");
   });
 });
 

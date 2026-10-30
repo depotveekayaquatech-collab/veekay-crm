@@ -1,4 +1,4 @@
-"""Company holidays: never an absence, paid like a weekly off, not counted as leave, and not expected from anyone."""
+"""Company holidays: never an absence, paid like a weekly off, not counted as leave. They have NO effect on entry counts or performance percentages."""
 from datetime import date, timedelta
 
 from app.services import leave_service, performance_service
@@ -47,11 +47,11 @@ def test_a_holiday_is_not_an_absence_not_a_leave_day_and_not_expected_from_anyon
         # leave: a holiday uses no leave day
         assert leave_service.working_days(day, day, False, {day: "x"}) == 0
         assert leave_service.working_days(day, day + timedelta(days=1), False, {day: "x"}) == (0 if (day + timedelta(days=1)).weekday() == 6 else 1)
-        # performance: the day is left out of what anyone should have marked
+        # performance: NOT affected. A holiday is attendance's business: the day is still judged and an entry dated on it still counts
         first = day.replace(day=1)
         perf = client.get(f"{API}/orders/performance", params={"partner": "blinkit", "month": month}, headers=admin).json()
-        assert day.isoformat() not in {d["date"] for e in perf["employees"][:1] for d in e["daily"]}
-        assert perf["holidays"][day.isoformat()] == "Founders day"
+        assert day.isoformat() in {d["date"] for e in perf["employees"][:1] for d in e["daily"]}
+        assert "holidays" not in perf
         assert performance_service.parse_month(month, date.today()) == first
         # payroll: the day counts as paid
         from app.services import payroll_service

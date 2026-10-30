@@ -23,6 +23,7 @@ log = logging.getLogger("veekay.scheduler")
 
 _scheduler: BackgroundScheduler | None = None
 _SYNC_LOCK_KEY = 7_340_001   # arbitrary app-wide constant for pg advisory locks
+_SNAPSHOT_LOCK_KEY = 7_340_002
 
 
 def _system_actor(db) -> User | None:
@@ -133,6 +134,39 @@ def run_daily_store_sync() -> None:
         db.close()
 
 
+def run_performance_snapshots() -> None:
+    """Keep what the performance report says, for every platform, once a day (append-only: see performance_reconciliation_service). Several API machines may fire
+    this; the advisory lock lets one of them write. A failure is logged and never reaches the worker."""
+    from app.models.organization import Organization, OrganizationKind
+    from app.services import performance_reconciliation_service as rec, performance_service
+
+    db = SessionLocal()
+    lock_conn = engine.connect()
+    locked = False
+    try:
+        locked = bool(lock_conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": _SNAPSHOT_LOCK_KEY}).scalar())
+        if not locked:
+            return
+        actor = _system_actor(db)
+        if actor is None:
+            log.warning("performance snapshots skipped: no admin user to attribute them to")
+            return
+        month = performance_service.parse_month(None, performance_service.business_today())
+        for slug in db.execute(select(Organization.slug).where(Organization.kind == OrganizationKind.PARTNER.value)).scalars().all():
+            try:
+                snap = rec.create_snapshot(actor.id, slug, month, source="scheduled")
+                log.info("performance snapshot %s kept for %s %s", snap.id, slug, month)
+            except Exception:  # noqa: BLE001 — one platform failing must not stop the next
+                log.exception("performance snapshot failed for %s", slug)
+    except Exception:  # noqa: BLE001
+        log.exception("performance snapshots failed")
+    finally:
+        if locked:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _SNAPSHOT_LOCK_KEY})
+        lock_conn.close()
+        db.close()
+
+
 def start() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -157,6 +191,11 @@ def start() -> None:
         misfire_grace_time=3600,
         coalesce=True,
     )
+    if settings.PERFORMANCE_SNAPSHOT_ENABLED:
+        _scheduler.add_job(
+            run_performance_snapshots, CronTrigger(hour=settings.PERFORMANCE_SNAPSHOT_HOUR, minute=settings.PERFORMANCE_SNAPSHOT_MINUTE, timezone=tz),
+            id="performance_snapshots", replace_existing=True, misfire_grace_time=3600, coalesce=True,
+        )
     from app.services.audit_retention import run_audit_purge
 
     _scheduler.add_job(

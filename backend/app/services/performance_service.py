@@ -1,16 +1,31 @@
 """Employee performance: how much of what each employee should have marked this month they have actually marked.
 
-Nothing is stored. Every call recounts from the entries as they are right now, from the 1st of the month up to yesterday (a day is only judged
-once it is over). So when an employee goes back and marks earlier days, those days improve on the very next look: "70% on the 11th" is simply
+Nothing is stored by this module. Every call recounts from the entries as they are right now, from the 1st of the month up to yesterday (a day is only
+judged once it is over). So when an employee goes back and marks earlier days, those days improve on the very next look: "70% on the 11th" is simply
 what the 1st-to-10th now adds up to. A store counts as covered on a day when it has an entry that day (the same rule as the Daily overview),
 and an employee should cover every live store in their scope on every day.
+
+THE DEFINITION (DEFINITION_VERSION below; written out in DEFINITION so every response carries it):
+  * "Entries x / y" is NOT a count of entries typed by that employee. y = (live stores in their scope) x (judged days); x = how many of those store-days
+    have an entry TODAY, whoever entered it (the employee, a colleague, a Team Lead, an import, older data with no known creator).
+  * judged days = EVERY calendar day from the 1st of the month up to yesterday (Asia/Kolkata). THE HOLIDAY CALENDAR IS NOT CONSULTED: holidays belong to
+    attendance (attendance_service, leave_service, payroll_service), never to entry counting. An entry dated on a holiday counts like any other, and
+    declaring, changing or removing a holiday - today or for a past date - cannot change x, y or the percentage of any report.
+  * WHO ENTERED IT DOES NOT MATTER: a spreadsheet entry uploaded or synchronised by the Developer User counts for the employee whose scope holds the store,
+    exactly like an entry typed by the employee. The creator and the import source stay on the entry (created_by_*, created_via) for audit, and the
+    reconciliation page shows them, but they never decide whether an entry counts. A live store that is in NOBODY's scope is credited to nobody and is
+    listed in `summary.unassigned_stores` for review, never guessed onto someone.
+  * What a person typed themselves is the separate `entries_made` figure; entries whose number they changed are `corrected` (distinct entries) and
+    `correction_events` (every change).
+Because the figure is recounted, a printed report cannot be re-read from the data later. performance_reconciliation_service stores snapshots of what was
+reported and rebuilds any past moment from order_entries + deleted_rows to explain every difference between two reports.
 """
 from __future__ import annotations
 
 import calendar
 import uuid
 from collections import Counter
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -27,7 +42,28 @@ from app.models.store_vendor_period import StoreVendorPeriod
 from app.models.user import User, UserRole
 from app.repositories.employee_repository import EmployeeRepository
 from app.core.entry_access import Level, scope_for
-from app.services import assignment_service, capping_service, holiday_service
+from app.core.config import settings
+from app.services import assignment_service, capping_service
+
+DEFINITION_VERSION = "coverage-3"
+DEFINITION = {
+    "version": DEFINITION_VERSION,
+    "entries": "store-days of the employee's own stores that have an entry today, whoever entered it (including spreadsheet uploads by the Developer User), out of (stores in scope x judged days)",
+    "judged_days": "every day from the 1st of the month to yesterday (Asia/Kolkata); holidays do not change entry counts (they only matter to attendance)",
+    "percent": "entries / total, one decimal, never rounded up to 100",
+    "entries_made": "entries this person created themselves on the platform this month (any store), up to today",
+    "corrected": "distinct entries whose number this person changed this month",
+    "recounted": "on every look: store scope and entries are read as they are now",
+}
+
+
+def business_today() -> date:
+    """Today's date in the CRM's business time zone (DISPLAY_TIMEZONE, Asia/Kolkata). The report rolls over at midnight IST. (order_service._today() is the UTC date and
+    would keep showing yesterday until 05:30 IST.)"""
+    try:
+        return datetime.now(ZoneInfo(settings.DISPLAY_TIMEZONE)).date()
+    except Exception:  # noqa: BLE001 — an unknown zone name must never take the report down
+        return datetime.now(ZoneInfo("Asia/Kolkata")).date()
 
 
 def _pct(done: int, expected: int) -> float:
@@ -69,21 +105,35 @@ def _partner(db: Session, partner_slug: str) -> Organization:
     return partner
 
 
-def _judged_days(db: Session, org_id: uuid.UUID, month: date, today: date) -> tuple[list[date], date, date, dict[date, str]]:
-    """(the days that count, the last finished day, the last day of the month, the company holidays of the month). A day counts once it is over; a holiday never counts."""
+def judged_days_from(month: date, today: date) -> tuple[list[date], date, date]:
+    """(the days that count, the last finished day, the last day of the month) for a month and a "today". Every day from the 1st to yesterday counts: the holiday
+    calendar is deliberately not an input. Pure: the one rule for which days are judged, used by the live report, by snapshots and by the reconstruction of any
+    past report."""
     last_of_month = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
     as_of = min(today - timedelta(days=1), last_of_month)
-    holidays = holiday_service.between(db, org_id, month, last_of_month)
-    days = [d for d in (month + timedelta(days=i) for i in range((as_of - month).days + 1)) if d not in holidays] if as_of >= month else []
-    return days, as_of, last_of_month, holidays
+    days = [month + timedelta(days=i) for i in range((as_of - month).days + 1)] if as_of >= month else []
+    return days, as_of, last_of_month
+
+
+def score(stores, days: list[date], covered: dict[date, set]) -> tuple[list[dict], int, int]:
+    """(per-day rows, done, expected) for one employee's `stores` over the judged `days`, given which stores have an entry on each day. Pure: the one formula behind
+    every figure of the report (live, stored and rebuilt)."""
+    n = len(stores)
+    daily, done_total, running_expected = [], 0, 0
+    for d in days:
+        done = len(stores & covered[d])
+        done_total += done
+        running_expected += n
+        daily.append({"date": d, "done": done, "expected": n, "percent": _pct(done, n), "cumulative": _pct(done_total, running_expected)})
+    return daily, done_total, n * len(days)
 
 
 def performance(db: Session, admin: User, partner_slug: str, month: date, today: date, perms: set[str] | None = None) -> dict:
     partner = _partner(db, partner_slug)
     view, only = people_in_view(db, admin, perms) if perms is not None else ("all", None)
 
-    # a company holiday is not a day anyone is expected to mark
-    days, as_of, last_of_month, holidays = _judged_days(db, admin.organization_id, month, today)
+    # every finished day counts; the holiday calendar is attendance's business, not the entry count's
+    days, as_of, last_of_month = judged_days_from(month, today)
 
     employees = EmployeeRepository(db).all_for_platform(admin.organization_id, partner.id)
     if only is not None:
@@ -98,7 +148,7 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
             select(OrderEntry.store_id, OrderEntry.order_date).where(
                 OrderEntry.store_id.in_(all_ids), OrderEntry.order_date >= days[0], OrderEntry.order_date <= days[-1])
         ):
-            if day in covered:  # an entry marked on a holiday is not a judged day
+            if day in covered:
                 covered[day].add(store_id)
 
     # What each person entered themselves anywhere on this platform, 1st of the month to today (any store, live or not, in scope or not).
@@ -116,6 +166,7 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
     # Entries a person CORRECTED this month: distinct entries whose number they changed (a developer's cash adjustment is not a correction).
     # Shown for Team Leads, whose job it is; anyone else with corrections shows them too.
     corrected: dict[uuid.UUID, int] = {}
+    correction_events: dict[uuid.UUID, int] = {}
     team_leads: set[uuid.UUID] = set()
     if employees:
         ids = [e.id for e in employees]
@@ -123,14 +174,15 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
         if last_of_month >= month:
             ist = ZoneInfo("Asia/Kolkata")
             ev = OrderEntryEvent
-            corrected = dict(db.execute(
-                select(ev.actor_user_id, func.count(func.distinct(ev.entry_id))).join(Store, Store.id == ev.store_id)
+            for uid_, n_entries, n_events in db.execute(
+                select(ev.actor_user_id, func.count(func.distinct(ev.entry_id)), func.count(ev.id)).join(Store, Store.id == ev.store_id)
                 .where(Store.organization_id == admin.organization_id, Store.partner_organization_id == partner.id, ev.event_type == "EDITED",
                        ev.new_values.has_key("bottle_count"), ~ev.new_values.has_key("cash_adjustment"), ev.actor_user_id.in_(ids),
                        ev.created_at >= datetime.combine(month, time.min, ist),
                        ev.created_at < datetime.combine(min(today, last_of_month) + timedelta(days=1), time.min, ist))
                 .group_by(ev.actor_user_id)
-            ).all())
+            ).all():
+                corrected[uid_], correction_events[uid_] = n_entries, n_events
 
     rows, storeless = [], []
     for emp in employees:
@@ -141,22 +193,16 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
                     "employee_id": emp.id, "employee_code": emp.employee_code, "employee_name": emp.full_name,
                     "region_name": emp.region.name if emp.region else None,
                     "stores": 0, "expected": 0, "done": 0, "missing": 0, "percent": 0.0, "yesterday_percent": None, "daily": [],
-                    "entries_made": made.get(emp.id, 0), "corrected": corrected.get(emp.id, 0), "is_team_lead": emp.id in team_leads, "no_stores": True,
+                    "entries_made": made.get(emp.id, 0), "corrected": corrected.get(emp.id, 0), "correction_events": correction_events.get(emp.id, 0), "is_team_lead": emp.id in team_leads, "no_stores": True,
                 })
             continue
-        daily, done_total, running_expected = [], 0, 0
-        for d in days:
-            done = len(stores & covered[d])
-            done_total += done
-            running_expected += len(stores)
-            daily.append({"date": d, "done": done, "expected": len(stores), "percent": _pct(done, len(stores)), "cumulative": _pct(done_total, running_expected)})
-        expected = len(stores) * len(days)
+        daily, done_total, expected = score(stores, days, covered)
         rows.append({
             "employee_id": emp.id, "employee_code": emp.employee_code, "employee_name": emp.full_name,
             "region_name": emp.region.name if emp.region else None,
             "stores": len(stores), "expected": expected, "done": done_total, "missing": expected - done_total, "percent": _pct(done_total, expected),
             "yesterday_percent": daily[-1]["percent"] if daily and daily[-1]["date"] == today - timedelta(days=1) else None,
-            "daily": daily, "entries_made": made.get(emp.id, 0), "corrected": corrected.get(emp.id, 0), "is_team_lead": emp.id in team_leads, "no_stores": False,
+            "daily": daily, "entries_made": made.get(emp.id, 0), "corrected": corrected.get(emp.id, 0), "correction_events": correction_events.get(emp.id, 0), "is_team_lead": emp.id in team_leads, "no_stores": False,
         })
     rows.sort(key=lambda r: (r["percent"], r["employee_name"].lower()))
     storeless.sort(key=lambda r: (-r["entries_made"] - r["corrected"], r["employee_name"].lower()))
@@ -165,12 +211,18 @@ def performance(db: Session, admin: User, partner_slug: str, month: date, today:
     # an admin) and however many employees' scopes the store sits in. So nothing is repeated and nobody's entries drop out of the total.
     expected_all = len(all_ids) * len(days)
     done_all = sum(len(covered[d]) for d in days)
+    # Live stores that sit in nobody's scope cannot be credited to anyone (nothing is guessed). Counted so a person can look at them.
+    in_scope = {sid for ids_ in scopes.values() for sid in ids_}
+    unassigned = [sid for sid in all_ids if sid not in in_scope] if only is None else []
+    unassigned_days = sum(len(set(unassigned) & covered[d]) for d in days) if unassigned else 0
     return {
         "partner_slug": partner.slug, "partner_label": partner.name, "month": f"{month:%Y-%m}", "month_label": month.strftime("%B %Y"),
         "from": days[0] if days else None, "as_of": days[-1] if days else None, "days": len(days), "today": today,
-        "holidays": {d.isoformat(): n for d, n in holidays.items() if d <= as_of}, "view": view,
+        "view": view,
+        "definition": DEFINITION, "generated_at": datetime.now(timezone.utc),
         "summary": {"employees": len(rows), "stores": len(all_ids), "expected": expected_all, "done": done_all, "percent": _pct(done_all, expected_all),
-                    "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50)},
+                    "below_50": sum(1 for r in rows if r["expected"] and r["percent"] < 50),
+                    "unassigned_stores": len(unassigned), "unassigned_store_days": unassigned_days},
         "employees": rows + storeless,      # people with no store of their own come last, and are not part of the summary
     }
 
@@ -179,7 +231,7 @@ def pending_stores(
     db: Session, user: User, perms: set[str], partner_slug: str, employee_id: uuid.UUID | None, day: date, today: date, *, is_admin: bool,
 ) -> dict:
     """The stores of one employee that are holding their percentage down UP TO `day`: every store with at least one counted day without an entry between the
-    1st of that month and `day` (same scope, same "has an entry" rule and same holidays as performance()), each with the dates it is missing. Marking those
+    1st of that month and `day` (same scope, same "has an entry" rule and same judged days as performance(); holidays are not special), each with the dates it is missing. Marking those
     dates brings the employee's percentage to 100 as of `day`. `employee_id` defaults to the caller; only people in the caller's view can be asked about.
     Each store says whether the caller can open it (to mark it) and the response whether its month is still open to them."""
     from app.services import order_service
@@ -196,7 +248,7 @@ def pending_stores(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found on this platform.")
 
     month = day.replace(day=1)
-    days_all, _, _, holidays = _judged_days(db, user.organization_id, month, today)
+    days_all, _, _ = judged_days_from(month, today)
     days = [d for d in days_all if d <= day]
     scopes, _ = assignment_service.employee_store_scopes(db, partner, [emp])
     ids = set(scopes.get(emp.id, []))
@@ -220,7 +272,7 @@ def pending_stores(
     rows.sort(key=lambda r: (-r["missing_days"], r["store_name"].lower()))
     return {
         "employee_id": emp.id, "employee_name": emp.full_name, "employee_code": emp.employee_code, "date": day, "from": days[0] if days else None,
-        "holiday": holidays.get(day), "scope_stores": len(ids), "judged_days": len(days), "missing_total": sum(r["missing_days"] for r in rows),
+        "scope_stores": len(ids), "judged_days": len(days), "missing_total": sum(r["missing_days"] for r in rows),
         "month_open": is_admin or order_service.employee_can_mark_month(day.year, day.month, today), "stores": rows,
     }
 

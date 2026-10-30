@@ -1,6 +1,6 @@
 """Order-entry (bottle-count) routes."""
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from pydantic import BaseModel, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
@@ -241,7 +241,7 @@ def performance(
     if assignment_service.is_partner_account(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
     response.headers["Cache-Control"] = "no-store"
-    today = order_service._today()
+    today = performance_service.business_today()                  # the IST date: the report rolls over at midnight IST, not at 05:30
     return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today, perms)
 
 
@@ -259,7 +259,7 @@ def performance_pending(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
     response.headers["Cache-Control"] = "no-store"
     return performance_service.pending_stores(
-        db, user, perms, partner.strip().lower(), employee_id, day, order_service._today(), is_admin=_is_admin(perms))
+        db, user, perms, partner.strip().lower(), employee_id, day, performance_service.business_today(), is_admin=_is_admin(perms))
 
 
 @router.get("/performance/vendors", dependencies=[Depends(require_permission("orders.view"))])
@@ -276,9 +276,102 @@ def performance_vendors(
     if assignment_service.is_partner_account(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Vendor performance is for Veekay staff.")
     response.headers["Cache-Control"] = "no-store"
-    today = order_service._today()
+    today = performance_service.business_today()
     full = _is_admin(perms) or "orders.overview" in perms
     return performance_service.vendors(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today, full=full)
+
+
+# ---- performance: stored reports and reconciliation (administrators and entry reviewers only; the permission is checked in the service, from this request) ----
+
+class SnapshotRequest(BaseModel):
+    partner: str = Field(max_length=32)
+    month: str | None = Field(None, pattern=r"^\d{4}-\d{2}$")
+    source: str = Field("manual", pattern="^(manual|report)$")          # 'scheduled' is written by the daily job only
+    report_text: str | None = Field(None, max_length=60_000)             # the literal text that was copied, so what was sent is on record
+    revision_of: uuid.UUID | None = None
+    revision_reason: str | None = Field(None, max_length=1000)
+
+
+def _reconciler(user: User, perms: set[str], db: Session, partner_slug: str):
+    from app.services import assignment_service, performance_reconciliation_service as rec, performance_service
+
+    if assignment_service.is_partner_account(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
+    partner = performance_service._partner(db, partner_slug.strip().lower())
+    rec.require_reviewer(db, user, perms, partner)
+    return rec, partner
+
+
+@router.post("/performance/snapshots", dependencies=[Depends(require_permission("orders.view"))])
+def performance_snapshot_create(
+    payload: SnapshotRequest, response: Response,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Keep what the performance report says right now (the figures, the judged days, the stores behind each employee, the instant of the data).
+    Never edited afterwards: a correction is a new snapshot that names the one it revises and says why."""
+    from app.services import performance_service
+
+    rec, partner = _reconciler(user, perms, db, payload.partner)
+    response.headers["Cache-Control"] = "no-store"
+    month = performance_service.parse_month(payload.month, performance_service.business_today())
+    snap = rec.create_snapshot(user.id, partner.slug, month, source=payload.source, report_text=payload.report_text,
+                               revision_of=payload.revision_of, revision_reason=payload.revision_reason)
+    return rec.snapshot_row(snap)
+
+
+@router.get("/performance/snapshots", dependencies=[Depends(require_permission("orders.view"))])
+def performance_snapshot_list(
+    response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    from app.services import performance_service
+
+    rec, p = _reconciler(user, perms, db, partner)
+    response.headers["Cache-Control"] = "no-store"
+    m = performance_service.parse_month(month, performance_service.business_today())
+    return {"partner_slug": p.slug, "month": f"{m:%Y-%m}", "snapshots": rec.list_snapshots(db, user.organization_id, p.slug, m)}
+
+
+@router.get("/performance/snapshots/{snapshot_id}", dependencies=[Depends(require_permission("orders.view"))])
+def performance_snapshot_detail(
+    snapshot_id: uuid.UUID, response: Response, partner: str,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """One stored report, rebuilt from the records at its instant and compared with what it stored (`reproduced`)."""
+    rec, _ = _reconciler(user, perms, db, partner)
+    response.headers["Cache-Control"] = "no-store"
+    return rec.verify_snapshot(db, user.organization_id, snapshot_id)
+
+
+@router.get("/performance/reconciliation", dependencies=[Depends(require_permission("orders.view"))])
+def performance_reconciliation(
+    response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    previous_snapshot: uuid.UUID | None = None, current_snapshot: uuid.UUID | None = None,
+    previous_at: datetime | None = None, current_at: datetime | None = None, employee_id: uuid.UUID | None = None,
+    perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """Why did each employee's figure change between two reports? Each side is a stored snapshot (`*_snapshot`), an instant rebuilt from the records (`*_at`),
+    or, for `current`, right now. With no `previous`, the latest snapshot before `current`, else the day before. Every difference is split into named causes
+    (a new day, entries added, entries cleared with who and when, stores changing hands); whatever the records cannot explain is listed as
+    unexplained and the employee (and the report) is marked for review."""
+    from app.services import performance_service
+
+    rec, p = _reconciler(user, perms, db, partner)
+    response.headers["Cache-Control"] = "no-store"
+    m = performance_service.parse_month(month, performance_service.business_today())
+    if (previous_snapshot and previous_at) or (current_snapshot and current_at):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give a snapshot or a time for each side, not both.")
+    for t in (previous_at, current_at):
+        if t is not None and t.tzinfo is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Times need a time zone, for example 2026-10-29T10:37:00+05:30.")
+    curr = rec.point_for(db, user.organization_id, p, m, snapshot_id=current_snapshot, at=current_at)
+    if previous_snapshot or previous_at:
+        prev = rec.point_for(db, user.organization_id, p, m, snapshot_id=previous_snapshot, at=previous_at)
+    else:
+        earlier = [s for s in rec.list_snapshots(db, user.organization_id, p.slug, m) if s["generated_at"] < curr.state.cutoff and s["id"] != current_snapshot]
+        prev = (rec.point_for(db, user.organization_id, p, m, snapshot_id=earlier[0]["id"]) if earlier
+                else rec.point_for(db, user.organization_id, p, m, at=curr.state.cutoff - timedelta(days=1)))
+    return rec.compare(db, user.organization_id, p, m, prev, curr, employee_id)
 
 
 @router.get(

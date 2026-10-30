@@ -226,6 +226,10 @@ class Settings(BaseSettings):
     # Service-account key (JSON text) for PRIVATE sheets. Secret: set it with `fly secrets set`, never in a file.
     GOOGLE_SERVICE_ACCOUNT_JSON: str = Field(default="", repr=False)
     SYNC_TRIGGER_KEY: str = Field(default="")
+    # Once a day the performance report of every platform is stored as it stands (append-only), so a later difference can be explained against it.
+    PERFORMANCE_SNAPSHOT_ENABLED: bool = Field(default=True)
+    PERFORMANCE_SNAPSHOT_HOUR: int = Field(default=10, ge=0, le=23)
+    PERFORMANCE_SNAPSHOT_MINUTE: int = Field(default=30, ge=0, le=59)
     STORE_SYNC_HOUR: int = Field(default=10)
     STORE_SYNC_MINUTE: int = Field(default=0)
     STORE_SYNC_TIMEZONE: str = Field(default="Asia/Kolkata")

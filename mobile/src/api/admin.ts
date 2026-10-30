@@ -88,7 +88,7 @@ export interface Performance {
 
 /** The stores holding one employee's percentage below 100 up to a day, each with the dates it is missing. */
 export interface PendingStores {
-  employee_id: string; employee_name: string; date: string; from: string | null; holiday: string | null; scope_stores: number; judged_days: number; missing_total: number;
+  employee_id: string; employee_name: string; date: string; from: string | null; holiday?: string | null; scope_stores: number; judged_days: number; missing_total: number;
   /** False when the month is closed to this person: they can look at the stores, only an admin can mark them. */
   month_open: boolean;
   stores: { store_id: string; store_name: string; external_code: string; city: string | null; state: string | null; vendor_name: string | null; can_open: boolean; missing_days: number; missing_dates: string[] }[];

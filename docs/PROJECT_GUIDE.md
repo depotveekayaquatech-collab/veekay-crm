@@ -217,7 +217,7 @@ It lives outside the repo in `%USERPROFILE%\.veekay-signing\` (`veekay-release.j
   L3 edits and finalises. L4 anything. Nobody can erase history.
 * **Calendar colours** (set by the server, so web and phone agree): green = a Data Entry person's first entry; yellow = changed once; red = changed twice or more;
   blue = Team Lead's; violet = Reviewer / Admin / Developer.
-* **Performance %:** for each employee, (store-days that have an entry) ÷ (every live store in their scope × every finished day this month). A day counts only after it is over; company holidays are skipped.
+* **Performance %:** for each employee, (store-days that have an entry) ÷ (every live store in their scope × every finished day this month). A day counts only after it is over. **Holidays play no part:** they belong to attendance; an entry dated on a holiday counts and declaring or changing a holiday never changes a count. Who entered an entry (the employee, a colleague, a spreadsheet upload by the Developer User) never decides whether it counts either.
   Colours: **green only at 100%**, yellow 99.9% down to 70%, red below 70%. A day one entry short never rounds up to 100.
   Who sees what: L1 only themselves, Team Lead only their team, admins/reviewers/overview-holders everyone. Click a day to see every store still missing days from the 1st up to that day; click a store to mark it.
 * **Audit log (web):** the *Activity* tab lists every change in the workspace. The *Entries by employee* tab counts, per person, how many of their entries were never changed, changed once, or changed more than once,

@@ -9,7 +9,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { downloadCsv } from "@/lib/csv";
 import { pushToast } from "@/lib/toast";
 import { copyText } from "@/lib/clipboard";
-import { formatReport, pickEmployees, type Who } from "@/lib/performanceReport";
+import { basisLine, formatReport, pickEmployees, type Who } from "@/lib/performanceReport";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
@@ -34,12 +34,14 @@ interface Performance {
   /** Whose performance this is: everyone, the caller's team (a Team Lead), or only the caller. */
   view: "all" | "team" | "self";
   partner_slug: string; partner_label: string; month: string; month_label: string; from: string | null; as_of: string | null; days: number; today: string;
-  summary: { employees: number; stores: number; expected: number; done: number; percent: number; below_50: number };
+  summary: { employees: number; stores: number; expected: number; done: number; percent: number; below_50: number; unassigned_stores?: number; unassigned_store_days?: number };
+  /** When the server counted this (it is recounted on every look). */
+  generated_at: string;
   employees: Row[];
 }
 
 interface PendingStores {
-  employee_id: string; employee_name: string; employee_code: string; date: string; from: string | null; holiday: string | null; scope_stores: number;
+  employee_id: string; employee_name: string; employee_code: string; date: string; from: string | null; scope_stores: number;
   judged_days: number; missing_total: number;
   /** False when the month is closed to this person (they can look, only an admin can mark). */
   month_open: boolean;
@@ -128,12 +130,13 @@ function shiftMonth(month: string, by: number): string {
 }
 
 /** Pick who to include (everyone, under 50%, under 85%, or one employee), then copy the text or download it to paste into the office group. */
-function GroupReport({ d }: { d: Performance }) {
+function GroupReport({ d, keepCopy }: { d: Performance; keepCopy: boolean }) {
   const [who, setWho] = useState<Who>("all");
   const [show, setShow] = useState(false);
   const picked = useMemo(() => pickEmployees(d.employees, who), [d.employees, who]);
   const heading = `${d.partner_label} - Employee performance, ${d.month_label}${d.days ? ` (${shortDay(d.from!)} to ${shortDay(d.as_of!)})` : ""}`;
-  const text = useMemo(() => formatReport(heading, picked), [heading, picked]);
+  const basis = useMemo(() => (d.days ? basisLine(d.days, d.generated_at) : undefined), [d.days, d.generated_at]);
+  const text = useMemo(() => formatReport(heading, picked, basis), [heading, picked, basis]);
   const options = [
     { value: "all", label: `All employees (${d.employees.length})` },
     { value: "under50", label: `Under 50% (${pickEmployees(d.employees, "under50").length})` },
@@ -144,6 +147,10 @@ function GroupReport({ d }: { d: Performance }) {
   async function copy() {
     const ok = await copyText(text);
     pushToast(ok ? `Report copied for ${picked.length} employee${picked.length === 1 ? "" : "s"}. Paste it in the group.` : "Couldn't copy. Open the preview and copy it by hand.", ok ? "success" : "error");
+    // Keep what was sent: an append-only snapshot of the figures and the exact text, so a later difference can be explained against it. Best effort: copying never waits for it.
+    if (ok && keepCopy) {
+      apiRequest("/orders/performance/snapshots", { method: "POST", silent: true, body: { partner: d.partner_slug, month: d.month, source: "report", report_text: text } }).catch(() => undefined);
+    }
   }
   function download() {
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
@@ -191,8 +198,10 @@ export function PerformancePage() {
  * platform switch (employees cannot list the platforms, so they use the one on their profile).
  */
 function PerformanceBody() {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, hasRole } = useAuth();
   const overview = hasPermission("orders.overview");
+  // Reconciliation shows who entered, cleared and moved what: the entry-audit levels only. The backend refuses everyone else whatever this says.
+  const canReconcile = hasRole("admin") || hasRole("developer") || hasPermission("entries.audit");
   const [pickedDay, setPickedDay] = useState<{ employeeId: string; date: string } | null>(null);
   const { data: fetched = [] } = usePartners(overview);
   const partners = overview ? fetched : user?.platformSlug ? [{ slug: user.platformSlug, name: user.platformLabel ?? user.platformSlug }] : [];
@@ -259,11 +268,22 @@ function PerformanceBody() {
                     <IconDownload className="h-3.5 w-3.5" aria-hidden="true" />
                     Export CSV
                   </Button>
+                  {canReconcile && (
+                    <Link to="/orders/performance/reconcile" className="inline-flex h-9 items-center rounded-lg border border-surface-border px-3 text-sm font-semibold text-brand-700 hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500">
+                      Why did a number change?
+                    </Link>
+                  )}
                 </div>
-                {!alone && <GroupReport d={d} />}
+                {!alone && <GroupReport d={d} keepCopy={canReconcile} />}
               </div>
             </div>
           </section>
+
+          {!alone && d.view === "all" && (d.summary.unassigned_stores ?? 0) > 0 && (
+            <p className="rounded-xl border border-status-warning/40 bg-status-warning-soft px-4 py-2.5 text-sm text-status-warning" role="status">
+              {d.summary.unassigned_stores} live store{d.summary.unassigned_stores === 1 ? " belongs" : "s belong"} to nobody&apos;s scope{(d.summary.unassigned_store_days ?? 0) > 0 ? `, with ${d.summary.unassigned_store_days!.toLocaleString()} entered store-days` : ""}. Those entries are credited to no one until the store is assigned.
+            </p>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label="Entries marked" value={`${d.summary.done.toLocaleString()} / ${d.summary.expected.toLocaleString()}`} tone="aqua" icon={IconCheckCircle}>

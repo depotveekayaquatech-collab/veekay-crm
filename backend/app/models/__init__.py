@@ -21,6 +21,7 @@ from app.models.zero_review import ZeroReview, ZeroReviewLog
 from app.models.attendance import AttendanceRecord, AttendanceSession, LeaveRequest, Office
 from app.models.payroll import DayMark, EmployeeSalary, PayrollPeriod, Payslip
 from app.models.deleted_row import DeletedRow, OrderEntryChange
+from app.models.performance_snapshot import PerformanceSnapshot
 from app.models.compliance_document import BillStatus, ComplianceDocument, ComplianceDocumentVersion, DocKind
 from app.models.ticket import Ticket, TicketComment
 from app.models.test_report import TestReport

@@ -7,6 +7,7 @@
  *   No. of stores - 20
  *
  * The first number is what the employee has marked, the second is the total they needed to mark so far this month for 100%; the percentage is marked / total.
+ * "Marked" is store-days of THEIR stores that have an entry today, whoever entered it (not only what they typed); it is recounted on every look.
  */
 export interface ReportRow {
   employee_id: string;
@@ -44,8 +45,18 @@ export function formatEmployee(r: ReportRow): string {
   return [`Employee name - ${r.employee_name}`, `Entries - ${n(r.done)} / ${n(r.expected)}`, `Percentage - ${r.percent}%`, ...fixed, `No. of stores - ${n(r.stores)}`].join("\n");
 }
 
-/** The whole message: a heading line saying what it is, then one block per employee with a blank line between. Empty when there is nobody to report. */
-export function formatReport(heading: string, rows: ReportRow[]): string {
+/**
+ * One line saying what the figures cover, so the pasted text can still be read on its own days later: how many days were counted and when it was taken. Every
+ * day from the 1st to yesterday is counted, holidays included: holidays belong to attendance and never change an entry count. The figures are recounted on
+ * every look, so entries added late to earlier days raise them.
+ */
+export function basisLine(days: number, takenAt?: string): string {
+  const taken = takenAt ? new Date(takenAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
+  return `Counted over ${days} day${days === 1 ? "" : "s"}, holidays included${taken ? `. Taken ${taken} IST` : ""}`;
+}
+
+/** The whole message: a heading line saying what it is, what it counted (`basis`, see basisLine), then one block per employee with a blank line between. Empty when there is nobody to report. */
+export function formatReport(heading: string, rows: ReportRow[], basis?: string): string {
   if (!rows.length) return "";
-  return [heading, "Entries = marked / total needed for 100%", "", rows.map(formatEmployee).join("\n\n")].join("\n");
+  return [heading, "Entries = marked / total needed for 100%", ...(basis ? [basis] : []), "", rows.map(formatEmployee).join("\n\n")].join("\n");
 }

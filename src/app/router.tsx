@@ -36,6 +36,7 @@ const CardSheetPage = lazy(() => import("@/features/cardsheet/CardSheetPage").th
 const TicketsPage = lazy(() => import("@/features/tickets/TicketsPage").then((m) => ({ default: m.TicketsPage })));
 const ZeroReviewPage = lazy(() => import("@/features/zero/ZeroReviewPage").then((m) => ({ default: m.ZeroReviewPage })));
 const PerformancePage = lazy(() => import("@/features/orders/PerformancePage").then((m) => ({ default: m.PerformancePage })));
+const PerformanceReconcilePage = lazy(() => import("@/features/orders/PerformanceReconcilePage").then((m) => ({ default: m.PerformanceReconcilePage })));
 const PendingPage = lazy(() => import("@/features/pending/PendingPage").then((m) => ({ default: m.PendingPage })));
 const TeamPage = lazy(() => import("@/features/team/TeamPage").then((m) => ({ default: m.TeamPage })));
 const StoresPage = lazy(() => import("@/features/stores/StoresPage").then((m) => ({ default: m.StoresPage })));
@@ -109,6 +110,8 @@ export function AppRoutes() {
           <Route index element={<OrdersIndex><MarkOrdersPage /></OrdersIndex>} />
           <Route path="overview" element={<Require permission="orders.overview"><DailyOverviewPage /></Require>} />
           <Route path="performance" element={<Require permission="orders.view"><PerformancePage /></Require>} />
+          {/* Shown to administrators and entry reviewers; the backend decides, this only hides the page from everyone else. */}
+          <Route path="performance/reconcile" element={<Require permission="orders.view"><PerformanceReconcilePage /></Require>} />
           <Route path="pending" element={<Require permission="orders.overview"><PendingPage /></Require>} />
           <Route path="correct" element={<Require permission="orders.correct"><CorrectEntriesPage /></Require>} />
         </Route>

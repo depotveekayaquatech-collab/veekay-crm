@@ -91,7 +91,7 @@ def test_the_platform_overall_counts_each_store_day_once_whoever_entered_it(clie
         return r.json()["summary"]
 
     base = summary()
-    assert 0 < base["expected"] <= base["stores"] * (TODAY - timedelta(days=1)).day      # every live store on every finished day (a holiday takes its day away)
+    assert 0 < base["expected"] <= base["stores"] * (TODAY - timedelta(days=1)).day      # every live store on every finished day (holidays included: they are attendance's business)
     plant_entry(db, store, day, 8, creator=helper)               # entered by someone with no store of their own: it still counts, once
     assert summary()["done"] == base["done"] + 1
     assert summary()["expected"] == base["expected"]
@@ -124,7 +124,7 @@ def test_a_team_lead_shows_how_many_entries_they_corrected(client, db, admin, ma
     assert rows[str(member)]["corrected"] == 0 and rows[str(member)]["is_team_lead"] is False and rows[str(member)]["entries_made"] == 2
 
 
-def test_an_entry_marked_on_a_holiday_does_not_break_the_page(client, db, admin, make_user, make_store):
+def test_an_entry_dated_on_a_holiday_counts_like_any_other(client, db, admin, make_user, make_store):
     if TODAY.day < 4:
         return
     store = make_store(platform="blinkit", region="NORTH", state="Perf-Land")
@@ -139,7 +139,8 @@ def test_an_entry_marked_on_a_holiday_does_not_break_the_page(client, db, admin,
         r = client.get(f"{API}/orders/performance", params={"partner": "blinkit"}, headers=admin)
         assert r.status_code == 200, r.text
         mine = next(e for e in r.json()["employees"] if e["employee_id"] == str(uid))
-        assert holiday.isoformat() not in {d["date"] for d in mine["daily"]}
+        on_holiday = next(d for d in mine["daily"] if d["date"] == holiday.isoformat())        # the holiday is a judged day like any other...
+        assert on_holiday["done"] >= 1 and on_holiday["expected"] == mine["stores"]            # ...and the entry made on it counts
     finally:
         client.delete(f"{API}/attendance/holidays/{holiday.isoformat()}", headers=admin)
 
