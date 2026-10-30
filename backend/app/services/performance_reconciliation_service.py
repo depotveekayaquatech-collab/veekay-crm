@@ -71,6 +71,16 @@ def _tz() -> ZoneInfo:
 # access
 # --------------------------------------------------------------------------
 
+def reconciliation_scope(db: Session, user: User, perms: set[str], partner: Organization | None = None) -> frozenset[uuid.UUID] | None:
+    """Who the caller may reconcile: None = everyone on the platform (administrator, developer, Entry Reviewer: see require_reviewer), or the Team Lead's own team (themselves
+    and the people who report to them) and nobody else. Anyone else is refused. Decided from the roles and permissions of THIS request, never from the request."""
+    sc = scope_for(db, user, perms)
+    if sc.level is Level.TEAM_LEAD and sc.creator_ids is not None:
+        return frozenset(sc.creator_ids)
+    require_reviewer(db, user, perms, partner)
+    return None
+
+
 def require_reviewer(db: Session, user: User, perms: set[str], partner: Organization | None = None) -> None:
     """Reconciliation exposes who entered, cleared and moved what. Only the entry-audit levels (administrator, developer, Entry Reviewer) may open it, decided
     from the roles and permissions of THIS request (the same rule as the entry history); a platform-scoped reviewer only for their own platform."""
@@ -325,6 +335,28 @@ def verify_snapshot(db: Session, org_id: uuid.UUID, snapshot_id: uuid.UUID) -> d
 
 
 # --------------------------------------------------------------------------
+# "+80 / -12": how an employee's entries moved since the previous report
+# --------------------------------------------------------------------------
+
+PREVIOUS_DAY = timedelta(hours=24)         # the change is measured against the records as they stood one day ago
+
+
+def entry_change(db: Session, user: User, perms: set[str], partner_slug: str, month: date, today: date) -> dict:
+    """For every employee the caller may see: how many entries (store-days, the report's "Entries" figure) they gained (+) or lost (-) over the PREVIOUS DAY, that is,
+    against the records rebuilt as they stood 24 hours ago (today's store assignments assumed). It never depends on whether anyone copied or sent a report: saved
+    reports do not move this baseline, so copying twice, or copying and then looking again, always shows the same previous-day difference. An employee who has no
+    figure at that moment simply has no change. Read-only; the same counting rules as the report."""
+    now = datetime.now(timezone.utc)
+    report = ps.performance(db, user, partner_slug, month, today, perms)
+    live = {uuid.UUID(str(r["employee_id"])): r["done"] for r in report["employees"] if not r["no_stores"]}
+    st = build_state(db, user.organization_id, ps._partner(db, partner_slug), month, now - PREVIOUS_DAY)
+    if not st.days:                                     # nothing was judged yet a day ago: there is nothing to compare with
+        return {"since": None, "basis": None, "changes": {}}
+    base = {e: f["done"] for e, f in st.figures().items()}
+    return {"since": st.cutoff, "basis": "rebuilt", "changes": {str(e): done - base[e] for e, done in live.items() if e in base}}
+
+
+# --------------------------------------------------------------------------
 # comparing two moments
 # --------------------------------------------------------------------------
 
@@ -408,6 +440,28 @@ def _removal_evidence(db: Session, org_id: uuid.UUID, partner: Organization, t0:
     return found
 
 
+def _made_between(db: Session, org_id: uuid.UUID, partner: Organization, t0: datetime, t1: datetime) -> tuple[dict[uuid.UUID, dict[date, int]], dict[uuid.UUID, dict[uuid.UUID, int]]]:
+    """({person: {IST day: entries}}, {person: {store: entries}}) they CREATED on this platform between the two instants (t0 exclusive, t1 inclusive): what each person actually marked in the period,
+    whoever's stores they were. Entries since cleared still count as made (their copy is in deleted_rows); a deleted entry that was restored is counted once."""
+    tz = settings.DISPLAY_TIMEZONE
+    rows = db.execute(text("""
+        SELECT who, (at AT TIME ZONE :tz)::date AS day, store, count(*) FROM (
+            SELECT e.created_by_user_id AS who, e.created_at AS at, e.store_id AS store FROM order_entries e JOIN stores s ON s.id = e.store_id
+            WHERE s.organization_id = :org AND s.partner_organization_id = :pid AND e.created_by_user_id IS NOT NULL AND e.created_at > :a AND e.created_at <= :b
+            UNION ALL
+            SELECT (d.data->>'created_by_user_id')::uuid, (d.data->>'created_at')::timestamptz, (d.data->>'store_id')::uuid FROM deleted_rows d
+            WHERE d.table_name = 'order_entries' AND d.restored_at IS NULL AND d.data->>'created_by_user_id' IS NOT NULL
+              AND (d.data->>'created_at')::timestamptz > :a AND (d.data->>'created_at')::timestamptz <= :b
+              AND (d.data->>'store_id')::uuid IN (SELECT id FROM stores WHERE organization_id = :org AND partner_organization_id = :pid)
+        ) x GROUP BY who, day, store"""), {"org": org_id, "pid": partner.id, "a": t0, "b": t1, "tz": tz}).all()
+    by_day: dict[uuid.UUID, dict[date, int]] = defaultdict(dict)
+    by_store: dict[uuid.UUID, dict[uuid.UUID, int]] = defaultdict(dict)
+    for who, day, store, n in rows:
+        by_day[who][day] = by_day[who].get(day, 0) + int(n)
+        by_store[who][store] = by_store[who].get(store, 0) + int(n)
+    return by_day, by_store
+
+
 def _store_info(db: Session, ids) -> dict[uuid.UUID, dict]:
     ids = list(ids)
     if not ids:
@@ -423,14 +477,15 @@ def _breakdown(rec: Rec, eid: uuid.UUID) -> str:
     return rec.creator_name or "someone else"
 
 
-def compare(db: Session, org_id: uuid.UUID, partner: Organization, month: date, prev: Point, curr: Point, employee_id: uuid.UUID | None = None) -> dict:
+def compare(db: Session, org_id: uuid.UUID, partner: Organization, month: date, prev: Point, curr: Point, employee_id: uuid.UUID | None = None,
+            only: frozenset[uuid.UUID] | None = None) -> dict:
     """Why did each employee's figure change between `prev` and `curr`? See the module docstring for the exact split. Read-only."""
     a, b = prev.state, curr.state
     if a.cutoff > b.cutoff:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The earlier report must come first.")
     DA, DB = set(a.days), set(b.days)
     ca, cb = a.covered(), b.covered()
-    ids = [e for e in {*a.scopes, *b.scopes} if employee_id is None or e == employee_id]
+    ids = [e for e in {*a.scopes, *b.scopes} if (employee_id is None or e == employee_id) and (only is None or e in only)]       # `only`: a Team Lead sees their team and nobody else
     figs_a, figs_b = a.figures(), b.figures()
     who = {**a.who, **b.who}
     added_days = sorted(DB - DA)          # days that finished between the two moments (the same month, so none can disappear)
@@ -445,6 +500,24 @@ def compare(db: Session, org_id: uuid.UUID, partner: Organization, month: date, 
         lost_all.update(lost)
         plan[eid] = {"S1": S1, "S2": S2, "lost": lost}
     evidence = _removal_evidence(db, org_id, partner, a.cutoff, b.cutoff, lost_all)
+    made, made_store = _made_between(db, org_id, partner, a.cutoff, b.cutoff)
+    # Whose stores did each person's entries land on? (the stores' owners as of the later moment; a store in two scopes credits both, a store in none is "unowned")
+    owners: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+    for owner, stores_ in b.scopes.items():
+        for st_ in stores_:
+            owners[st_].append(owner)
+    split: dict[uuid.UUID, Counter] = {}
+    unowned: dict[uuid.UUID, int] = {}
+    for maker, per_store in made_store.items():
+        c, lost_ = Counter(), 0
+        for st_, cnt in per_store.items():
+            if owners.get(st_):
+                for owner in owners[st_]:
+                    c[owner] += cnt
+            else:
+                lost_ += cnt
+        split[maker], unowned[maker] = c, lost_
+    maker_names = {**who, **_names(db, [m for m in made_store if m not in who])}
     store_cache = _store_info(db, set().union(*(p["S1"] ^ p["S2"] for p in plan.values())) if plan else set())
     early = a.cutoff < EVIDENCE_START
     notes = []
@@ -517,6 +590,10 @@ def compare(db: Session, org_id: uuid.UUID, partner: Organization, month: date, 
             },
             "unexplained": {"removed_without_evidence": len(unexplained_removed), "stored_figure_difference": residual, "arithmetic_gap": gap, "total": unexplained_total},
             "added_by": dict(added_by), "covered_by": dict(attribution), "covered_via": dict(via),
+            "made": {"total": sum(made.get(eid, {}).values()), "by_day": {d.isoformat(): n for d, n in sorted(made.get(eid, {}).items())}},
+            # entries created in the period on THIS person's stores by someone else (a colleague, a Team Lead, a helper with no stores of their own)
+            "entered_by_others": sorted(({"employee_id": m, "name": (maker_names.get(m) or {}).get("name"), "entries": c[eid], "share_of_their_entries": round(c[eid] * 100 / sum(made_store[m].values()), 1)}
+                                         for m, c in split.items() if m != eid and c[eid]), key=lambda x: -x["entries"])[:10],
             "records": {
                 "removed": sorted((evidence[k] for k in lost if k in evidence), key=lambda r: (r["date"], str(r["store_id"])))[:MAX_RECORDS],
                 "removed_without_evidence": [{"store_id": s, "store_code": (store_cache.get(s) or {}).get("store_code"), "date": d} for s, d in sorted(unexplained_removed, key=lambda x: (x[1], str(x[0])))[:MAX_RECORDS]],
@@ -525,6 +602,24 @@ def compare(db: Session, org_id: uuid.UUID, partner: Organization, month: date, 
             },
             "status": state, "status_label": STATUS_LABEL[state], "reasons": reasons,
         })
+    helpers = []
+    for m, per_store in made_store.items():
+        if m in figs_a or m in figs_b:
+            continue                                  # people with stores of their own are rows of the table
+        shown = {o: n_ for o, n_ in split[m].items() if (employee_id is None or o == employee_id) and (only is None or o in only)}
+        restricted = employee_id is not None or only is not None
+        if restricted and not shown:
+            continue                                  # a Team Lead (or a one-employee filter) only sees helpers who worked on the stores in view
+        total = sum(per_store.values())
+        if restricted:                                # only the part of their work that landed on the stores in view: never what they did for anyone else
+            total = sum(cnt for st_, cnt in per_store.items() if any(o in shown for o in owners.get(st_, ())))
+        owners_list = [{"employee_id": o, "name": (maker_names.get(o) or {}).get("name"), "code": (maker_names.get(o) or {}).get("code"), "entries": n_,
+                        "share_percent": round(n_ * 100 / total, 1) if total else 0.0} for o, n_ in Counter(shown if restricted else split[m]).most_common()]
+        info_ = maker_names.get(m) or {}
+        helpers.append({"employee_id": m, "employee_name": info_.get("name"), "employee_code": info_.get("code"),
+                        "made": {"total": total, "by_day": {} if restricted else {d.isoformat(): n_ for d, n_ in sorted(made.get(m, {}).items())}},
+                        "for_owners": owners_list, "unowned_entries": 0 if restricted else unowned[m]})
+    helpers.sort(key=lambda h: -h["made"]["total"])
     rows.sort(key=lambda r: (-_SEVERITY[r["status"]], r["delta"], (r["employee_name"] or "").lower()))
     worst = max((r["status"] for r in rows), key=lambda s: _SEVERITY[s], default=VERIFIED)
     counts = Counter(r["status"] for r in rows)
@@ -539,5 +634,5 @@ def compare(db: Session, org_id: uuid.UUID, partner: Organization, month: date, 
         "previous": side(prev), "current": side(curr), "notes": notes,
         "summary": {"status": worst, "status_label": STATUS_LABEL[worst], "employees": len(rows), "verified": counts[VERIFIED], "reconciled": counts[RECONCILED],
                     "requires_review": counts[REVIEW], "unverifiable": counts[UNVERIFIABLE], "unexplained_total": sum(r["unexplained"]["total"] for r in rows)},
-        "employees": rows,
+        "employees": rows, "helpers": helpers,
     }

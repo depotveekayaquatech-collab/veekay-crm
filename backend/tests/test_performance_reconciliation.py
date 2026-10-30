@@ -402,8 +402,11 @@ def test_k_reconciliation_is_refused_to_ordinary_staff_by_the_backend(client, db
     for method, url, kw in calls:
         assert getattr(client, method)(url, **kw).status_code == 401                                  # nobody signed in
         for who in (emp, lead):
+            if who is lead and url.endswith("/reconciliation"):
+                continue                                                                              # a Team Lead MAY reconcile their own team (see the next tests)
             r = getattr(client, method)(url, headers=who, **kw)
-            assert r.status_code == 403, (method, url, r.text)                                        # an employee; a Team Lead
+            assert r.status_code == 403, (method, url, r.text)                                        # an employee; a Team Lead for anything platform-wide
+        assert client.get(calls[0][1], headers=emp, **calls[0][2]).status_code == 403                  # an ordinary employee: never
     ok = client.get(calls[1][1], headers=admin, params=calls[1][2]["params"])
     assert ok.status_code == 200 and ok.json()["partner_slug"] == "zepto"
     made = client.post(calls[2][1], headers=admin, json=calls[2][2]["json"])
@@ -643,3 +646,151 @@ def test_the_read_only_command_line_tool_explains_a_removal(db, zone, capsys, mo
     out = capsys.readouterr().out
     name = db.get(User, zone.uid).full_name
     assert name in out and "-1" in out and "entries removed -1" in out and f"by {name}" in out and "nothing unexplained" in out and "holiday" not in out.lower().replace("holidays are not special", "")
+
+
+# ================================================================ "+80 / -12": the change shown next to each employee in the group message
+
+def _change(client, admin, uid):
+    r = client.get(f"{API}/orders/performance/change", headers=admin, params={"partner": "zepto", "month": f"{MONTH:%Y-%m}"})
+    assert r.status_code == 200, r.text
+    return r.json(), r.json()["changes"].get(str(uid))
+
+
+def test_the_change_is_plus_for_new_entries_and_minus_when_entries_drop(client, db, zone, admin, admin_user):
+    old = datetime.now(timezone.utc) - timedelta(days=2)
+    db.execute(text("SELECT set_config('app.actor_id', '', false)"))
+    for si, di in [(s, d) for s in (0, 1) for d in range(3)]:                      # six entries that already existed two days ago
+        db.add(OrderEntry(organization_id=zone.org.id, store_id=zone.stores[si].id, order_date=DAYS[di], bottle_count=3, source="employee", created_at=old))
+    db.commit()
+    body, change = _change(client, admin, zone.uid)
+    assert change == 0 and body["basis"] == "rebuilt" and body["since"]                # nothing happened since the previous report: 0, not missing
+    plant(db, zone, [(2, 0), (2, 1), (2, 2)])                                       # three new entries today
+    assert _change(client, admin, zone.uid)[1] == 3
+    for si, di in [(0, 0), (0, 1), (0, 2), (1, 0)]:                                  # four of the older ones disappear
+        clear(db, zone.stores[si], DAYS[di], actor=zone.uid)
+    assert _change(client, admin, zone.uid)[1] == 3 - 4 == -1                        # a drop is negative
+    assert figure(db, zone)["done"] == 5
+
+    # a report copied or saved, now or long ago, never moves the baseline: the difference is always against the previous day
+    rec.create_snapshot(admin_user.id, "zepto", MONTH, source="report", report_text="copied just now")
+    db.add(PerformanceSnapshot(
+        organization_id=zone.org.id, partner_slug="zepto", month=MONTH, as_of=LAST, generated_at=datetime.now(timezone.utc) - timedelta(days=2), generated_by_user_id=admin_user.id,
+        generated_by_name="x", source="manual", definition_version=ps.DEFINITION_VERSION, judged_days=[], scopes={}, summary={}, content_hash="test",
+        employees=[{"employee_id": str(zone.uid), "done": 2, "no_stores": False}]))
+    db.commit()
+    body, change = _change(client, admin, zone.uid)
+    assert body["basis"] == "rebuilt" and change == -1
+
+
+def test_looking_again_right_after_copying_the_report_shows_the_same_change(client, db, zone, admin, admin_user):
+    plant(db, zone, [(0, 0), (0, 1)])
+    first = _change(client, admin, zone.uid)[1]
+    rec.create_snapshot(admin_user.id, "zepto", MONTH, source="report", report_text="sent")        # the report is copied / sent
+    assert _change(client, admin, zone.uid)[1] == first == 2
+    r = client.get(f"{API}/orders/performance/reconciliation", headers=admin, params={"partner": "zepto", "month": f"{MONTH:%Y-%m}", "employee_id": str(zone.uid)})
+    row = r.json()["employees"][0]
+    assert r.json()["previous"]["source"] == "rebuilt from the records" and row["delta"] == 2           # the page too compares with the previous day, not with the copy
+
+
+def test_the_change_is_only_for_people_in_view_and_never_for_platform_logins(client, db, zone, emp):
+    r = client.get(f"{API}/orders/performance/change", headers=emp, params={"partner": "blinkit"})
+    assert r.status_code == 200 and str(zone.uid) not in r.json()["changes"]            # an employee sees at most their own line
+    assert client.get(f"{API}/orders/performance/change", params={"partner": "blinkit"}).status_code == 401
+
+
+def test_the_entries_a_person_marked_in_the_period_are_counted_per_day_for_that_person(db, zone, make_user):
+    _, _, colleague = make_user(platform="zepto", grants=("orders.view", "orders.mark"))
+    plant(db, zone, [(0, 0)])                                                         # before the period: not counted
+    t1 = tick()
+    plant(db, zone, [(0, 1), (0, 2), (1, 0)])                                         # three marked by the employee in the period
+    plant(db, zone, [(2, 0)], creator=colleague)                                      # one by a colleague
+    clear(db, zone.stores[1], DAYS[0], actor=zone.uid)                                # one of the employee's three is cleared afterwards: still marked by them
+    t2 = tick()
+    _, mine = compare(db, zone, t1, t2)
+    today_ist = datetime.now(IST).date().isoformat()
+    assert mine["made"] == {"total": 3, "by_day": {today_ist: 3}}
+    assert compare(db, zone, t1, t2, employee=colleague)[1] is None or compare(db, zone, t1, t2, employee=colleague)[1]["made"]["total"] == 1
+    _, none_before = compare(db, zone, tick(), tick())
+    assert none_before["made"] == {"total": 0, "by_day": {}}                           # nothing marked in an empty period
+
+
+def test_a_helper_with_no_stores_is_shown_with_how_their_entries_split_across_the_owners(db, zone, make_user, make_store):
+    _, _, helper = make_user(platform="zepto", grants=("orders.view", "orders.mark"))              # like Vishwanjali: no state, no stores of their own
+    code2, pw2, second = make_user(platform="zepto", grants=("orders.view", "orders.mark"))
+    state2 = f"Recon2-{uuid.uuid4().hex[:6]}"
+    theirs = make_store(platform="zepto", region=None, state=state2, city="Elsewhere")
+    orphan = make_store(platform="zepto", region=None, state=f"Nobody-{uuid.uuid4().hex[:6]}", city="Nowhere")
+    db.add(StateAssignment(organization_id=zone.org.id, partner_organization_id=zone.zepto.id, state=state2, assigned_user_id=second))
+    db.commit()
+    try:
+        t1 = tick()
+        for st, d in ((zone.stores[0], 0), (zone.stores[0], 1), (zone.stores[1], 0)):               # three on the first employee's stores
+            plant_entry(db, st, DAYS[d], 4, creator=helper)
+        plant_entry(db, theirs, DAYS[0], 4, creator=helper)                                        # one on the second employee's store
+        plant_entry(db, orphan, DAYS[0], 4, creator=helper)                                        # one on a store nobody owns
+        plant(db, zone, [(2, 0)])                                                                  # and the first employee marks one of their own
+        t2 = tick()
+        prev = rec.point_for(db, zone.org.id, zone.zepto, MONTH, at=t1)
+        curr = rec.point_for(db, zone.org.id, zone.zepto, MONTH, at=t2)
+        out = rec.compare(db, zone.org.id, zone.zepto, MONTH, prev, curr)
+        mine = next(h for h in out["helpers"] if h["employee_id"] == helper)
+        assert mine["made"]["total"] == 5 and mine["unowned_entries"] == 1                         # the helper is listed, with everything they marked
+        split = {o["employee_id"]: (o["entries"], o["share_percent"]) for o in mine["for_owners"]}
+        assert split == {zone.uid: (3, 60.0), second: (1, 20.0)}                                    # and how much of it went to each owner's stores
+        first_row = next(r for r in out["employees"] if r["employee_id"] == zone.uid)
+        assert first_row["made"]["total"] == 1                                                      # their own marking is separate
+        assert first_row["entered_by_others"] == [{"employee_id": helper, "name": db.get(User, helper).full_name, "entries": 3, "share_of_their_entries": 60.0}]
+        only = rec.compare(db, zone.org.id, zone.zepto, MONTH, prev, curr, second)                  # filtering to one employee keeps only the helpers who worked for them
+        assert [h["employee_id"] for h in only["helpers"]] == [helper] and [o["employee_id"] for o in only["helpers"][0]["for_owners"]] == [second]
+        assert helper not in {r["employee_id"] for r in out["employees"]}                           # a helper is not a row of the table: they have no percentage
+    finally:
+        db.query(StateAssignment).filter(StateAssignment.state == state2).delete()
+        db.commit()
+
+
+def test_a_team_lead_reconciles_only_their_own_team(client, db, zone, make_user, make_store):
+    from app.models.role import Role
+    from app.models.user import UserRole
+
+    _, _, lead_id = make_user(role="employee", platform="zepto", grants=("orders.view", "orders.mark"))      # a Team Lead is an employee who also holds the Team Lead role
+    db.add(UserRole(user_id=lead_id, role_id=db.query(Role).filter_by(code="team_lead").one().id))
+    db.commit()
+    lead = auth(login(client, db.get(User, lead_id).employee_code).json()["access_token"])
+    _, _, helper = make_user(platform="zepto", grants=("orders.view", "orders.mark"))
+    _, _, stranger = make_user(platform="zepto", grants=("orders.view", "orders.mark"))             # not in the Team Lead's team
+    state2 = f"Recon2-{uuid.uuid4().hex[:6]}"
+    other_store = make_store(platform="zepto", region=None, state=state2, city="Elsewhere")
+    db.add(StateAssignment(organization_id=zone.org.id, partner_organization_id=zone.zepto.id, state=state2, assigned_user_id=stranger))
+    db.query(User).filter(User.id.in_([zone.uid, helper])).update({"reports_to_user_id": lead_id})      # the first employee and the helper report to the lead
+    db.commit()
+    month = f"{MONTH:%Y-%m}"
+    try:
+        t1 = tick()
+        plant(db, zone, [(0, 0), (0, 1)])
+        plant_entry(db, zone.stores[1], DAYS[0], 4, creator=helper)                                # the helper marks one of the team's stores...
+        plant_entry(db, other_store, DAYS[0], 4, creator=helper)                                   # ...and one of a store outside the team
+        plant_entry(db, other_store, DAYS[1], 4, creator=stranger)
+        t2 = tick()
+        params = {"partner": "zepto", "month": month, "previous_at": t1.isoformat(), "current_at": t2.isoformat()}
+        r = client.get(f"{API}/orders/performance/reconciliation", headers=lead, params=params)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        ids = {e["employee_id"] for e in body["employees"]}
+        assert str(zone.uid) in ids and str(stranger) not in ids                                    # their employee yes, someone else's employee no
+        mine = next(e for e in body["employees"] if e["employee_id"] == str(zone.uid))
+        assert mine["delta"] == 3 and mine["made"]["total"] == 2
+        assert body["summary"]["employees"] == len(ids)                                             # the summary is about the team too
+        helped = next(h for h in body["helpers"] if h["employee_id"] == str(helper))
+        assert [o["employee_id"] for o in helped["for_owners"]] == [str(zone.uid)] and helped["made"]["total"] == 1      # only what landed on the team's stores
+        assert helped["unowned_entries"] == 0 and helped["made"]["by_day"] == {}
+        assert str(stranger) not in {o["employee_id"] for h in body["helpers"] for o in h["for_owners"]}
+        # asking about someone outside the team, or for the platform-wide saved reports, is refused by the backend
+        assert client.get(f"{API}/orders/performance/reconciliation", headers=lead, params={**params, "employee_id": str(stranger)}).status_code == 403
+        assert client.get(f"{API}/orders/performance/reconciliation", headers=lead, params={"partner": "zepto", "month": month, "previous_snapshot": str(uuid.uuid4())}).status_code == 403
+        for method, url in (("get", "/orders/performance/snapshots"), ("post", "/orders/performance/snapshots")):
+            kw = {"params": {"partner": "zepto", "month": month}} if method == "get" else {"json": {"partner": "zepto", "month": month}}
+            assert getattr(client, method)(f"{API}{url}", headers=lead, **kw).status_code == 403
+    finally:
+        db.query(User).filter(User.id.in_([zone.uid, helper])).update({"reports_to_user_id": None})
+        db.query(StateAssignment).filter(StateAssignment.state == state2).delete()
+        db.commit()

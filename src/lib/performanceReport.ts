@@ -3,6 +3,7 @@
  *
  *   Employee name - Harshita
  *   Entries - 460 / 500         (marked / total needed to reach 100%)
+ *   Entries change - +80        (gained (+) or lost (-) since the previous report)
  *   Percentage - 92%
  *   No. of stores - 20
  *
@@ -23,6 +24,8 @@ export interface ReportRow {
   /** Entries whose number this person changed this month (a Team Lead's job). */
   corrected?: number;
   is_team_lead?: boolean;
+  /** Entries gained (+) or lost (-) since the previous report; absent when there is nothing to compare with. */
+  change?: number | null;
 }
 
 /** Who the report is for: everyone, a performance band, or one employee ("emp:<id>"). */
@@ -38,11 +41,15 @@ export function pickEmployees<T extends ReportRow>(rows: T[], who: Who): T[] {
 
 const n = (v: number) => v.toLocaleString("en-IN");
 
-/** One employee's four lines. */
+/** +80, -12, or 0: always signed so a gain and a drop can be told apart at a glance. */
+export const signedCount = (v: number) => (v > 0 ? `+${n(v)}` : v < 0 ? `-${n(Math.abs(v))}` : "0");
+
+/** One employee's lines. */
 export function formatEmployee(r: ReportRow): string {
   const fixed = r.is_team_lead || (r.corrected ?? 0) > 0 ? [`Entries corrected - ${n(r.corrected ?? 0)}`] : [];
   if (r.no_stores) return [`Employee name - ${r.employee_name}`, `Entries made - ${n(r.entries_made ?? 0)}`, ...fixed, "No. of stores - 0"].join("\n");
-  return [`Employee name - ${r.employee_name}`, `Entries - ${n(r.done)} / ${n(r.expected)}`, `Percentage - ${r.percent}%`, ...fixed, `No. of stores - ${n(r.stores)}`].join("\n");
+  const moved = typeof r.change === "number" ? [`Entries change - ${signedCount(r.change)}`] : [];
+  return [`Employee name - ${r.employee_name}`, `Entries - ${n(r.done)} / ${n(r.expected)}`, ...moved, `Percentage - ${r.percent}%`, ...fixed, `No. of stores - ${n(r.stores)}`].join("\n");
 }
 
 /**
@@ -50,9 +57,9 @@ export function formatEmployee(r: ReportRow): string {
  * day from the 1st to yesterday is counted, holidays included: holidays belong to attendance and never change an entry count. The figures are recounted on
  * every look, so entries added late to earlier days raise them.
  */
-export function basisLine(days: number, takenAt?: string): string {
-  const taken = takenAt ? new Date(takenAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
-  return `Counted over ${days} day${days === 1 ? "" : "s"}, holidays included${taken ? `. Taken ${taken} IST` : ""}`;
+export function basisLine(days: number, takenAt?: string, since?: string | null): string {
+  const at = (iso: string) => new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return `Counted over ${days} day${days === 1 ? "" : "s"}, holidays included${takenAt ? `. Taken ${at(takenAt)} IST` : ""}${since ? `. Entries change = gained (+) or lost (-) since ${at(since)} IST` : ""}`;
 }
 
 /** The whole message: a heading line saying what it is, what it counted (`basis`, see basisLine), then one block per employee with a blank line between. Empty when there is nobody to report. */

@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { pushToast } from "@/lib/toast";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { usePartners } from "@/features/stores/useStores";
+import { useAuth } from "@/features/auth/useAuth";
 import { Panel, SegmentedControl } from "@/features/orders/ui";
 import { apiRequest } from "@/services/api";
 
@@ -34,14 +35,24 @@ interface Row {
   explained: { new_days: number; entries_added: number; entries_removed: number; stores_gained: number; stores_lost: number };
   unexplained: { removed_without_evidence: number; stored_figure_difference: number; arithmetic_gap: number; total: number };
   added_by: Record<string, number>; covered_by: Record<string, number>; covered_via: Record<string, number>;
+  /** Entries this person marked (created) between the two moments, in total and per Indian day. */
+  made: { total: number; by_day: Record<string, number> };
+  /** Entries created in the period on THIS person's stores by someone else, and what share of that person's own entries that is. */
+  entered_by_others: { employee_id: string; name: string | null; entries: number; share_of_their_entries: number }[];
   records: { removed: Removed[]; removed_without_evidence: { store_id: string; store_code: string | null; date: string }[]; stores_gained: StoreRef[]; stores_lost: StoreRef[] };
   status: Status; status_label: string; reasons: string[];
+}
+interface Helper {
+  employee_id: string; employee_name: string | null; employee_code: string | null; made: { total: number; by_day: Record<string, number> };
+  for_owners: { employee_id: string; name: string | null; code: string | null; entries: number; share_percent: number }[]; unowned_entries: number;
 }
 interface Reconciliation {
   partner_slug: string; partner_label: string; month: string; definition: Record<string, string>; previous: Side; current: Side;
   notes: string[];
   summary: { status: Status; status_label: string; employees: number; verified: number; reconciled: number; requires_review: number; unverifiable: number; unexplained_total: number };
   employees: Row[];
+  /** People with no stores of their own who still entered entries (no percentage): how their entries split across the stores' owners. */
+  helpers: Helper[];
 }
 interface SnapshotItem {
   id: string; generated_at: string; generated_by: string | null; source: "manual" | "scheduled" | "report"; as_of: string | null; employees: number; judged_days: number;
@@ -64,7 +75,7 @@ const shiftMonth = (month: string, by: number) => {
 /** "2026-10-29T10:37" typed in the page is a wall-clock time in India. */
 const istInstant = (local: string) => (local ? `${local.length === 16 ? `${local}:00` : local}+05:30` : "");
 
-type Pick = "auto" | "now" | "time" | `snap:${string}`;
+type Pick = "auto" | "now" | "time" | "date" | `snap:${string}`;
 
 function useSnapshots(partner: string, month: string) {
   return useQuery({
@@ -75,14 +86,21 @@ function useSnapshots(partner: string, month: string) {
   });
 }
 
-function useReconciliation(partner: string, month: string, prev: Pick, prevTime: string, curr: Pick, currTime: string, employeeId: string) {
-  const ready = Boolean(partner) && (prev !== "time" || prevTime) && (curr !== "time" || currTime);
+const todayIst = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+interface Choice { prev: Pick; prevTime: string; prevDate: string; curr: Pick; currTime: string; currDate: string }
+
+function useReconciliation(partner: string, month: string, c: Choice, employeeId: string) {
+  const { prev, prevTime, prevDate, curr, currTime, currDate } = c;
+  const ready = Boolean(partner) && (prev !== "time" || prevTime) && (prev !== "date" || prevDate) && (curr !== "time" || currTime) && (curr !== "date" || currDate);
   const params = new URLSearchParams({ partner });
   if (month) params.set("month", month);
   if (prev.startsWith("snap:")) params.set("previous_snapshot", prev.slice(5));
   if (prev === "time") params.set("previous_at", istInstant(prevTime));
+  if (prev === "date") params.set("previous_at", `${prevDate}T00:00:00+05:30`);               // from the START of that date
   if (curr.startsWith("snap:")) params.set("current_snapshot", curr.slice(5));
   if (curr === "time") params.set("current_at", istInstant(currTime));
+  if (curr === "date" && currDate < todayIst()) params.set("current_at", `${currDate}T23:59:59+05:30`);  // until the END of that date (today = right now)
   if (employeeId) params.set("employee_id", employeeId);
   return useQuery({
     queryKey: ["performance-reconciliation", params.toString()],
@@ -162,6 +180,17 @@ function Detail({ r }: { r: Row }) {
           {r.records.stores_lost.length > 0 && <>lost {r.records.stores_lost.slice(0, 8).map((s) => s.store_name ?? s.store_code).join(", ")}{r.records.stores_lost.length > 8 ? `… (${r.records.stores_lost.length})` : ""}.</>}
         </p>
       )}
+      <p>
+        <b className="text-heading">Entries they marked in this period: {n(r.made.total)}</b>
+        {Object.keys(r.made.by_day).length > 0 ? <span> · {Object.entries(r.made.by_day).map(([d, v]) => `${day(d)}: ${n(v)}`).join(" · ")}</span> : <span className="text-gray-500"> (none)</span>}
+        <span className="text-gray-500"> (counted by the day they were entered, in any of the platform&apos;s stores, including any cleared since)</span>
+      </p>
+      {r.entered_by_others.length > 0 && (
+        <p>
+          <b className="text-heading">Entered on their stores in this period by others:</b>{" "}
+          {r.entered_by_others.map((o) => `${o.name ?? "?"} ${n(o.entries)} (${o.share_of_their_entries}% of ${o.name ?? "their"} entries)`).join(" · ")}
+        </p>
+      )}
       <p><b className="text-heading">Who entered the entries now counted for this employee:</b> {breakdown(r.covered_by)}</p>
       <p><b className="text-heading">Where they came from:</b> {breakdown(r.covered_via)} <span className="text-gray-500">(for audit only: who or what entered an entry never decides whether it counts)</span></p>
       {Object.keys(r.added_by).length > 0 && <p><b className="text-heading">Who entered the entries added since the earlier report:</b> {breakdown(r.added_by)}</p>}
@@ -218,7 +247,11 @@ function SnapshotRow({ s, partner, month, onUse }: { s: SnapshotItem; partner: s
 
 export function PerformanceReconcilePage() {
   const qc = useQueryClient();
-  const { data: partners = [] } = usePartners(true);
+  const { user, hasRole, hasPermission } = useAuth();
+  // Administrators and entry reviewers see everyone and the platform-wide saved reports; a Team Lead sees only their own team and no saved reports (the backend enforces both).
+  const fullAudit = hasRole("admin") || hasRole("developer") || hasPermission("entries.audit");
+  const { data: fetched = [] } = usePartners(fullAudit || hasPermission("orders.overview"));
+  const partners = fullAudit || hasPermission("orders.overview") ? fetched : user?.platformSlug ? [{ slug: user.platformSlug, name: user.platformLabel ?? user.platformSlug }] : [];
   const [pickedPartner, setPartner] = usePersistentState<string>("orders.platform", "");
   const partner = partners.some((p) => p.slug === pickedPartner) ? pickedPartner : (partners[0]?.slug ?? "");
   const [month, setMonth] = useState("");
@@ -226,11 +259,16 @@ export function PerformanceReconcilePage() {
   const [curr, setCurr] = useState<Pick>("now");
   const [prevTime, setPrevTime] = useState("");
   const [currTime, setCurrTime] = useState("");
+  const [prevDate, setPrevDate] = useState("");
+  const [currDate, setCurrDate] = useState("");
   const [employee, setEmployee] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
-  const snaps = useSnapshots(partner, month);
-  const rq = useReconciliation(partner, month, prev, prevTime, curr, currTime, employee);
+  const snaps = useSnapshots(fullAudit ? partner : "", month);
+  const rq = useReconciliation(partner, month, { prev, prevTime, prevDate, curr, currTime, currDate }, employee);
+  // A date has to fall inside the month being shown; the last day it may reach is today (India).
+  const monthFirst = `${(month || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7))}-01`;
+  const dateMax = (() => { const [y, m] = monthFirst.slice(0, 7).split("-").map(Number); const last = `${monthFirst.slice(0, 7)}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`; return last < todayIst() ? last : todayIst(); })();
   const d = rq.data;
   const shownMonth = d?.month ?? month;
   const thisMonth = (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`; })();
@@ -243,8 +281,8 @@ export function PerformanceReconcilePage() {
     const list = (snaps.data?.snapshots ?? []).map((s) => ({ value: `snap:${s.id}`, label: `${when(s.generated_at)} · ${SOURCE_LABEL[s.source]}${s.revision_of ? " · revision" : ""}` }));
     return list;
   }, [snaps.data]);
-  const prevOptions = [{ value: "auto", label: "The last saved report before the later one" }, ...pickOptions, { value: "time", label: "A time I choose (rebuilt from the records)" }];
-  const currOptions = [{ value: "now", label: "Right now" }, ...pickOptions, { value: "time", label: "A time I choose (rebuilt from the records)" }];
+  const prevOptions = [{ value: "auto", label: "The previous day (24 hours before the later one)" }, { value: "date", label: "A date I choose (from the start of that day)" }, ...pickOptions, { value: "time", label: "A time I choose (rebuilt from the records)" }];
+  const currOptions = [{ value: "now", label: "Right now" }, { value: "date", label: "A date I choose (until the end of that day)" }, ...pickOptions, { value: "time", label: "A time I choose (rebuilt from the records)" }];
   const employeeOptions = [{ value: "", label: "All employees" }, ...(d?.employees ?? []).map((e) => ({ value: e.employee_id, label: `${e.employee_name ?? "?"} (${e.employee_code ?? ""})` }))];
   const use = (side: "prev" | "curr", id: string) => (side === "prev" ? setPrev(`snap:${id}`) : setCurr(`snap:${id}`));
 
@@ -264,10 +302,12 @@ export function PerformanceReconcilePage() {
         <div className="grid gap-3 md:grid-cols-3">
           <label className="block text-xs font-semibold text-gray-600">Earlier
             <Dropdown aria-label="Earlier report" value={prev} onValueChange={(v) => setPrev(v as Pick)} options={prevOptions} className="mt-1 w-full" />
+            {prev === "date" && <input type="date" aria-label="Earlier date" min={monthFirst} max={dateMax} value={prevDate} onChange={(e) => setPrevDate(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-surface-border bg-surface px-2 text-sm" />}
             {prev === "time" && <input type="datetime-local" aria-label="Earlier time (IST)" value={prevTime} onChange={(e) => setPrevTime(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-surface-border bg-surface px-2 text-sm" />}
           </label>
           <label className="block text-xs font-semibold text-gray-600">Later
             <Dropdown aria-label="Later report" value={curr} onValueChange={(v) => setCurr(v as Pick)} options={currOptions} className="mt-1 w-full" />
+            {curr === "date" && <input type="date" aria-label="Later date" min={monthFirst} max={dateMax} value={currDate} onChange={(e) => setCurrDate(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-surface-border bg-surface px-2 text-sm" />}
             {curr === "time" && <input type="datetime-local" aria-label="Later time (IST)" value={currTime} onChange={(e) => setCurrTime(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-surface-border bg-surface px-2 text-sm" />}
           </label>
           <label className="block text-xs font-semibold text-gray-600">Employee
@@ -308,24 +348,25 @@ export function PerformanceReconcilePage() {
               <table className="w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-subtle text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Earlier</th><th className="px-4 py-3">Later</th><th className="px-4 py-3">Change</th>
+                    <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Earlier</th><th className="px-4 py-3">Later</th><th className="px-4 py-3" title="Entries gained (+) or lost (-). Under it: the change as a share of the earlier entries (%), and how far the performance percentage itself moved (pts = percentage points, e.g. 54.3% to 56.0% is +1.7 pts)">Change</th><th className="px-4 py-3" title="Entries this person marked (created) between the two moments, whoever's stores they were">Marked by them</th>
                     <th className="px-4 py-3">What explains it</th><th className="px-4 py-3">Unexplained</th><th className="px-4 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {d.employees.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-500">No employee has a figure at these moments.</td></tr>}
+                  {d.employees.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">No employee has a figure at these moments.</td></tr>}
                   {d.employees.map((r) => (
                     <Fragment key={r.employee_id}>
                       <tr className="cursor-pointer border-b border-surface-border hover:bg-surface-subtle/70" onClick={() => setOpen(open === r.employee_id ? null : r.employee_id)} aria-expanded={open === r.employee_id}>
                         <td className="px-5 py-3"><div className="font-semibold text-gray-900">{r.employee_name ?? "?"}</div><div className="text-xs text-gray-500">{r.employee_code}</div></td>
                         <td className="px-4 py-3 tabular-nums">{n(r.previous.done)} <span className="text-gray-400">/ {n(r.previous.expected)}</span><div className="text-xs text-gray-500">{r.previous.percent}%{r.previous.reported ? "" : " · rebuilt"}</div></td>
                         <td className="px-4 py-3 tabular-nums">{n(r.current.done)} <span className="text-gray-400">/ {n(r.current.expected)}</span><div className="text-xs text-gray-500">{r.current.percent}%{r.current.reported ? "" : " · rebuilt"}</div></td>
-                        <td className="px-4 py-3 font-bold tabular-nums">{signed(r.delta)}<div className="text-xs font-medium text-gray-500">{r.change_percent === null ? "" : `${signed(r.change_percent)}%`} · {r.percent_points > 0 ? "+" : ""}{r.percent_points} pts</div></td>
+                        <td className="px-4 py-3 font-bold tabular-nums">{signed(r.delta)}<div className="text-xs font-medium text-gray-500">{r.change_percent === null ? "" : `${signed(r.change_percent)}%`} · {r.percent_points > 0 ? "+" : ""}{r.percent_points} pts</div><div className="text-[10px] font-normal text-gray-400">pts = percentage points</div></td>
+                        <td className="px-4 py-3 font-bold tabular-nums text-heading">{n(r.made.total)}</td>
                         <td className="px-4 py-3"><Causes r={r} /></td>
                         <td className={`px-4 py-3 font-bold tabular-nums ${r.unexplained.total ? "text-status-danger" : "text-gray-400"}`}>{r.unexplained.total ? n(r.unexplained.total) : "0"}</td>
                         <td className="px-4 py-3"><Badge tone={TONE[r.status]}>{r.status_label}</Badge></td>
                       </tr>
-                      {open === r.employee_id && <tr className="border-b border-surface-border bg-surface-subtle/50"><td colSpan={7} className="px-5 py-4"><Detail r={r} /></td></tr>}
+                      {open === r.employee_id && <tr className="border-b border-surface-border bg-surface-subtle/50"><td colSpan={8} className="px-5 py-4"><Detail r={r} /></td></tr>}
                     </Fragment>
                   ))}
                 </tbody>
@@ -333,11 +374,34 @@ export function PerformanceReconcilePage() {
             </div>
           </Panel>
 
+          {d.helpers.length > 0 && (
+            <Panel flush title="Entered for others" subtitle="People with no stores of their own, so no percentage, who still marked entries in this period: how many, and whose stores they went to.">
+              <ul className="divide-y divide-surface-border">
+                {d.helpers.map((h) => (
+                  <li key={h.employee_id} className="px-4 py-3 text-sm sm:px-5">
+                    <div className="flex flex-wrap items-baseline gap-x-3">
+                      <span className="font-semibold text-heading">{h.employee_name ?? "?"}</span>
+                      <span className="text-xs text-gray-500">{h.employee_code}</span>
+                      <span className="ml-auto font-bold tabular-nums text-heading">{n(h.made.total)} <span className="text-xs font-medium text-gray-500">entries marked</span></span>
+                    </div>
+                    <ul className="mt-1.5 space-y-0.5 text-xs text-gray-700">
+                      {h.for_owners.map((o) => (
+                        <li key={o.employee_id}>For <b>{o.name ?? "?"}</b>&apos;s stores: <span className="font-semibold tabular-nums">{n(o.entries)}</span> ({o.share_percent}% of {h.employee_name ?? "their"} entries)</li>
+                      ))}
+                      {h.unowned_entries > 0 && <li className="text-status-warning">On stores nobody owns: {n(h.unowned_entries)}</li>}
+                    </ul>
+                    {Object.keys(h.made.by_day).length > 0 && <p className="mt-1 text-xs text-gray-500">{Object.entries(h.made.by_day).map(([dt, v]) => `${day(dt)}: ${n(v)}`).join(" · ")}</p>}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+
           <p className="text-xs text-gray-500">What the numbers mean: {d.definition.entries}. Judged days: {d.definition.judged_days}.</p>
         </>
       )}
 
-      <Panel flush title="Reports kept" subtitle="What each report said when it was made. Never edited or deleted; a correction is a new report that points back at the old one."
+      {fullAudit && <Panel flush title="Reports kept" subtitle="What each report said when it was made. Never edited or deleted; a correction is a new report that points back at the old one."
         action={<Button size="sm" disabled={save.isPending || !partner} onClick={() => save.mutate()}>Save the report as it is now</Button>}>
         {snaps.isLoading && <Skeleton className="m-4 h-16" />}
         {snaps.isError && <div className="p-4"><ErrorState message="Couldn't load the saved reports." onRetry={() => snaps.refetch()} /></div>}
@@ -345,7 +409,7 @@ export function PerformanceReconcilePage() {
         <ul className="divide-y divide-surface-border">
           {(snaps.data?.snapshots ?? []).map((s) => <SnapshotRow key={s.id} s={s} partner={partner} month={shownMonth} onUse={use} />)}
         </ul>
-      </Panel>
+      </Panel>}
     </div>
   );
 }

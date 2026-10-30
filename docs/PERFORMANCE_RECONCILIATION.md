@@ -45,8 +45,13 @@ GET  /orders/performance/snapshots/{id}?partner=blinkit                    # reb
 python scripts/performance_reconcile.py --partner blinkit --previous 2026-10-29T10:37+05:30 --current 2026-10-30T10:37+05:30   # read-only
 ```
 
-Access is decided by the backend from the caller's roles and permissions on every request (`entry_access.scope_for`): administrators, the developer and Entry Reviewers
-only; a platform-scoped reviewer only for their platform. No new role or permission was added.
+Access is decided by the backend from the caller's roles and permissions on every request (`entry_access.scope_for`); no new role or permission was added:
+
+* **Administrators, the developer and Entry Reviewers** see every employee of the platform (a platform-scoped reviewer only their platform) and the platform-wide kept reports.
+* **Team Leads** open the same comparison, limited to **themselves and the people who report to them** (the boundary the Performance page already uses): the table, the
+  "Entered for others" panel (only the part of a helper's work that landed on the team's stores) and the per-day counts. They cannot list, save, check or compare kept
+  reports (those cover the whole platform) and are refused when they ask about anyone outside their team.
+* Everyone else is refused.
 
 ## Kept reports (`performance_snapshots`, migration 0062)
 

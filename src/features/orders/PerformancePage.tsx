@@ -133,9 +133,17 @@ function shiftMonth(month: string, by: number): string {
 function GroupReport({ d, keepCopy }: { d: Performance; keepCopy: boolean }) {
   const [who, setWho] = useState<Who>("all");
   const [show, setShow] = useState(false);
-  const picked = useMemo(() => pickEmployees(d.employees, who), [d.employees, who]);
+  // How many entries each person gained (+) or lost (-) since the previous report, shown next to their figure in the message. Missing is fine: the line is left out.
+  const change = useQuery({
+    queryKey: ["performance-change", d.partner_slug, d.month],
+    queryFn: () => apiRequest<{ since: string | null; changes: Record<string, number> }>(`/orders/performance/change?partner=${encodeURIComponent(d.partner_slug)}&month=${d.month}`, { silent: true }),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const changes = change.data?.changes;
+  const picked = useMemo(() => pickEmployees(d.employees, who).map((e) => ({ ...e, change: changes?.[e.employee_id] ?? null })), [d.employees, who, changes]);
   const heading = `${d.partner_label} - Employee performance, ${d.month_label}${d.days ? ` (${shortDay(d.from!)} to ${shortDay(d.as_of!)})` : ""}`;
-  const basis = useMemo(() => (d.days ? basisLine(d.days, d.generated_at) : undefined), [d.days, d.generated_at]);
+  const basis = useMemo(() => (d.days ? basisLine(d.days, d.generated_at, changes ? change.data?.since : null) : undefined), [d.days, d.generated_at, changes, change.data?.since]);
   const text = useMemo(() => formatReport(heading, picked, basis), [heading, picked, basis]);
   const options = [
     { value: "all", label: `All employees (${d.employees.length})` },
@@ -200,8 +208,9 @@ export function PerformancePage() {
 function PerformanceBody() {
   const { user, hasPermission, hasRole } = useAuth();
   const overview = hasPermission("orders.overview");
-  // Reconciliation shows who entered, cleared and moved what: the entry-audit levels only. The backend refuses everyone else whatever this says.
-  const canReconcile = hasRole("admin") || hasRole("developer") || hasPermission("entries.audit");
+  // Reconciliation shows who entered, cleared and moved what. Administrators and entry reviewers see everyone; a Team Lead sees their own team. The backend decides.
+  const fullAudit = hasRole("admin") || hasRole("developer") || hasPermission("entries.audit");
+  const canReconcile = fullAudit || hasRole("team_lead");
   const [pickedDay, setPickedDay] = useState<{ employeeId: string; date: string } | null>(null);
   const { data: fetched = [] } = usePartners(overview);
   const partners = overview ? fetched : user?.platformSlug ? [{ slug: user.platformSlug, name: user.platformLabel ?? user.platformSlug }] : [];
@@ -274,7 +283,7 @@ function PerformanceBody() {
                     </Link>
                   )}
                 </div>
-                {!alone && <GroupReport d={d} keepCopy={canReconcile} />}
+                {!alone && <GroupReport d={d} keepCopy={fullAudit} />}
               </div>
             </div>
           </section>

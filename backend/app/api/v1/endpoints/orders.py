@@ -245,6 +245,23 @@ def performance(
     return performance_service.performance(db, user, partner.strip().lower(), performance_service.parse_month(month, today), today, perms)
 
 
+@router.get("/performance/change", dependencies=[Depends(require_permission("orders.view"))])
+def performance_change(
+    response: Response, partner: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    perms: set[str] = Depends(get_current_permissions),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> dict:
+    """How many entries each employee in your view gained (+) or lost (-) over the previous day: what the copied group message shows next to their figure.
+    Always compared with the records as they stood 24 hours ago, never with a saved or sent report. Same people as /performance. Never cached."""
+    from app.services import assignment_service, performance_reconciliation_service, performance_service
+
+    if assignment_service.is_partner_account(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
+    response.headers["Cache-Control"] = "no-store"
+    today = performance_service.business_today()
+    return performance_reconciliation_service.entry_change(db, user, perms, partner.strip().lower(), performance_service.parse_month(month, today), today)
+
+
 @router.get("/performance/pending", dependencies=[Depends(require_permission("orders.view"))])
 def performance_pending(
     response: Response, partner: str, day: date = Query(..., alias="date"), employee_id: uuid.UUID | None = None,
@@ -351,14 +368,24 @@ def performance_reconciliation(
     perms: set[str] = Depends(get_current_permissions), user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
     """Why did each employee's figure change between two reports? Each side is a stored snapshot (`*_snapshot`), an instant rebuilt from the records (`*_at`),
-    or, for `current`, right now. With no `previous`, the latest snapshot before `current`, else the day before. Every difference is split into named causes
+    or, for `current`, right now. With no `previous`, the previous day (24 hours before `current`), rebuilt from the records; a saved or copied report is never chosen by default. Every difference is split into named causes
     (a new day, entries added, entries cleared with who and when, stores changing hands); whatever the records cannot explain is listed as
     unexplained and the employee (and the report) is marked for review."""
     from app.services import performance_service
 
-    rec, p = _reconciler(user, perms, db, partner)
+    from app.services import assignment_service, performance_reconciliation_service as rec
+
+    if assignment_service.is_partner_account(db, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Performance is for Veekay staff.")
+    p = performance_service._partner(db, partner.strip().lower())
+    only = rec.reconciliation_scope(db, user, perms, p)          # None = everyone (administrator, reviewer); else the Team Lead's own team
     response.headers["Cache-Control"] = "no-store"
     m = performance_service.parse_month(month, performance_service.business_today())
+    if only is not None:
+        if previous_snapshot or current_snapshot:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Saved reports cover the whole platform and are for administrators and entry reviewers.")
+        if employee_id is not None and employee_id not in only:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only look at yourself and the people who report to you.")
     if (previous_snapshot and previous_at) or (current_snapshot and current_at):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give a snapshot or a time for each side, not both.")
     for t in (previous_at, current_at):
@@ -367,11 +394,9 @@ def performance_reconciliation(
     curr = rec.point_for(db, user.organization_id, p, m, snapshot_id=current_snapshot, at=current_at)
     if previous_snapshot or previous_at:
         prev = rec.point_for(db, user.organization_id, p, m, snapshot_id=previous_snapshot, at=previous_at)
-    else:
-        earlier = [s for s in rec.list_snapshots(db, user.organization_id, p.slug, m) if s["generated_at"] < curr.state.cutoff and s["id"] != current_snapshot]
-        prev = (rec.point_for(db, user.organization_id, p, m, snapshot_id=earlier[0]["id"]) if earlier
-                else rec.point_for(db, user.organization_id, p, m, at=curr.state.cutoff - timedelta(days=1)))
-    return rec.compare(db, user.organization_id, p, m, prev, curr, employee_id)
+    else:                                              # by default: the previous day, rebuilt from the records (a report copied minutes ago is not "earlier")
+        prev = rec.point_for(db, user.organization_id, p, m, at=curr.state.cutoff - timedelta(days=1))
+    return rec.compare(db, user.organization_id, p, m, prev, curr, employee_id, only)
 
 
 @router.get(
