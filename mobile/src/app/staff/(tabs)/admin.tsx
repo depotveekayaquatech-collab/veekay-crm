@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAttendanceDay, useBottleSummary, useDueBills, useInsights, useLeavesAll, usePending } from "@/api/adminHooks";
 import { useAuth } from "@/auth/AuthProvider";
-import { Card, ErrorNote, ListSkeleton, Screen, SectionTitle } from "@/components/ui";
+import { Card, ErrorNote, Hero, IconTile, ListSkeleton, Screen, SectionTitle } from "@/components/ui";
 import { SyncCard } from "@/components/SyncCard";
 import { fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
@@ -16,7 +16,7 @@ function Alert({ icon, tone, title, sub, onPress }: { icon: IconName; tone: "bad
   const [bg, fg] = tone === "bad" ? [colors.dangerSoft, colors.danger] : [colors.warningSoft, colors.warning];
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${title}. ${sub}`} android_ripple={{ color: colors.brand100 }}
-      style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: bg }}>
+      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: bg, borderLeftWidth: 4, borderLeftColor: fg, opacity: pressed ? 0.85 : 1 })}>
       <Ionicons name={icon} size={22} color={fg} />
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 15, fontWeight: "800", color: fg }}>{title}</Text>
@@ -69,7 +69,7 @@ export default function AdminOverview() {
           <SectionTitle>Today</SectionTitle>
           {ins.isLoading ? <ListSkeleton rows={2} /> : ins.isError ? <ErrorNote message={ins.error.message} onRetry={() => ins.refetch()} /> : i ? (
             <>
-              <View style={{ backgroundColor: colors.ink950, borderRadius: radius.xl, padding: 18 }}>
+              <Hero>
                 <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Bottles delivered today</Text>
                 <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginTop: 2 }}>
                   <Text style={{ color: colors.white, fontSize: 36, fontWeight: "800", letterSpacing: -1 }}>{fmtNumber(i.bottles_today)}</Text>
@@ -87,7 +87,7 @@ export default function AdminOverview() {
                     </View>
                   ))}
                 </View>
-              </View>
+              </Hero>
 
               <SectionTitle>Platforms today</SectionTitle>
               <Card style={{ gap: 14 }}>
@@ -168,10 +168,14 @@ export default function AdminOverview() {
 
 function NavRow({ icon, label, value, onPress }: { icon: IconName; label: string; value?: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" android_ripple={{ color: colors.brand100 }} style={{ minHeight: 54, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-      <Ionicons name={icon} size={20} color={colors.brand600} />
+    <Pressable onPress={onPress} accessibilityRole="button" android_ripple={{ color: colors.brand100 }} style={({ pressed }) => ({ minHeight: 58, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: pressed ? colors.surfaceSubtle : "transparent" })}>
+      <IconTile icon={icon} bg={colors.brand50} fg={colors.brand600} size={36} />
       <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: colors.text }}>{label}</Text>
-      {value !== undefined && <Text style={{ fontWeight: "800", color: colors.text }}>{value}</Text>}
+      {value !== undefined && (
+        <View style={{ minWidth: 28, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.surfaceMuted, alignItems: "center" }}>
+          <Text style={{ fontWeight: "800", color: colors.text }}>{value}</Text>
+        </View>
+      )}
       <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
     </Pressable>
   );

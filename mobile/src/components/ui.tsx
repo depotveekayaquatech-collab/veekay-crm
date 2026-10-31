@@ -57,10 +57,30 @@ export function Card({ children, style, onPress, label }: { children: ReactNode;
       accessibilityRole="button"
       accessibilityLabel={label}
       android_ripple={{ color: colors.brand100 }}
-      style={({ pressed }) => [s.card, style, pressed && Platform.OS === "ios" && { opacity: 0.7 }]}
+      style={({ pressed }) => [s.card, style, pressed && { opacity: Platform.OS === "ios" ? 0.7 : 0.92, transform: [{ scale: 0.99 }] }]}
     >
       {children}
     </Pressable>
+  );
+}
+
+/** The dark summary card at the top of a screen: a soft blue and aqua glow behind the numbers. Children draw the content. */
+export function Hero({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[s.hero, style]}>
+      <View pointerEvents="none" style={{ position: "absolute", top: -80, right: -50, width: 200, height: 200, borderRadius: 100, backgroundColor: colors.brand500, opacity: 0.28 }} />
+      <View pointerEvents="none" style={{ position: "absolute", bottom: -90, left: -50, width: 190, height: 190, borderRadius: 95, backgroundColor: colors.aqua500, opacity: 0.2 }} />
+      {children}
+    </View>
+  );
+}
+
+/** A rounded square holding an icon, tinted to a tone (`bg` is the soft fill, `fg` the icon colour). */
+export function IconTile({ icon, bg, fg, size = 40 }: { icon: React.ComponentProps<typeof Ionicons>["name"]; bg: string; fg: string; size?: number }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.3), backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+      <Ionicons name={icon} size={Math.round(size * 0.5)} color={fg} />
+    </View>
   );
 }
 
@@ -81,6 +101,7 @@ export function Button({
       android_ripple={{ color: "rgba(255,255,255,0.25)" }}
       style={({ pressed }) => [
         s.button, { backgroundColor: bg, opacity: off ? 0.5 : pressed ? 0.85 : 1 },
+        (variant === "primary" || variant === "danger") && !off && s.buttonSolid,
         variant === "secondary" && { borderWidth: 1.5, borderColor: colors.brand600 }, style,
       ]}
     >
@@ -151,7 +172,7 @@ export function Chips<T extends string>({ options, value, onChange }: { options:
             onPress={() => onChange(o.value)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            style={[s.chip, on && { backgroundColor: colors.brand600, borderColor: colors.brand600 }]}
+            style={({ pressed }) => [s.chip, on && { backgroundColor: colors.brand600, borderColor: colors.brand600 }, pressed && !on && { backgroundColor: colors.surfaceMuted }]}
           >
             <Text style={{ fontSize: 14, fontWeight: "600", color: on ? colors.white : colors.textMuted }}>{o.label}</Text>
           </Pressable>
@@ -165,8 +186,10 @@ export function Empty({ title, text, action, icon }: { title: string; text?: str
   return (
     <View style={s.empty}>
       {icon ? (
-        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand50, alignItems: "center", justifyContent: "center", marginBottom: space.md }}>
-          <Ionicons name={icon} size={28} color={colors.brand600} />
+        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brand50, alignItems: "center", justifyContent: "center", marginBottom: space.md }}>
+          <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brand100, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name={icon} size={26} color={colors.brand600} />
+          </View>
         </View>
       ) : null}
       <Text style={[font.h2, { textAlign: "center" }]}>{title}</Text>
@@ -251,13 +274,15 @@ function lazyStyles<T extends Record<string, object>>(make: () => T): T {
 const s = lazyStyles(() => StyleSheet.create({
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: space.xl, marginBottom: space.sm },
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, padding: space.lg, ...shadow.card },
+  hero: { backgroundColor: colors.ink950, borderRadius: radius.xl, padding: 18, overflow: "hidden", ...shadow.card },
   button: { minHeight: 52, borderRadius: radius.md, paddingHorizontal: space.xl, alignItems: "center", justifyContent: "center" },
+  buttonSolid: { shadowColor: "#0B1222", shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   buttonText: { fontSize: 16, fontWeight: "700" },
   label: { fontSize: 13, fontWeight: "600", color: colors.text },
   inputWrap: { flexDirection: "row", alignItems: "center", minHeight: 52, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14 },
   input: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 12 },
   badge: { alignSelf: "flex-start", borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
   chip: { minHeight: 44, paddingHorizontal: 16, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  empty: { alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: 24, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border },
+  empty: { alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: 24, borderRadius: radius.xl, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.surface },
   error: { flexDirection: "row", alignItems: "center", gap: 12, padding: space.md, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
 }));

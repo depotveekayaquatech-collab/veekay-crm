@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDailyOrders, useOrders } from "@/api/hooks";
-import { Card, Chips, Empty, ErrorNote, ListSkeleton, Screen } from "@/components/ui";
+import { Card, Chips, Empty, ErrorNote, IconTile, ListSkeleton, Screen } from "@/components/ui";
 import { StorePicker } from "@/components/StorePicker";
 import { daysAgo, fmtDate, fmtNumber } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
@@ -52,13 +52,19 @@ export default function Orders() {
 
       {q.data && q.data.length > 0 && (
         <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
-          <Card style={{ flex: 1 }}>
-            <Text style={font.small}>Total bottles</Text>
-            <Text style={{ fontSize: 26, fontWeight: "800", color: colors.text, marginTop: 2 }}>{fmtNumber(total)}</Text>
+          <Card style={{ flex: 1, gap: 12 }}>
+            <IconTile icon="cube-outline" bg={colors.brand50} fg={colors.brand600} size={38} />
+            <View>
+              <Text style={{ fontSize: 26, fontWeight: "800", color: colors.text }}>{fmtNumber(total)}</Text>
+              <Text style={font.small}>Total bottles</Text>
+            </View>
           </Card>
-          <Card style={{ flex: 1 }}>
-            <Text style={font.small}>Daily average</Text>
-            <Text style={{ fontSize: 26, fontWeight: "800", color: colors.text, marginTop: 2 }}>{fmtNumber(Math.round(total / q.data.length))}</Text>
+          <Card style={{ flex: 1, gap: 12 }}>
+            <IconTile icon="analytics-outline" bg={colors.aquaSoft} fg={colors.aqua700} size={38} />
+            <View>
+              <Text style={{ fontSize: 26, fontWeight: "800", color: colors.text }}>{fmtNumber(Math.round(total / q.data.length))}</Text>
+              <Text style={font.small}>Daily average</Text>
+            </View>
           </Card>
         </View>
       )}
@@ -78,7 +84,7 @@ export default function Orders() {
                     accessibilityState={{ expanded: isOpen }}
                     accessibilityLabel={`${fmtDate(d.order_date)}, ${d.bottles} bottles, ${d.stores} stores`}
                     android_ripple={{ color: colors.brand100 }}
-                    style={{ minHeight: 64, paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12 }}
+                    style={({ pressed }) => ({ minHeight: 64, paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: pressed ? colors.surfaceSubtle : "transparent" })}
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text }}>{fmtDate(d.order_date)}</Text>

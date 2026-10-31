@@ -3,7 +3,7 @@ import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useMyStores } from "@/api/staffHooks";
-import { Chips, Empty, ErrorNote, ListSkeleton } from "@/components/ui";
+import { Chips, Empty, ErrorNote, Hero, ListSkeleton } from "@/components/ui";
 import { PendingPill } from "@/components/PendingPill";
 import { VendorPicker, vendorKey, vendorsOf } from "@/components/VendorPicker";
 import { changedByLine, fmtDate, fmtNumber } from "@/lib/format";
@@ -84,16 +84,16 @@ export default function Orders() {
         ListHeaderComponent={
           <View style={{ gap: 14, marginBottom: 4 }}>
             {/* Today's progress, like a daily-goal card */}
-            <View style={{ backgroundColor: colors.ink950, borderRadius: radius.xl, padding: 18 }}>
+            <Hero>
               <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{day === "today" ? "Today's" : "Yesterday's"} entries{dayIso ? ` · ${short(dayIso)}` : ""}</Text>
               <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginTop: 4 }}>
                 <Text style={{ color: colors.white, fontSize: 30, fontWeight: "800" }}>{done}<Text style={{ fontSize: 16, color: "rgba(255,255,255,0.6)", fontWeight: "600" }}> / {stores.length} stores</Text></Text>
                 <Text style={{ color: colors.aqua200, fontSize: 18, fontWeight: "800" }}>{percent}%</Text>
               </View>
               <View style={{ height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.15)", marginTop: 12, overflow: "hidden" }}>
-                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.brand500, width: `${percent}%` }} />
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.aqua500, width: `${percent}%` }} />
               </View>
-            </View>
+            </Hero>
             <Pressable onPress={() => router.push("/staff/entries")} accessibilityRole="button" accessibilityLabel="See everything you entered in the last days" android_ripple={{ color: colors.brand100 }}
               style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.brand50 }}>
               <Ionicons name="checkmark-done-outline" size={20} color={colors.brand600} />
@@ -131,7 +131,7 @@ export default function Orders() {
             accessibilityRole="button"
             accessibilityLabel={`${s.name}, ${!markedOf(s) ? `not marked ${day}` : countOf(s) === null ? `marked by a colleague ${day}` : `marked ${countOf(s)} ${day}`}`}
             android_ripple={{ color: colors.brand100 }}
-            style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
+            style={({ pressed }) => ({ backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, borderLeftColor: !markedOf(s) ? colors.warning : colors.success, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 })}
           >
             <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: !markedOf(s) ? colors.warningSoft : colors.successSoft }}>
               <Ionicons name={!markedOf(s) ? "time-outline" : "checkmark"} size={22} color={!markedOf(s) ? colors.warning : colors.success} />
@@ -158,7 +158,9 @@ export default function Orders() {
             ) : markedOf(s) ? (
               <View style={{ alignItems: "flex-end" }}><Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>Marked</Text><Text style={font.tiny}>by a colleague</Text></View>
             ) : (
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.brand600 }}>Mark</Text>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brand50 }}>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.brand700 }}>Mark</Text>
+              </View>
             )}
             <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
           </Pressable>

@@ -1,4 +1,4 @@
-import { Pressable, Text, type ColorValue } from "react-native";
+import { Pressable, Text, View, type ColorValue } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,8 +8,11 @@ import { niceName } from "@/lib/format";
 import { colors } from "@/theme";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
+/** The icon sits in a soft pill while its tab is open, so the current tab reads at a glance. */
 const icon = (name: IconName, focused: IconName) => ({ color, focused: f, size }: { color: ColorValue; focused: boolean; size: number }) => (
-  <Ionicons name={f ? focused : name} size={size} color={color} />
+  <View style={{ width: 56, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: f ? colors.brand50 : "transparent" }}>
+    <Ionicons name={f ? focused : name} size={size} color={color} />
+  </View>
 );
 
 export default function TabsLayout() {
@@ -23,14 +26,14 @@ export default function TabsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
         headerShadowVisible: false,
-        headerTitleStyle: { color: colors.text, fontWeight: "700" },
+        headerTitleStyle: { color: colors.text, fontWeight: "800" },
         headerRight: () => (
           <Pressable
             onPress={() => router.push("/account")}
             accessibilityRole="button"
             accessibilityLabel="Account"
             hitSlop={8}
-            style={{ marginRight: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand600, alignItems: "center", justifyContent: "center" }}
+            style={({ pressed }) => ({ marginRight: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand600, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.brand100, opacity: pressed ? 0.85 : 1 })}
           >
             <Text style={{ color: colors.white, fontWeight: "700" }}>{niceName(account?.full_name ?? "?").trim().slice(0, 1).toUpperCase()}</Text>
           </Pressable>
@@ -38,7 +41,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.brand600,
         tabBarInactiveTintColor: colors.textFaint,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 58 + insets.bottom, paddingBottom: insets.bottom + 4, paddingTop: 6 },
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 62 + insets.bottom, paddingBottom: insets.bottom + 4, paddingTop: 6, elevation: 8, shadowColor: "#0B1222", shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: -2 } },
         sceneStyle: { backgroundColor: colors.surfaceSubtle },
       }}
     >

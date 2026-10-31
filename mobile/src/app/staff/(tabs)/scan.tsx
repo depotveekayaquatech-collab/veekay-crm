@@ -100,10 +100,20 @@ export default function Scan() {
 
       {/* Dimmed surround with a clear viewfinder */}
       <View pointerEvents="none" style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" }}>
-        <View style={{ width: 250, height: 250, borderRadius: 28, borderWidth: 3, borderColor: needStore ? colors.warning : "rgba(255,255,255,0.95)", backgroundColor: "transparent" }} />
-        <Text style={{ marginTop: 18, color: "#fff", fontWeight: "700", fontSize: 14, textShadowColor: "rgba(0,0,0,0.6)", textShadowRadius: 6 }}>
-          {needStore ? "Choose the store first" : "Point the camera at the bottle's QR code"}
-        </Text>
+        <View style={{ width: 250, height: 250 }}>
+          {([["top", "left"], ["top", "right"], ["bottom", "left"], ["bottom", "right"]] as const).map(([v, h]) => (
+            <View key={`${v}${h}`} style={{
+              position: "absolute", [v]: 0, [h]: 0, width: 46, height: 46, borderColor: needStore ? colors.warning : "#fff",
+              [v === "top" ? "borderTopWidth" : "borderBottomWidth"]: 4, [h === "left" ? "borderLeftWidth" : "borderRightWidth"]: 4,
+              [`border${v === "top" ? "Top" : "Bottom"}${h === "left" ? "Left" : "Right"}Radius`]: 22,
+            }} />
+          ))}
+        </View>
+        <View style={{ marginTop: 20, paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
+            {needStore ? "Choose the store first" : "Point the camera at the bottle's QR code"}
+          </Text>
+        </View>
       </View>
 
       {/* Top controls */}
@@ -138,7 +148,7 @@ export default function Scan() {
           </View>
         )}
         {shown && (
-          <Pressable onPress={() => setShown(null)} accessibilityRole="alert" style={{ backgroundColor: colors.surface, borderRadius: radius.lg, padding: 14, flexDirection: "row", gap: 12, borderLeftWidth: 6, borderLeftColor: toneColor }}>
+          <Pressable onPress={() => setShown(null)} accessibilityRole="alert" style={{ backgroundColor: colors.surface, borderRadius: radius.xl, padding: 16, flexDirection: "row", gap: 12, borderLeftWidth: 6, borderLeftColor: toneColor, elevation: 6, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } }}>
             <Ionicons name={shown.tone === "ok" ? "checkmark-circle" : shown.tone === "bad" ? "close-circle" : shown.tone === "wait" ? "cloud-offline" : "alert-circle"} size={28} color={toneColor} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 16, fontWeight: "800", color: colors.text }}>{shown.title}</Text>

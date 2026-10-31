@@ -27,9 +27,10 @@ function PrimaryAction({ icon, label, sub, badge, onPress }: { icon: IconName; l
       accessibilityRole="button"
       accessibilityLabel={`${label}. ${badge ? `${badge}. ` : ""}${sub}`}
       android_ripple={{ color: "rgba(255,255,255,0.18)" }}
-      style={({ pressed }) => ({ minHeight: 84, flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: radius.lg, backgroundColor: colors.brand600, opacity: pressed ? 0.92 : 1, ...shadow.card })}
+      style={({ pressed }) => ({ minHeight: 84, flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: radius.xl, backgroundColor: colors.brand600, overflow: "hidden", opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.99 : 1 }], ...shadow.card })}
     >
-      <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" }}>
+      <View pointerEvents="none" style={{ position: "absolute", top: -50, right: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: colors.white, opacity: 0.1 }} />
+      <View style={{ width: 52, height: 52, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" }}>
         <Ionicons name={icon} size={26} color={colors.white} />
       </View>
       <View style={{ flex: 1, gap: 3 }}>
@@ -57,11 +58,11 @@ function Action({ icon, label, sub, badge, onPress, tone }: { icon: IconName; la
       accessibilityRole="button"
       accessibilityLabel={`${label}. ${badge ? `${badge}. ` : ""}${sub ?? ""}`}
       android_ripple={{ color: colors.brand100 }}
-      style={({ pressed }) => ({ flexGrow: 1, flexBasis: "45%", minHeight: 118, backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12, ...shadow.card })}
+      style={({ pressed }) => ({ flexGrow: 1, flexBasis: "45%", minHeight: 124, backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 14, transform: [{ scale: pressed ? 0.98 : 1 }], ...shadow.card })}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: tone[0], alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name={icon} size={22} color={tone[1]} />
+        <View style={{ width: 48, height: 48, borderRadius: radius.lg, backgroundColor: tone[0], alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name={icon} size={24} color={tone[1]} />
         </View>
         {badge ? (
           <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.warningSoft }}>
@@ -149,21 +150,24 @@ Location is required to check in.`,
         {q.isLoading ? <ListSkeleton rows={2} /> : q.isError ? <ErrorNote message={q.error.message} onRetry={() => q.refetch()} /> : a && !a.eligible ? (
           <Card><Text style={font.small}>Attendance is not tracked for your role.</Text></Card>
         ) : a ? (
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <View style={{ padding: 18, flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dot }} />
-              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.text, flex: 1 }}>{statusText}</Text>
+          <Card style={{ padding: 0, overflow: "hidden", borderRadius: radius.xl }}>
+            <View style={{ padding: 18, paddingBottom: 6, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.surfaceSubtle }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dot }} />
+                <Text style={{ fontSize: 14, fontWeight: "800", color: colors.text }}>{statusText}</Text>
+              </View>
+              <View style={{ flex: 1 }} />
               {a.late && a.checked_in ? <Badge tone="warning">Late</Badge> : null}
             </View>
 
-            <View style={{ alignItems: "center", paddingVertical: 10 }}>
+            <View style={{ alignItems: "center", paddingVertical: 14 }}>
               <Text style={{ fontSize: 44, fontWeight: "800", letterSpacing: -1, color: colors.text }}>
                 {running !== null ? hm(running) : a.checked_out && a.minutes !== null ? hm(a.minutes) : "--:--"}
               </Text>
               <Text style={font.small}>{running !== null ? "since you checked in" : a.checked_out ? "worked today" : `Work starts ${a.work_start}`}</Text>
             </View>
 
-            <View style={{ flexDirection: "row", paddingHorizontal: 18, paddingVertical: 14, gap: 12 }}>
+            <View style={{ flexDirection: "row", marginHorizontal: 16, marginVertical: 10, padding: 14, gap: 12, borderRadius: radius.lg, backgroundColor: colors.surfaceSubtle }}>
               <View style={{ flex: 1 }}><Text style={font.tiny}>CHECK IN</Text><Text style={{ fontWeight: "700", color: colors.text, marginTop: 2 }}>{a.check_in_at ? time(a.check_in_at) : "–"}</Text></View>
               <View style={{ flex: 1 }}><Text style={font.tiny}>CHECK OUT</Text><Text style={{ fontWeight: "700", color: colors.text, marginTop: 2 }}>{a.check_out_at ? time(a.check_out_at) : "–"}</Text></View>
               <View style={{ flex: 1 }}>
@@ -179,7 +183,8 @@ Location is required to check in.`,
                   disabled={busy}
                   accessibilityRole="button"
                   accessibilityLabel={a.checked_in ? "Check out" : "Check in"}
-                  style={{ height: 58, borderRadius: radius.lg, backgroundColor: a.checked_in ? colors.danger : colors.brand600, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, opacity: busy ? 0.6 : 1 }}
+                  android_ripple={{ color: "rgba(255,255,255,0.25)" }}
+                  style={({ pressed }) => ({ height: 58, borderRadius: radius.lg, backgroundColor: a.checked_in ? colors.danger : colors.brand600, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, opacity: busy ? 0.6 : pressed ? 0.88 : 1, ...shadow.card })}
                 >
                   <Ionicons name={a.checked_in ? "log-out-outline" : "log-in-outline"} size={22} color="#fff" />
                   <Text style={{ color: "#fff", fontSize: 17, fontWeight: "800" }}>{busy ? "Getting location…" : a.checked_in ? "Check out" : "Check in"}</Text>

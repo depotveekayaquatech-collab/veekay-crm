@@ -71,23 +71,25 @@ export default function StaffTabs() {
         headerTitleAlign: "center",
         headerTitleStyle: { color: colors.text, fontWeight: "800" },
         headerLeft: () => (
-          <Pressable onPress={() => setMenuOpen(true)} accessibilityRole="button" accessibilityLabel={waiting ? `Menu, ${waiting} scans waiting` : "Menu"} hitSlop={10} style={{ marginLeft: 16 }}>
-            <Ionicons name="menu" size={28} color={colors.text} />
-            {waiting > 0 && <View style={{ position: "absolute", top: -2, right: -3, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.warning, borderWidth: 1.5, borderColor: colors.surface }} />}
+          <Pressable onPress={() => setMenuOpen(true)} accessibilityRole="button" accessibilityLabel={waiting ? `Menu, ${waiting} scans waiting` : "Menu"} hitSlop={6}
+            style={({ pressed }) => ({ marginLeft: 12, width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? colors.surfaceMuted : colors.surfaceSubtle })}>
+            <Ionicons name="menu" size={24} color={colors.text} />
+            {waiting > 0 && <View style={{ position: "absolute", top: 5, right: 5, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.warning, borderWidth: 1.5, borderColor: colors.surface }} />}
           </Pressable>
         ),
         headerRight: () => (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginRight: 16 }}>
-            <Pressable onPress={() => router.push("/staff/alerts")} accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} unread` : "Alerts"} hitSlop={8}>
-              <Ionicons name={unread ? "notifications" : "notifications-outline"} size={24} color={colors.text} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginRight: 12 }}>
+            <Pressable onPress={() => router.push("/staff/alerts")} accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} unread` : "Alerts"} hitSlop={6}
+              style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? colors.surfaceMuted : colors.surfaceSubtle })}>
+              <Ionicons name={unread ? "notifications" : "notifications-outline"} size={22} color={colors.text} />
               {unread > 0 && (
-                <View style={{ position: "absolute", top: -4, right: -6, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center" }}>
+                <View style={{ position: "absolute", top: 2, right: 0, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.surface }}>
                   <Text style={{ color: colors.white, fontSize: 10, fontWeight: "800" }}>{unread > 9 ? "9+" : unread}</Text>
                 </View>
               )}
             </Pressable>
-            <Pressable onPress={() => router.push("/staff/me")} accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8}
-              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand600, alignItems: "center", justifyContent: "center" }}>
+            <Pressable onPress={() => router.push("/staff/me")} accessibilityRole="button" accessibilityLabel="Profile" hitSlop={6}
+              style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brand600, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.brand100, opacity: pressed ? 0.85 : 1 })}>
               <Text style={{ color: colors.white, fontWeight: "700" }}>{niceName(staff?.full_name ?? "?").trim().slice(0, 1).toUpperCase()}</Text>
             </Pressable>
           </View>

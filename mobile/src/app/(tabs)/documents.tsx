@@ -4,11 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useDocuments } from "@/api/hooks";
 import type { DocumentRow } from "@/api/api";
-import { Badge, Button, Card, Chips, Empty, ErrorNote, ListSkeleton, Pager, Screen } from "@/components/ui";
+import { Badge, Button, Card, Chips, Empty, ErrorNote, IconTile, ListSkeleton, Pager, Screen } from "@/components/ui";
 import { StorePicker } from "@/components/StorePicker";
 import { openRemoteFile } from "@/lib/files";
 import { daysAgo, fmtDate, fmtMonth, fmtSize } from "@/lib/format";
-import { colors, font } from "@/theme";
+import { colors, font, radius } from "@/theme";
 
 const KINDS = [
   { label: "All", value: "" },
@@ -17,6 +17,7 @@ const KINDS = [
   { label: "Payments", value: "payment" },
 ];
 const KIND_NAME = { card: "Compliance card", bill: "Bill", payment: "Payment proof" } as const;
+const KIND_ICON = { card: "id-card-outline", bill: "receipt-outline", payment: "card-outline" } as const;
 
 function BillState({ d }: { d: DocumentRow }) {
   if (d.kind !== "bill" || !d.status) return null;
@@ -65,20 +66,26 @@ export default function Documents() {
           <View style={{ gap: 10 }}>
             {q.data!.items.map((d) => (
               <Card key={d.id}>
-                <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                  <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: colors.text }}>{KIND_NAME[d.kind]} · {fmtMonth(d.month)}</Text>
-                  <BillState d={d} />
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+                  <IconTile icon={KIND_ICON[d.kind]} bg={d.kind === "bill" ? colors.warningSoft : d.kind === "payment" ? colors.successSoft : colors.brand50} fg={d.kind === "bill" ? colors.warning : d.kind === "payment" ? colors.success : colors.brand600} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                      <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: colors.text }}>{KIND_NAME[d.kind]} · {fmtMonth(d.month)}</Text>
+                      <BillState d={d} />
+                    </View>
+                    <Text numberOfLines={1} style={[font.small, { marginTop: 4 }]}>{d.store_name} · {fmtSize(d.size_bytes)}</Text>
+                  </View>
                 </View>
-                <Text numberOfLines={1} style={[font.small, { marginTop: 4 }]}>{d.store_name} · {fmtSize(d.size_bytes)}</Text>
                 <Pressable
                   onPress={() => open(d)}
                   disabled={opening === d.id}
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${KIND_NAME[d.kind]}`}
                   hitSlop={8}
-                  style={{ marginTop: 10, minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}
+                  style={({ pressed }) => ({ marginTop: 12, minHeight: 44, borderRadius: radius.md, backgroundColor: pressed ? colors.brand100 : colors.brand50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 })}
                 >
-                  <Text style={{ color: colors.brand600, fontWeight: "700", fontSize: 15 }}>{opening === d.id ? "Opening…" : "Open file"}</Text>
+                  <Ionicons name="open-outline" size={18} color={colors.brand600} />
+                  <Text style={{ color: colors.brand700, fontWeight: "700", fontSize: 15 }}>{opening === d.id ? "Opening…" : "Open file"}</Text>
                 </Pressable>
               </Card>
             ))}

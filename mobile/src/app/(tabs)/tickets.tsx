@@ -37,7 +37,8 @@ export default function Tickets() {
         ) : (
           <View style={{ gap: 10 }}>
             {q.data!.items.map((t) => (
-              <Card key={t.id} onPress={() => router.push(`/tickets/${t.id}`)} label={`Ticket ${t.number}, ${t.title}`}>
+              <Card key={t.id} onPress={() => router.push(`/tickets/${t.id}`)} label={`Ticket ${t.number}, ${t.title}`}
+                style={{ borderLeftWidth: 4, borderLeftColor: t.status === "OPEN" ? colors.warning : t.status === "IN_PROGRESS" ? colors.brand500 : t.status === "RESOLVED" ? colors.success : colors.border }}>
                 <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                   <Text style={{ flex: 1, fontSize: 15, fontWeight: "700", color: colors.text }}>#{t.number} · {t.title}</Text>
                   <TicketStatusBadge status={t.status} />

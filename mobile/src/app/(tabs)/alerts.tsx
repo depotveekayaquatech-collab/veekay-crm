@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMarkRead, useNotifications } from "@/api/hooks";
-import { Button, Empty, ErrorNote, ListSkeleton, Screen } from "@/components/ui";
+import { Button, Empty, ErrorNote, IconTile, ListSkeleton, Screen } from "@/components/ui";
 import { fmtDateTime } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
 
@@ -31,11 +31,18 @@ export default function Alerts() {
               accessibilityRole="button"
               accessibilityLabel={`${n.read ? "" : "Unread. "}${n.title}`}
               android_ripple={{ color: colors.brand100 }}
-              style={{ padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: n.read ? colors.border : colors.brand200, backgroundColor: n.read ? colors.surface : colors.brand50 }}
+              style={({ pressed }) => ({ padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: n.read ? colors.border : colors.brand200, backgroundColor: n.read ? colors.surface : colors.brand50, flexDirection: "row", gap: 12, opacity: pressed ? 0.9 : 1 })}
             >
-              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>{n.title}</Text>
-              <Text numberOfLines={2} style={{ marginTop: 3, color: colors.textMuted, lineHeight: 20 }}>{n.body}</Text>
-              <Text style={[font.tiny, { marginTop: 6 }]}>{fmtDateTime(n.created_at)}</Text>
+              <IconTile icon={n.kind === "bill" ? "receipt-outline" : n.kind === "ticket" ? "ticket-outline" : "notifications-outline"}
+                bg={n.read ? colors.surfaceMuted : colors.brand100} fg={n.read ? colors.textMuted : colors.brand700} size={38} />
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: n.read ? "600" : "800", color: colors.text }}>{n.title}</Text>
+                  {!n.read ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: colors.brand500 }} /> : null}
+                </View>
+                <Text numberOfLines={2} style={{ marginTop: 3, color: colors.textMuted, lineHeight: 20 }}>{n.body}</Text>
+                <Text style={[font.tiny, { marginTop: 6 }]}>{fmtDateTime(n.created_at)}</Text>
+              </View>
             </Pressable>
           ))}
         </View>

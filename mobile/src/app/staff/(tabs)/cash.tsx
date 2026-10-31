@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { useCashList } from "@/api/staffHooks";
 import { staffApi, type CashFilter, type CashPurchase } from "@/api/staff";
 import { useAuth } from "@/auth/AuthProvider";
-import { Badge, Button, Card, Chips, Empty, ErrorNote, ListSkeleton, Pager, Screen } from "@/components/ui";
+import { Badge, Button, Card, Chips, Empty, ErrorNote, Hero, ListSkeleton, Pager, Screen } from "@/components/ui";
 import { openRemoteFile } from "@/lib/files";
 import { fmtDate } from "@/lib/format";
 import { colors, font, radius } from "@/theme";
@@ -70,7 +70,7 @@ export default function Cash() {
         />
       </View>
 
-      <Card style={{ backgroundColor: colors.ink950, borderColor: colors.ink950, marginTop: 14 }}>
+      <Hero style={{ marginTop: 14 }}>
         <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{canSheet ? "Total expenses" : "Total of your purchases"} · {PERIOD_LABEL[period]}</Text>
         <Text style={{ color: colors.white, fontSize: 32, fontWeight: "800", marginTop: 2 }}>{q.data ? money(q.data.amount_total) : "–"}</Text>
         <Text style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, marginTop: 2 }}>{q.data ? `${q.data.total} purchase${q.data.total === 1 ? "" : "s"}` : ""}</Text>
@@ -86,7 +86,7 @@ export default function Cash() {
             </View>
           </View>
         ) : null}
-      </Card>
+      </Hero>
 
       {canSheet && (
         <Button title="Download expense sheet (Excel)" variant="secondary" onPress={() => void downloadSheet()} loading={downloading} disabled={!q.data || q.data.total === 0}

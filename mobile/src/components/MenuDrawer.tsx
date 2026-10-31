@@ -64,9 +64,14 @@ export function MenuDrawer({ open, onClose, sections, who }: { open: boolean; on
             transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-panelWidth, 0] }) }],
           }}
         >
-          <View style={{ paddingHorizontal: 20, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Text style={{ fontSize: 22, fontWeight: "800", color: colors.brand700 }}>Veekay</Text>
-            <Text numberOfLines={1} style={[font.small, { marginTop: 2 }]}>{who.name} · {who.code}</Text>
+          <View style={{ paddingHorizontal: 20, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.brand600, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.brand100 }}>
+              <Text style={{ color: colors.white, fontSize: 18, fontWeight: "800" }}>{(who.name.trim().slice(0, 1) || "?").toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 20, fontWeight: "800", color: colors.brand700 }}>Veekay</Text>
+              <Text numberOfLines={1} style={[font.small, { marginTop: 1 }]}>{who.name} · {who.code}</Text>
+            </View>
           </View>
           <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
             {sections.map((s, i) => (
@@ -82,8 +87,9 @@ export function MenuDrawer({ open, onClose, sections, who }: { open: boolean; on
                       accessibilityState={{ selected: active }}
                       accessibilityLabel={it.badge ? `${it.label}, ${it.badge} waiting` : it.label}
                       android_ripple={{ color: colors.brand100 }}
-                      style={{ marginHorizontal: 10, minHeight: 50, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: active ? colors.brand50 : "transparent" }}
+                      style={({ pressed }) => ({ marginHorizontal: 10, marginVertical: 1, minHeight: 50, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: active ? colors.brand50 : pressed ? colors.surfaceSubtle : "transparent" })}
                     >
+                      {active ? <View style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 4, borderRadius: 2, backgroundColor: colors.brand600 }} /> : null}
                       <Ionicons name={it.icon} size={22} color={active ? colors.brand600 : colors.textMuted} />
                       <Text style={{ flex: 1, fontSize: 16, fontWeight: active ? "800" : "600", color: active ? colors.brand700 : colors.text }}>{it.label}</Text>
                       {it.badge ? (
