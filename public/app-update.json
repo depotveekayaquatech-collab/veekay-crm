@@ -1,11 +1,11 @@
 {
   "android": {
-    "latestVersionCode": 33,
+    "latestVersionCode": 34,
     "latestVersionName": "1.2.0",
     "minVersionCode": 18,
-    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code33.apk",
-    "notes": "Cleaner look: plain sentence-case labels and bigger touch targets on filter chips and toggles. Nothing else changes.",
-    "apkSizeBytes": 56652281,
-    "apkSha256": "e3fe5779ad6191c9144d7f86ef8dbb5607515de3663e5a7185b2c433d310df20"
+    "downloadUrl": "https://veekay-crm.vercel.app/downloads/Aquatrack-1.2.0-code34.apk",
+    "notes": "Fresher look across every tab: bolder summary cards, clearer icons, better pressed states and a new scanner frame. Nothing else changes.",
+    "apkSizeBytes": 56657221,
+    "apkSha256": "21d5a6e554bd10ca3b3f4465405ae2e969e51b82c6e4868a984e637348c5778d"
   }
 }
