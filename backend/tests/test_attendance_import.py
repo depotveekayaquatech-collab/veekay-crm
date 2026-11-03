@@ -144,7 +144,7 @@ def test_the_day_and_month_views_show_present_with_no_invented_times(client, dev
     assert mrow["days_present"] == 1 and mrow["days"][MONTH.isoformat()]["status"] == "PRESENT" and mrow["late_days"] == 0
 
 
-def test_a_sheet_day_is_not_passed_to_salary(db):
+def test_a_sheet_day_counts_for_salary_even_before_the_account_was_created(db):
     month = MONTH
     sheet = {"status": "PRESENT", "source": "sheet", "check_in_at": None, "check_out_at": None, "minutes": 0, "late": False,
              "half_day": False, "location": {"status": "unknown", "label": "Attendance sheet"}}
@@ -157,8 +157,18 @@ def test_a_sheet_day_is_not_passed_to_salary(db):
     out = payroll_service.build_days(month, {date(month.year, month.month, days[0]).isoformat(): sheet, date(month.year, month.month, days[1]).isoformat(): real}, joined, {})
     by = {d["date"]: d for d in out}
     s_day, r_day = by[date(month.year, month.month, days[0]).isoformat()], by[date(month.year, month.month, days[1]).isoformat()]
-    assert s_day["kind"] == "ABSENT" and s_day["counted"] == 0                       # only an admin's mark can pay it
+    assert s_day["kind"] == "PRESENT" and s_day["counted"] == 1                      # a sheet day pays like a checked-in day, with no times shown
+    assert s_day["check_in_at"] is None and s_day["location"] == "Attendance sheet"
     assert r_day["kind"] == "PRESENT" and r_day["counted"] == 1
+
+    # the account was made in the middle of the month, but the sheet covers days before that: they still count (not "Before joining")
+    late_join = date(month.year, month.month, 10)
+    early = date(month.year, month.month, days[0]).isoformat()
+    out = payroll_service.build_days(month, {early: sheet}, late_join, {})
+    assert next(d for d in out if d["date"] == early)["kind"] == "PRESENT"
+    # an admin's mark still wins over the sheet
+    out = payroll_service.build_days(month, {early: sheet}, joined, {date(month.year, month.month, days[0]): "HALF"})
+    assert next(d for d in out if d["date"] == early)["counted"] == 0.5
 
 
 def test_only_the_developer_can_upload_and_a_bad_sheet_is_refused(client, dev, admin, emp, staff):

@@ -304,6 +304,29 @@ def correct_record(
     return _entry(rec, _now())
 
 
+def mark_absent(db: Session, actor: User, user_id: uuid.UUID, day: date) -> dict:
+    """Developer: take one person's attendance away for a day (marked present by mistake, or a check-in that should not count), so the day reads
+    absent again - or leave / day off when that applies. Works on a real check-in too, which `mark_days` never touches. Recorded in the activity log."""
+    from app.services import activity_service
+
+    rec = db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.organization_id == actor.organization_id, AttendanceRecord.user_id == user_id, AttendanceRecord.work_date == day
+        )
+    ).scalar_one_or_none()
+    if rec is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person has no attendance on this day.")
+    if _salary_paid(db, user_id, day.replace(day=1)):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"{day:%B %Y}'s salary is already paid, so its days are locked.")
+    target = db.get(User, user_id)
+    activity_service.record(db, actor=actor, action="attendance.removed_by_hand", entity_type="employee", entity_id=user_id,
+                            metadata={"employee_code": target.employee_code if target else None, "date": day.isoformat(), "source": rec.source,
+                                      "check_in_at": rec.check_in_at.isoformat(), "check_out_at": rec.check_out_at.isoformat() if rec.check_out_at else None})
+    db.delete(rec)
+    db.commit()
+    return {"removed": True, "work_date": day.isoformat()}
+
+
 def mark_days(db: Session, actor: User, user_id: uuid.UUID, days: list[date], present: bool) -> dict:
     """Developer: mark one person present (or take a hand-made mark away) on any dates up to today, backlog days included. A marked day has no clock times
     and counts as present for salary. A day the person really checked in on is never overwritten or removed here (use the correction for that)."""
@@ -425,7 +448,7 @@ def _record_status(r: AttendanceRecord, now: datetime) -> str:
     return "CHECKED_IN" if r.work_date == local_date(now) else "NO_CHECKOUT"
 
 
-MANUAL = "manual"      # a day a developer marked present by hand (no clock times); unlike a sheet day it counts for salary
+MANUAL = "manual"      # a day a developer marked present by hand (no clock times); counts for salary, like a sheet day
 
 
 def _entry(r: AttendanceRecord, now: datetime) -> dict:
@@ -540,6 +563,7 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
         days: dict[str, dict] = {}
         leave_days = 0.0
         absent = 0
+        absent_dates: list[str] = []
         for d in all_dates:
             rec = recs.get(d)
             if rec is not None:
@@ -555,13 +579,14 @@ def _month_rows(db: Session, org_id: uuid.UUID, month: date, *, only_user: uuid.
                                        "check_in_at": None, "check_out_at": None, "location": {"status": "unknown", "label": "—"}}
             elif d < today and d >= joined:
                 absent += 1
+                absent_dates.append(d.isoformat())
         present = [e for e in days.values() if e["status"] != "ON_LEAVE"]
         row = {
             **_person(u, roles.get(uid, [])), "days": days, "days_present": len(present),
             "total_minutes": sum(e["minutes"] for e in present),
             "outside_days": sum(1 for e in present if e["location"]["status"] == "outside"),
             "late_days": sum(1 for e in present if e["late"]),
-            "leave_days": leave_days, "absent_days": absent,
+            "leave_days": leave_days, "absent_days": absent, "absent_dates": absent_dates,
         }
         rows.append(row)
     rows.sort(key=lambda r: (_CAT_ORDER.get(r["category"], 9), r["full_name"].lower()))

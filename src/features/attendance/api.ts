@@ -107,6 +107,8 @@ export interface MonthRow extends Person {
   lateDays: number;
   leaveDays: number;
   absentDays: number;
+  /** The dates counted in `absentDays` (working days with no check-in and no leave, from the day they joined). */
+  absentDates: string[];
 }
 
 export interface MonthData {
@@ -208,6 +210,20 @@ export function useCorrectRecord() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["attendance"] });
       pushToast("Attendance updated.", "success");
+    },
+  });
+}
+
+/** Developer only (`attendance.edit`): take a day's attendance away so the person reads absent (an accidental present mark). */
+export function useMarkAbsent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { user_id: string; work_date: string }) =>
+      apiRequest(`/attendance/record?user_id=${v.user_id}&work_date=${v.work_date}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["attendance"] });
+      void qc.invalidateQueries({ queryKey: ["payroll"] }); // the day no longer counts for salary
+      pushToast("Marked absent.", "success");
     },
   });
 }

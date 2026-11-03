@@ -147,6 +147,12 @@ def correct_record(payload: RecordCorrection, user: User = Depends(get_current_u
                                            payload.late, payload.half_day, payload.clear_check_out, payload.check_out_time)
 
 
+@router.delete("/record", dependencies=[Depends(require_permission("attendance.edit"))])
+def mark_absent(user_id: uuid.UUID, work_date: date, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Developer only: mark a person absent on a day by removing their attendance for it (undoes an accidental present mark or check-in)."""
+    return attendance_service.mark_absent(db, user, user_id, work_date)
+
+
 class HolidayIn(BaseModel):
     holiday_date: date
     name: str = Field(min_length=1, max_length=128)

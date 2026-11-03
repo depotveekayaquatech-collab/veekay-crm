@@ -2,7 +2,8 @@
 Payroll: what to pay each employee for a finished month, from their attendance, and the record that it was paid.
 
 How a month is counted (per-day rate = monthly salary / calendar days of that month):
-  a day with a check-in .......... 1 day            an approved paid / casual / sick leave day ... 1 day (0.5 for a half day)
+  a day with a check-in, or marked present from an uploaded attendance sheet / by a developer ... 1 day
+  an approved paid / casual / sick leave day ... 1 day (0.5 for a half day)
   Sunday (weekly off) with none .. 1 day            an approved UNPAID leave day ................ 0
   no check-in, not on leave ...... 0                a day before the person's account existed .... 0
 An admin can override any day with a mark: FULL = 1, HALF = 0.5, ABSENT = 0 (this is how half days are decided after looking
@@ -167,9 +168,7 @@ def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[
     out = []
     for i in range(1, _dim(month) + 1):
         d = date(month.year, month.month, i)
-        entry = entries.get(d.isoformat())
-        if entry is not None and entry.get("source") == "sheet":
-            entry = None            # a day filled from an uploaded attendance sheet is not passed to salary: it counts only if the admin marks it
+        entry = entries.get(d.isoformat())      # a day filled from an uploaded attendance sheet is a present day like any other (it has no times)
         kind = _kind(entry, d, joined, d.isoformat() in (holidays or {}))
         mark = marks.get(d)
         counted = MARK_VALUE[mark] if mark else _default_value(kind, entry)

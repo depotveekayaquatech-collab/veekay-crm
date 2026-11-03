@@ -7,6 +7,7 @@ import { fmtMinutes, fmtTime } from "@/features/attendance/format";
 import { CategoryChips, GroupRow } from "@/features/attendance/parts";
 import { useMonthAttendance } from "@/features/attendance/api";
 import { ImportSheetModal } from "@/features/attendance/ImportSheetModal";
+import { monthlyDetailed, monthlySummary } from "@/features/attendance/reports";
 import { usePermission } from "@/hooks/usePermission";
 import { downloadCsv } from "@/lib/csv";
 
@@ -32,16 +33,11 @@ export function MonthlyView() {
     );
   }, [data, q, cat]);
 
-  function exportCsv() {
+  /** Plain: P / A / L / H / WO per date. Detailed: one line per person per date with check-in, check-out and hours. */
+  function exportCsv(detailed: boolean) {
     if (!data) return;
-    downloadCsv(
-      `attendance-${data.month}.csv`,
-      ["Employee ID", "Name", "Platform", "Days present", "Hours", "Late", "Leave", "Absent", "Days outside office", ...data.dates.map((d) => d.slice(8))],
-      rows.map((r) => [
-        r.employeeCode, r.fullName, r.platform, r.daysPresent, (r.totalMinutes / 60).toFixed(1), r.lateDays, r.leaveDays, r.absentDays, r.outsideDays,
-        ...data.dates.map((d) => (r.days[d] ? (r.days[d].status === "ON_LEAVE" ? "L" : r.days[d].status === "PRESENT" ? "P" : (r.days[d].minutes / 60).toFixed(1)) : "")),
-      ]),
-    );
+    const { header, rows: lines } = detailed ? monthlyDetailed(data, rows) : monthlySummary(data, rows);
+    downloadCsv(`attendance${detailed ? "-detailed" : ""}-${data.month}.csv`, header, lines);
   }
 
   return (
@@ -58,9 +54,13 @@ export function MonthlyView() {
         {canImport && (
           <Button variant="secondary" onClick={() => setImporting(true)}>Import attendance sheet</Button>
         )}
-        <Button variant="secondary" onClick={exportCsv} disabled={!rows.length}>
+        <Button variant="secondary" onClick={() => exportCsv(false)} disabled={!rows.length} title="Present, absent, leave and holiday for every date">
           <IconDownload className="h-4 w-4" />
           Export CSV
+        </Button>
+        <Button variant="secondary" onClick={() => exportCsv(true)} disabled={!rows.length} title="Every date with check-in and check-out times and hours">
+          <IconDownload className="h-4 w-4" />
+          Detailed CSV
         </Button>
       </div>
 

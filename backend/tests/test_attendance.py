@@ -415,6 +415,42 @@ def test_developer_marks_someone_present_with_times_though_they_never_checked_in
     assert e["status"] == "NO_CHECKOUT" and e["late"] is False
 
 
+def test_developer_marks_someone_absent_again(client, dev, admin, emp, make_user, clock):
+    from datetime import timedelta
+
+    clock(12, 0)
+    h, uid = _fresh_employee(client, make_user)
+    today = datetime.now(IST).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    params = {"user_id": str(uid), "work_date": yesterday}
+
+    assert client.delete(f"{API}/attendance/record", headers=dev, params=params).status_code == 404   # nothing to remove yet
+    client.patch(f"{API}/attendance/record", headers=dev, json={"user_id": str(uid), "work_date": yesterday, "check_in_time": "10:00"})
+    for who in (admin, emp, h):
+        assert client.delete(f"{API}/attendance/record", headers=who, params=params).status_code == 403   # developer only
+
+    def status_on(day: str) -> str:
+        rows = {x["user_id"]: x for x in client.get(f"{API}/attendance/day", params={"date": day}, headers=dev).json()["rows"]}
+        return rows[str(uid)]["status"]
+
+    def sheet_days_present() -> tuple[int, list[str]]:
+        q = {"month": yesterday[:7]}
+        grid = next(x for x in client.get(f"{API}/attendance/month", params=q, headers=dev).json()["rows"] if x["user_id"] == str(uid))
+        brief = next(x for x in client.get(f"{API}/attendance/month-brief", params=q, headers=dev).json()["rows"] if x["user_id"] == str(uid))
+        return grid["days_present"], brief["present_dates"]
+
+    assert status_on(yesterday) == "NO_CHECKOUT"
+    assert sheet_days_present() == (1, [yesterday])
+    assert client.delete(f"{API}/attendance/record", headers=dev, params=params).status_code == 200
+    assert status_on(yesterday) == "ABSENT"
+    assert sheet_days_present() == (0, [])      # the month sheet and the phone's date list follow
+
+    # a real check-in made by the person can be taken away too, and they can check in again that day
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).status_code == 200
+    assert client.delete(f"{API}/attendance/record", headers=dev, params={"user_id": str(uid), "work_date": today.isoformat()}).status_code == 200
+    assert client.post(f"{API}/attendance/check-in", headers=h, json=_at(OFFICE)).status_code == 200
+
+
 def test_deactivated_accounts_leave_the_attendance_views(client, dev, admin, make_user, clock):
     clock(10, 0)
     h, uid = _fresh_employee(client, make_user)

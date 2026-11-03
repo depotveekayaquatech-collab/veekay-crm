@@ -11,9 +11,9 @@ import { Select } from "@/components/ui/Select";
 import { SearchBox } from "@/features/orders/ui";
 import { CategoryChips, GroupRow, LocationBadge, StatusBadge } from "@/features/attendance/parts";
 import { fmtMinutes, fmtTime } from "@/features/attendance/format";
-import { LEAVE_LABEL, useCorrectRecord, useDayAttendance, type DayRow, type DayStatus, type RecordCorrection } from "@/features/attendance/api";
+import { LEAVE_LABEL, useCorrectRecord, useDayAttendance, useMarkAbsent, type DayRow, type DayStatus, type RecordCorrection } from "@/features/attendance/api";
 import { downloadCsv } from "@/lib/csv";
-import { locationText, presenceText } from "@/features/attendance/format";
+import { dailyDetailed, dailySummary } from "@/features/attendance/reports";
 import { daysAgo } from "@/lib/dates";
 
 function Tile({ title, value, tone, hint }: { title: string; value: number | string; tone: "brand" | "aqua" | "success" | "warning"; hint?: string }) {
@@ -53,13 +53,15 @@ function hhmm(iso: string | null): string {
 }
 
 /** Developer-only fix for one person's day: when they checked in and out, and whether that counts as at the office or away.
- *  For someone with no check-in that day it marks them present instead, with the times you give. */
+ *  For someone with no check-in that day it marks them present instead, with the times you give.
+ *  For someone present it can also mark them absent again (removes the day), for a mark made by mistake. */
 function EditRecordModal({ row, date, onClose }: { row: DayRow | null; date: string; onClose: () => void }) {
   return row ? <EditRecordForm key={row.userId} row={row} date={date} onClose={onClose} /> : null;
 }
 
 function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onClose: () => void }) {
   const correct = useCorrectRecord();
+  const absent = useMarkAbsent();
   const isNew = !isPresent(row);
   const [time, setTime] = useState(hhmm(row.checkInAt));
   const [outTime, setOutTime] = useState(hhmm(row.checkOutAt));
@@ -93,6 +95,21 @@ function EditRecordForm({ row, date, onClose }: { row: DayRow; date: string; onC
       }
       footer={
         <>
+          {!isNew && (
+            <Button
+              variant="danger"
+              size="sm"
+              className="mr-auto"
+              disabled={absent.isPending || correct.isPending}
+              onClick={() => {
+                if (window.confirm(`Mark ${row.fullName} absent on ${date}?\n\nThis removes their attendance for the day (times and location included).`)) {
+                  absent.mutate({ user_id: row.userId, work_date: date }, { onSuccess: onClose });
+                }
+              }}
+            >
+              {absent.isPending ? "Removing…" : "Mark absent"}
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" disabled={!changed || needsCheckIn || correct.isPending} onClick={() => correct.mutate(body, { onSuccess: onClose })}>
             {correct.isPending ? "Saving…" : isNew ? "Mark present" : "Save"}
@@ -155,19 +172,11 @@ export function DailyView() {
     );
   }, [data, q, status, cat]);
 
-  function exportCsv() {
+  /** Plain: present / absent / on leave. Detailed: adds the check-in and check-out times, hours and where from. */
+  function exportCsv(detailed: boolean) {
     if (!data) return;
-    downloadCsv(
-      `attendance-${data.date}.csv`,
-      ["Date", "Employee ID", "Name", "Role", "Platform", "Status", "Late", "Check in", "Check out", "Hours", "Check-in presence", "Check-in location", "Latitude", "Longitude", "Distance to office (m)", "Check-out presence", "Check-out location"],
-      rows.map((r) => [
-        data.date, r.employeeCode, r.fullName, r.roles.join("/"), r.platform, r.status, r.late ? "Yes" : "",
-        fmtTime(r.checkInAt), fmtTime(r.checkOutAt), (r.minutes / 60).toFixed(2),
-        presenceText(r.checkInAt ? r.location : null), locationText(r.checkInAt ? r.location : null),
-        r.location.latitude, r.location.longitude, r.location.distanceM,
-        presenceText(r.checkOutAt ? r.checkOutLocation : null), locationText(r.checkOutAt ? r.checkOutLocation : null),
-      ]),
-    );
+    const { header, rows: lines } = detailed ? dailyDetailed(data, rows) : dailySummary(data, rows);
+    downloadCsv(`attendance${detailed ? "-detailed" : ""}-${data.date}.csv`, header, lines);
   }
 
   const s = data?.summary;
@@ -207,9 +216,13 @@ export function DailyView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={exportCsv} disabled={!rows.length}>
+            <Button variant="secondary" size="sm" onClick={() => exportCsv(false)} disabled={!rows.length} title="Present, absent and on leave">
               <IconDownload className="h-4 w-4" />
               Export CSV
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => exportCsv(true)} disabled={!rows.length} title="With check-in and check-out times, hours and location">
+              <IconDownload className="h-4 w-4" />
+              Detailed CSV
             </Button>
           </div>
         </div>

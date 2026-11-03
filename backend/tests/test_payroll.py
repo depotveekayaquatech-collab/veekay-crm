@@ -107,6 +107,30 @@ def _open_window(monkeypatch, db, month):
     return rel
 
 
+def test_days_filled_from_an_uploaded_sheet_are_in_the_payslip_and_the_pay(client, admin, staff, db):
+    m, uid, month = f"{staff['month']:%Y-%m}", staff["uid"], staff["month"]
+    client.put(f"{API}/payroll/salaries/{uid}", headers=admin, json={"monthly_salary": 30000})
+    org = db.query(Organization).filter_by(slug="veekay").one()
+    free = [date(month.year, month.month, d) for d in range(1, _dim(month) + 1)
+            if date(month.year, month.month, d).weekday() != 6 and date(month.year, month.month, d) not in staff["worked"]][:3]
+    for d in free:   # what the sheet upload writes: present, no clock times
+        db.add(AttendanceRecord(organization_id=org.id, user_id=uid, work_date=d, check_in_at=datetime(d.year, d.month, d.day, 4, 30, tzinfo=timezone.utc),
+                                check_in_status="unknown", late=False, half_day=False, source="sheet"))
+    db.commit()
+
+    row = next(r for r in client.get(f"{API}/payroll", params={"month": m}, headers=admin).json()["rows"] if r["user_id"] == str(uid))
+    assert row["paid_days"] == staff["paid_days"] + 3 and row["amount"] == _expected(30000, staff["paid_days"] + 3, staff["dim"])
+    days = {x["date"]: x for x in client.get(f"{API}/payroll/employees/{uid}", params={"month": m}, headers=admin).json()["days"]}
+    sheet_day = days[free[0].isoformat()]
+    assert sheet_day["kind"] == "PRESENT" and sheet_day["counted"] == 1 and sheet_day["check_in_at"] is None and sheet_day["location"] == "Attendance sheet"
+
+    # the monthly attendance report lists exactly the absent dates (neither worked, sheet-marked, nor Sundays are in it)
+    mrow = next(r for r in client.get(f"{API}/attendance/month", params={"month": m}, headers=admin).json()["rows"] if r["user_id"] == str(uid))
+    assert len(mrow["absent_dates"]) == mrow["absent_days"] > 0
+    assert not {d.isoformat() for d in staff["worked"] + free} & set(mrow["absent_dates"])
+    assert all(date.fromisoformat(d).weekday() != 6 for d in mrow["absent_dates"])
+
+
 def test_set_salary_review_mark_pay_and_the_employee_is_told(client, admin, staff, db, monkeypatch):
     m, uid = f"{staff['month']:%Y-%m}", staff["uid"]
     _open_window(monkeypatch, db, staff["month"])

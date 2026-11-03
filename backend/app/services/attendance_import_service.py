@@ -7,7 +7,7 @@ Meant for days before people used the app's Check in (for example 1 to 16 Octobe
 * Only "P" cells write anything. A blank, "A" or other cell leaves the day exactly as it is. Other letters are counted and reported.
 * A day that already has a record is OVERWRITTEN (that is what was asked for); what it held before is kept in the activity log.
 * The sheet gives no clock times, so none are invented: the record is marked as coming from the sheet (`source = "sheet"`) and the screens show
-  "P", not hours. These days are NOT passed to payroll (see payroll_service.build_days).
+  "P", not hours. They count for payroll as present days (see payroll_service.build_days), until that month's salary is paid.
 * Only days before today are written, so a sheet can never block a real Check in.
 * Always run as a preview first (`apply=False`), which changes nothing.
 """
