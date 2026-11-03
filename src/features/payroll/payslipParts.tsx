@@ -43,7 +43,7 @@ export function DayTable({
                 <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-900">{fmtDay(d.date)}</td>
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge tone={k.tone}>{d.kind === "LEAVE" && d.leaveType ? `${d.leaveType.toLowerCase()} leave${d.halfDay ? " (½)" : ""}` : k.label}</Badge>
+                    <Badge tone={k.tone}>{d.kind === "LEAVE" && d.leaveType ? `${d.leaveType.toLowerCase()} leave${d.halfDay ? " (½)" : ""}${d.casualAuto ? " (auto)" : ""}` : d.kind === "OFF" && d.holiday ? `Holiday: ${d.holiday}` : k.label}</Badge>
                     {d.late && <Badge tone="warning">Late</Badge>}
                   </div>
                 </td>

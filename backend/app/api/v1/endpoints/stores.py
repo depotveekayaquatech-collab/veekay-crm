@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_page_params, require_permission
+from app.api.deps import get_current_user, get_page_params, require_any_permission, require_permission
 from app.core.cache import read_cache
 from app.core.cached_json import cached_json_response
 from app.db.session import get_db
@@ -35,9 +35,9 @@ def list_stores(
     )
 
 
-@router.get("/all", response_model=list[StoreOut], dependencies=[Depends(require_permission("stores.view"))])
+@router.get("/all", response_model=list[StoreOut], dependencies=[Depends(require_any_permission("stores.view", "cards.sheet"))])
 def all_stores(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
-    """Every store in ONE request (the filter dropdowns and pickers need the full list). Built, serialised and gzipped
+    """Every store in ONE request (the filter dropdowns and pickers need the full list; Accounts need it for the Random Card PDF). Built, serialised and gzipped
     once, then shared between users until any write happens — instead of the browser walking 16 pages of 100."""
     return cached_json_response(
         request, ("stores-all", user.organization_id),

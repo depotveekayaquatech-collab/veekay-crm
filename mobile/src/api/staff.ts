@@ -71,7 +71,7 @@ export interface LeavesMe { year: number; items: LeaveItem[]; taken: Record<stri
 export interface PayslipDay {
   date: string; kind: "PRESENT" | "LEAVE" | "OFF" | "ABSENT" | "BEFORE_JOINING"; mark: "FULL" | "HALF" | "ABSENT" | null; counted: number;
   check_in_at: string | null; check_out_at: string | null; minutes: number; late: boolean; no_checkout: boolean; location: string | null;
-  leave_type: string | null; half_day: boolean;
+  leave_type: string | null; half_day: boolean; holiday?: string | null; casual_auto?: boolean;
 }
 export interface Payslip {
   id: string; month: string; month_label: string; release_date: string; monthly_salary: number; days_in_month: number; paid_days: number;

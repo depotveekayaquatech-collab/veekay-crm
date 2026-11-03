@@ -70,6 +70,7 @@ class LeaveApply(BaseModel):
 class LeaveReview(BaseModel):
     approve: bool
     note: str | None = Field(default=None, max_length=500)
+    leave_type: Literal["CASUAL", "SICK", "PAID", "UNPAID"] | None = None   # the reviewer may change the type when approving (Casual by default)
 
 
 # ---------------------------------------------------------------- my day
@@ -212,7 +213,7 @@ def review_leave(
     leave_id: uuid.UUID, payload: LeaveReview, perms: set[str] = Depends(get_current_permissions),
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> dict:
-    return leave_service.review(db, user, leave_id, payload.approve, payload.note, team_only(db, user, perms))
+    return leave_service.review(db, user, leave_id, payload.approve, payload.note, team_only(db, user, perms), payload.leave_type)
 
 
 # ---------------------------------------------------------------- offices

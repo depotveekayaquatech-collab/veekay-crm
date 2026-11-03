@@ -5,7 +5,8 @@ How a month is counted (per-day rate = monthly salary / calendar days of that mo
   a day with a check-in, or marked present from an uploaded attendance sheet / by a developer ... 1 day
   an approved paid / casual / sick leave day ... 1 day (0.5 for a half day)
   Sunday (weekly off) with none .. 1 day            an approved UNPAID leave day ................ 0
-  no check-in, not on leave ...... 0                a day before the person's account existed .... 0
+  no check-in, not on leave ...... 0 (but the first such day of a month is paid as the month's casual leave, see CASUAL_LEAVE_PER_MONTH)
+  a day before the person's first attendance / account ... 0
 An admin can override any day with a mark: FULL = 1, HALF = 0.5, ABSENT = 0 (this is how half days are decided after looking
 at the check-in and check-out times). Pay = salary / days in month x counted days, rounded to the paisa.
 
@@ -25,11 +26,12 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.roles import ADMIN
+from app.models.attendance import AttendanceRecord
 from app.models.payroll import DayMark, EmployeeSalary, PayrollPeriod, Payslip
 from app.models.user import User
 from app.services import activity_service, attendance_service, staff_notify
@@ -38,6 +40,7 @@ DEFAULT_RELEASE_DAY = 15
 DEFAULT_WINDOW_DAYS = 3
 MAX_WINDOW_DAYS = 31
 MAX_SALARY = Decimal("10000000")
+CASUAL_LEAVE_PER_MONTH = 1      # one absent day a month is paid as casual leave; the admin can mark it unpaid (or another day paid) on the payslip
 MARK_VALUE = {"FULL": Decimal("1"), "HALF": Decimal("0.5"), "ABSENT": Decimal("0")}
 FIRST_MONTH = date(2024, 1, 1)
 _PAID_LEAVES_OFF = {"UNPAID"}
@@ -183,8 +186,21 @@ def build_days(month: date, entries: dict[str, dict], joined: date, marks: dict[
             "holiday": (holidays or {}).get(d.isoformat()),
             "leave_type": entry.get("leave_type") if entry and kind == "LEAVE" else None,
             "half_day": bool(entry and kind == "LEAVE" and entry.get("half_day")),
+            "casual_auto": False,
         })
+    _grant_casual_leave(out)
     return out
+
+
+def _grant_casual_leave(days: list[dict]) -> None:
+    """The monthly casual-leave allowance: the earliest absent day is paid as casual leave, unless the person already took an approved casual leave
+    this month. A day the admin has marked is theirs to decide (the allowance stays on that day and does not move to another)."""
+    used = sum(1 for d in days if d["kind"] == "LEAVE" and d["leave_type"] == "CASUAL")
+    absent = [d for d in days if d["kind"] == "ABSENT"]
+    for d in absent[: max(0, CASUAL_LEAVE_PER_MONTH - used)]:
+        if d["mark"] is not None:
+            continue
+        d.update(kind="LEAVE", leave_type="CASUAL", casual_auto=True, counted=1.0, default=1.0)
 
 
 def compute_amount(salary: Decimal | None, days: list[dict], dim: int) -> tuple[Decimal, Decimal | None]:
@@ -205,8 +221,18 @@ def _salaries(db: Session, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal
     return {s.user_id: s.monthly_salary for s in db.execute(select(EmployeeSalary).where(EmployeeSalary.user_id.in_(user_ids or [uuid.uuid4()]))).scalars()}
 
 
-def _joined(u: User, month: date) -> date:
-    return attendance_service.local_date(u.created_at) if u.created_at else month
+def _first_worked(db: Session, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, date]:
+    rows = db.execute(
+        select(AttendanceRecord.user_id, func.min(AttendanceRecord.work_date)).where(AttendanceRecord.user_id.in_(user_ids or [uuid.uuid4()])).group_by(AttendanceRecord.user_id)
+    ).all()
+    return {uid: first for uid, first in rows}
+
+
+def _joined(u: User, month: date, first_worked: date | None = None) -> date:
+    """The day the person counts from: when their account was made, or earlier if attendance (an uploaded sheet, say) starts before that.
+    Weekly offs and holidays from this day on are paid; days before it are 'before joining'."""
+    made = attendance_service.local_date(u.created_at) if u.created_at else month
+    return min(made, first_worked) if first_worked else made
 
 
 def _payslips(db: Session, period: PayrollPeriod) -> dict[uuid.UUID, Payslip]:
@@ -222,6 +248,7 @@ def overview(db: Session, admin: User, month_str: str | None) -> dict:
     ids = [r["user_id"] for r in data["rows"]]
     users = {u.id: u for u in db.execute(select(User).where(User.id.in_(ids or [uuid.uuid4()]))).scalars()}
     salaries, marks, slips = _salaries(db, ids), _marks(db, ids, month), _payslips(db, period)
+    first_worked = _first_worked(db, ids)
     dim = _dim(month)
 
     rows, payable, paid_total = [], Decimal("0"), Decimal("0")
@@ -236,7 +263,7 @@ def overview(db: Session, admin: User, month_str: str | None) -> dict:
             paid_total += amount
         else:
             salary = salaries.get(uid)
-            days = build_days(month, r["days"], _joined(u, month), marks.get(uid, {}), data.get("holidays"))
+            days = build_days(month, r["days"], _joined(u, month, first_worked.get(uid)), marks.get(uid, {}), data.get("holidays"))
             paid_days, amount = compute_amount(salary, days, dim)
             state = "NO_SALARY" if salary is None else "READY"
             if amount is not None:
@@ -279,7 +306,7 @@ def _detail_out(db: Session, u: User, month: date, period: PayrollPeriod, slip: 
     else:
         month_data = attendance_service._month_rows(db, u.organization_id, month, only_user=u.id, detail=True)  # noqa: SLF001
         entries = month_data["rows"][0]["days"] if month_data["rows"] else {}
-        days = build_days(month, entries, _joined(u, month), _marks(db, [u.id], month).get(u.id, {}), month_data.get("holidays"))
+        days = build_days(month, entries, _joined(u, month, _first_worked(db, [u.id]).get(u.id)), _marks(db, [u.id], month).get(u.id, {}), month_data.get("holidays"))
         salary = _salaries(db, [u.id]).get(u.id)
         paid_days, amount = compute_amount(salary, days, dim)
     return {

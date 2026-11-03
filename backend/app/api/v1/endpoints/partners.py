@@ -30,8 +30,8 @@ def list_partners(
     perms: set[str] = Depends(get_current_permissions),
     db: Session = Depends(get_db),
 ) -> list[Organization]:
-    # Just the platform names: the Data sync page (developer) needs them to pick a platform.
-    if not ({"stores.view", "sheets.sync"} & perms):
+    # Just the platform names: the Data sync page (developer) and the Random Card PDF page (Level 3, Accounts) need them to pick a platform.
+    if not ({"stores.view", "sheets.sync", "cards.sheet"} & perms):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have permission to access this.")
     stmt = (
         select(Organization)

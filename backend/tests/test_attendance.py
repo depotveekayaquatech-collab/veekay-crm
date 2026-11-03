@@ -293,6 +293,20 @@ def test_only_reviewers_approve_and_never_their_own_request(client, admin, emp, 
     assert client.post(f"{API}/attendance/leaves/{lid}/review", headers=admin, json={"approve": False}).status_code == 409   # decided once
 
 
+def test_the_reviewer_can_change_the_leave_type_when_approving(client, admin, make_user):
+    h, _ = _fresh_employee(client, make_user)
+    monday = _next_weekday(date.today(), 0)
+    lid = _leave(client, h, monday, monday, leave_type="CASUAL").json()["id"]      # the apply forms preselect Casual
+    assert client.post(f"{API}/attendance/leaves/{lid}/review", headers=admin, json={"approve": True, "leave_type": "BOGUS"}).status_code == 422
+    ok = client.post(f"{API}/attendance/leaves/{lid}/review", headers=admin, json={"approve": True, "leave_type": "UNPAID"})
+    assert ok.status_code == 200 and ok.json()["status"] == "APPROVED" and ok.json()["leave_type"] == "UNPAID"
+    assert client.get(f"{API}/attendance/leaves/me", headers=h).json()["taken"]["UNPAID"] == 1.0
+    # a rejected request keeps its type
+    other = _leave(client, h, monday + timedelta(days=7), monday + timedelta(days=7), leave_type="CASUAL").json()["id"]
+    rej = client.post(f"{API}/attendance/leaves/{other}/review", headers=admin, json={"approve": False, "leave_type": "PAID"}).json()
+    assert rej["status"] == "REJECTED" and rej["leave_type"] == "CASUAL"
+
+
 def test_approved_leave_shows_as_on_leave_not_absent(client, admin, make_user):
     code, pw, _ = make_user()
     h = auth(login(client, code, pw).json()["access_token"])

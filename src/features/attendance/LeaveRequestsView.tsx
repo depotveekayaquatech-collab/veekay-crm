@@ -7,14 +7,16 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { SearchBox, SegmentedControl } from "@/features/orders/ui";
 import { fmtDay } from "@/features/attendance/format";
-import { LEAVE_LABEL, LEAVE_TONE, useAllLeaves, useLeaveMutations, type Leave } from "@/features/attendance/api";
+import { Select } from "@/components/ui/Select";
+import { LEAVE_LABEL, LEAVE_TONE, useAllLeaves, useLeaveMutations, type Leave, type LeaveType } from "@/features/attendance/api";
 
 function ReviewModal({ leave, approve, onClose }: { leave: Leave; approve: boolean; onClose: () => void }) {
   const { review } = useLeaveMutations();
   const [note, setNote] = useState("");
+  const [leaveType, setLeaveType] = useState<LeaveType>(leave.leaveType);
   async function go() {
     try {
-      await review.mutateAsync({ id: leave.id, approve, note });
+      await review.mutateAsync({ id: leave.id, approve, note, leaveType });
       onClose();
     } catch {
       /* shown by the API layer */
@@ -36,6 +38,17 @@ function ReviewModal({ leave, approve, onClose }: { leave: Leave; approve: boole
         </>
       }
     >
+      {approve && (
+        <div className="mb-4 flex flex-col gap-1">
+          <Select
+            label="Counts as"
+            value={leaveType}
+            onChange={(e) => setLeaveType(e.target.value as LeaveType)}
+            options={(Object.keys(LEAVE_LABEL) as LeaveType[]).map((t) => ({ value: t, label: LEAVE_LABEL[t] }))}
+          />
+          <p className="text-xs text-gray-500">Casual, sick and paid leave are paid days; unpaid leave is not. Change it if this leave should count differently.</p>
+        </div>
+      )}
       <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-gray-700">
         Note to the employee <span className="font-normal text-gray-400">(optional)</span>
         <textarea

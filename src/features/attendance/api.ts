@@ -299,8 +299,8 @@ export function useLeaveMutations() {
       },
     }),
     review: useMutation({
-      mutationFn: ({ id, approve, note }: { id: string; approve: boolean; note?: string }) =>
-        apiRequest(`/attendance/leaves/${id}/review`, { method: "POST", body: { approve, note: note || null } }),
+      mutationFn: ({ id, approve, note, leaveType }: { id: string; approve: boolean; note?: string; leaveType?: LeaveType }) =>
+        apiRequest(`/attendance/leaves/${id}/review`, { method: "POST", body: { approve, note: note || null, ...(approve && leaveType ? { leave_type: leaveType } : {}) } }),
       onSuccess: (_d, v) => {
         refresh();
         pushToast(v.approve ? "Leave approved." : "Leave rejected.", "success");

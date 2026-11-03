@@ -119,7 +119,7 @@ export function MonthlyView() {
                     const e = r.days[d];
                     const holiday = data.holidays?.[d];
                     const sunday = new Date(`${d}T12:00:00`).getDay() === 0 || Boolean(holiday);
-                    if (!e) return <td key={d} title={holiday ? `Holiday: ${holiday}` : undefined} className={`border-b border-surface-border/60 px-1 py-2 text-center text-gray-400 ${sunday ? "bg-surface-subtle" : ""}`}>{holiday ? "H" : d > data.today ? "" : "·"}</td>;
+                    if (!e) return <td key={d} title={holiday ? `Holiday: ${holiday}` : undefined} className={`border-b border-surface-border/60 px-1 py-2 text-center text-gray-400 ${sunday ? "bg-surface-subtle" : ""}`}>{holiday ? "H" : new Date(`${d}T12:00:00`).getDay() === 0 ? <span title="Weekly off (paid)" className="text-[10px] font-semibold">WO</span> : d > data.today ? "" : "·"}</td>;
                     if (e.status === "ON_LEAVE") {
                       return (
                         <td key={d} className="border-b border-surface-border/60 px-0.5 py-1.5 text-center" title={`On leave${e.halfDay ? " (half day)" : ""}`}>

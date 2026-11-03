@@ -59,6 +59,10 @@ export interface PayDay {
   location: string | null;
   leaveType: string | null;
   halfDay: boolean;
+  /** The company holiday on this date, if any (paid in full for everyone). */
+  holiday?: string | null;
+  /** The month's casual leave, given automatically to the first absent day. The admin can change it with the Mark. */
+  casualAuto?: boolean;
 }
 
 export interface PayslipDetail {

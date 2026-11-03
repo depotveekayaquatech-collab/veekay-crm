@@ -196,7 +196,11 @@ def list_all(db: Session, reviewer: User, status_filter: str | None, q: str | No
     return {"items": items, "pending": len(pending)}
 
 
-def review(db: Session, reviewer: User, leave_id: uuid.UUID, approve: bool, note: str | None, only_ids: frozenset[uuid.UUID] | None = None) -> dict:
+def review(
+    db: Session, reviewer: User, leave_id: uuid.UUID, approve: bool, note: str | None, only_ids: frozenset[uuid.UUID] | None = None,
+    leave_type: str | None = None,
+) -> dict:
+    """Approve or reject a pending request. When approving, the reviewer may change its type (for example Casual to Unpaid), which decides whether the day is paid."""
     lr = db.get(LeaveRequest, leave_id)
     if lr is None or lr.organization_id != reviewer.organization_id or (only_ids is not None and lr.user_id not in only_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Leave request not found.")
@@ -204,18 +208,24 @@ def review(db: Session, reviewer: User, leave_id: uuid.UUID, approve: bool, note
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't review your own leave request.")
     if lr.status != "PENDING":
         raise HTTPException(status.HTTP_409_CONFLICT, f"This request is already {lr.status.lower()}.")
+    if leave_type is not None and leave_type not in LEAVE_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a leave type.")
+    changed_from = lr.leave_type if (approve and leave_type is not None and leave_type != lr.leave_type) else None
+    if changed_from is not None:
+        lr.leave_type = leave_type
     lr.status = "APPROVED" if approve else "REJECTED"
     lr.reviewed_by_user_id = reviewer.id
     lr.reviewed_at = datetime.now(timezone.utc)
     lr.review_note = (note or "").strip()[:500] or None
     activity_service.record(
         db, actor=reviewer, action="leave.approved" if approve else "leave.rejected", entity_type="leave", entity_id=lr.id,
-        metadata={"for": str(lr.user_id)},
+        metadata={"for": str(lr.user_id), **({"type_changed_from": changed_from, "type": lr.leave_type} if changed_from else {})},
     )
     staff_notify.notify_users(
         db, [lr.user_id], kind="leave", ref_id=lr.id,
         title=f"Your leave was {'approved' if approve else 'rejected'}",
-        body=f"{lr.start_date:%d %b}{'' if lr.start_date == lr.end_date else f' to {lr.end_date:%d %b}'}" + (f": {lr.review_note}" if lr.review_note else ""),
+        body=f"{lr.start_date:%d %b}{'' if lr.start_date == lr.end_date else f' to {lr.end_date:%d %b}'}"
+             + (f" (counted as {lr.leave_type.lower()} leave)" if changed_from else "") + (f": {lr.review_note}" if lr.review_note else ""),
     )
     db.commit()
     return _dict(lr, db, with_person=True, today=attendance_service.today_local())

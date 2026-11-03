@@ -13,8 +13,8 @@ const counts = (n: number) => (n === 1 ? "1 day" : n === 0.5 ? "½ day" : n === 
 
 function what(d: PayslipDay): string {
   if (d.kind === "PRESENT") return d.no_checkout ? "Present · no check-out" : d.late ? "Present · late" : "Present";
-  if (d.kind === "LEAVE") return `${titleCase(d.leave_type ?? "Leave")} leave${d.half_day ? " (½)" : ""}`;
-  if (d.kind === "OFF") return "Weekly off";
+  if (d.kind === "LEAVE") return `${titleCase(d.leave_type ?? "Leave")} leave${d.half_day ? " (½)" : ""}${d.casual_auto ? " (auto)" : ""}`;
+  if (d.kind === "OFF") return d.holiday ? `Holiday · ${d.holiday}` : "Weekly off";
   if (d.kind === "BEFORE_JOINING") return "Before joining";
   return "Absent";
 }

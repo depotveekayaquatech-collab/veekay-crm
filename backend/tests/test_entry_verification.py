@@ -248,6 +248,11 @@ def test_accounts_get_the_random_card_pdf_but_not_the_cash_tools(client, db, cas
     assert "cards.sheet" in perms and "cash.adjust" not in perms
     assert client.post(f"{API}/developer/card-sheet/unlock", headers=acc, json={"code": "2580"}).status_code == 200
     assert client.get(f"{API}/developer/cash-adjustments/stores", headers=acc).status_code == 403
+    # the page needs the store and platform lists to pick from; nothing else about stores opens up
+    assert client.get(f"{API}/stores/all", headers=acc).status_code == 200
+    assert client.get(f"{API}/partners", headers=acc).status_code == 200
+    assert client.get(f"{API}/stores", headers=acc).status_code == 403
+    assert client.get(f"{API}/stores/all", headers=_as(client, *make_user("employee")[:2])).status_code == 403
 
 
 def test_the_tools_cannot_be_granted_per_person(client, db, cast, make_user, admin):

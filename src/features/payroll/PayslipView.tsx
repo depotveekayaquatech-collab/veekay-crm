@@ -162,7 +162,8 @@ function PayslipBody({ month, detail, onClose }: { month: string; detail: Paysli
         )}
         <SalaryEditor month={month} row={{ userId: detail.person.userId, monthlySalary: detail.monthlySalary, status: detail.status }} />
         <p className="text-xs text-gray-500">
-          Look at each day's timings and choose <b>Full day</b>, <b>Half day</b> or <b>Unpaid</b>; <b>Auto</b> counts a check-in as a full day, a Sunday off as paid, and approved paid leave as paid.
+          Look at each day's timings and choose <b>Full day</b>, <b>Half day</b> or <b>Unpaid</b>; <b>Auto</b> counts a check-in as a full day, a Sunday or company holiday as paid, and approved paid leave as paid.
+          One absent day a month is paid automatically as <b>casual leave (auto)</b>; mark that day <b>Unpaid</b> to take it away, or mark a different absent day <b>Full day</b> to pay that one instead.
         </p>
         <DayTable days={detail.days} pending={pending} readOnly={paid} onMark={(date, m) => setPending((p) => ({ ...p, [date]: m }))} />
       </div>

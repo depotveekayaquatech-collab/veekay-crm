@@ -42,8 +42,32 @@ def test_present_days_and_sundays_off_are_paid_and_the_rest_are_not():
     working = [d for d in range(1, 31) if date(2026, 9, d).weekday() != 6][:20]
     days = payroll_service.build_days(SEPT, _present(working), date(2026, 1, 1), {})
     paid, amount = payroll_service.compute_amount(Decimal("30000"), days, 30)
-    assert paid == 24 and amount == Decimal("24000.00")           # 20 worked + 4 Sundays; 6 absent days unpaid
-    assert {d["kind"] for d in days} == {"PRESENT", "OFF", "ABSENT"}
+    assert paid == 25 and amount == Decimal("25000.00")           # 20 worked + 4 Sundays + the month's casual leave; the other 5 absent days unpaid
+    assert {d["kind"] for d in days} == {"PRESENT", "OFF", "ABSENT", "LEAVE"}
+
+
+def test_one_absent_day_a_month_is_paid_as_casual_leave_and_the_admin_decides():
+    worked = _present([d for d in range(1, 31) if date(2026, 9, d).weekday() != 6 and d not in (3, 8, 9)])      # absent on the 3rd, 8th and 9th
+    by = lambda days: {d["date"]: d for d in days}   # noqa: E731
+    days = by(payroll_service.build_days(SEPT, worked, date(2026, 1, 1), {}))
+    assert days["2026-09-03"]["kind"] == "LEAVE" and days["2026-09-03"]["leave_type"] == "CASUAL" and days["2026-09-03"]["casual_auto"] is True
+    assert days["2026-09-03"]["counted"] == 1 and days["2026-09-03"]["default"] == 1
+    assert days["2026-09-08"]["kind"] == "ABSENT" and days["2026-09-08"]["counted"] == 0 and days["2026-09-09"]["counted"] == 0   # only one
+
+    # the admin marks that day unpaid: it stays unpaid and the allowance does not slide to the 8th
+    days = by(payroll_service.build_days(SEPT, worked, date(2026, 1, 1), {date(2026, 9, 3): "ABSENT"}))
+    assert days["2026-09-03"]["kind"] == "ABSENT" and days["2026-09-03"]["counted"] == 0 and days["2026-09-08"]["counted"] == 0
+    # ... and can pay a different day instead
+    days = by(payroll_service.build_days(SEPT, worked, date(2026, 1, 1), {date(2026, 9, 3): "ABSENT", date(2026, 9, 8): "FULL"}))
+    assert days["2026-09-08"]["counted"] == 1 and days["2026-09-03"]["counted"] == 0
+
+    # someone who already took an approved casual leave this month has used the allowance
+    leave = {"status": "ON_LEAVE", "leave_type": "CASUAL", "half_day": False, "minutes": 0, "late": False, "check_in_at": None, "check_out_at": None, "location": {"label": "—"}}
+    days = by(payroll_service.build_days(SEPT, {**worked, "2026-09-03": leave}, date(2026, 1, 1), {}))
+    assert days["2026-09-03"]["casual_auto"] is False and days["2026-09-08"]["counted"] == 0
+
+    # nobody absent: nothing is granted
+    assert not any(d["casual_auto"] for d in payroll_service.build_days(SEPT, _present([d for d in range(1, 31) if date(2026, 9, d).weekday() != 6]), date(2026, 1, 1), {}))
 
 
 def test_marks_override_what_attendance_shows():
@@ -74,11 +98,31 @@ def test_leave_days_before_joining_and_rounding():
     assert payroll_service.compute_amount(None, days, 30)[1] is None
 
 
+def test_sundays_and_company_holidays_are_paid_days_from_the_first_day_of_attendance():
+    from types import SimpleNamespace
+
+    made = SimpleNamespace(created_at=datetime(2026, 9, 10, 6, tzinfo=timezone.utc))           # the account was made on the 10th
+    assert payroll_service._joined(made, SEPT) == date(2026, 9, 10)
+    assert payroll_service._joined(made, SEPT, date(2026, 9, 1)) == date(2026, 9, 1)            # ... but a sheet gives days from the 1st
+    assert payroll_service._joined(made, SEPT, date(2026, 9, 20)) == date(2026, 9, 10)         # a later first day never pushes joining back
+
+    joined = payroll_service._joined(made, SEPT, date(2026, 9, 1))
+    days = {d["date"]: d for d in payroll_service.build_days(SEPT, _present([1, 2]), joined, {}, {"2026-09-04": "Founders Day"})}
+    assert days["2026-09-06"]["kind"] == "OFF" and days["2026-09-06"]["counted"] == 1          # a Sunday: weekly off, paid
+    assert days["2026-09-04"]["kind"] == "OFF" and days["2026-09-04"]["counted"] == 1          # a company holiday: paid in full for everyone
+    assert days["2026-09-04"]["holiday"] == "Founders Day"
+    assert days["2026-09-03"]["kind"] == "LEAVE" and days["2026-09-03"]["counted"] == 1         # the first absent day is the month's casual leave
+    assert days["2026-09-07"]["kind"] == "ABSENT" and days["2026-09-07"]["counted"] == 0        # ... and only one is
+    # with no earlier attendance the same Sunday and holiday are before joining
+    before = {d["date"]: d for d in payroll_service.build_days(SEPT, {}, date(2026, 9, 10), {}, {"2026-09-04": "Founders Day"})}
+    assert before["2026-09-06"]["kind"] == "BEFORE_JOINING" and before["2026-09-04"]["kind"] == "BEFORE_JOINING"
+
+
 # ---------------------------------------------------------------- the whole flow
 
 @pytest.fixture()
 def staff(client, make_user, db):
-    """A Zepto employee who joined long ago and worked 15 weekdays of last month."""
+    """A Zepto employee who joined long ago and worked 15 weekdays of last month (+1 paid day: the casual leave on the first absent day)."""
     code, pw, uid = make_user("employee", platform="zepto")
     db.query(User).filter(User.id == uid).update({"created_at": datetime.now(timezone.utc) - timedelta(days=400)})
     org = db.query(Organization).filter_by(slug="veekay").one()
@@ -91,7 +135,7 @@ def staff(client, make_user, db):
         db.add(AttendanceRecord(organization_id=org.id, user_id=uid, work_date=d, check_in_at=t, check_out_at=t + timedelta(hours=8), check_in_status="office", check_in_label="Office"))
     db.commit()
     sundays = sum(1 for d in range(1, _dim(month) + 1) if date(month.year, month.month, d).weekday() == 6)
-    yield {"code": code, "pw": pw, "uid": uid, "month": month, "worked": worked, "paid_days": len(worked) + sundays, "dim": _dim(month)}
+    yield {"code": code, "pw": pw, "uid": uid, "month": month, "worked": worked, "paid_days": len(worked) + sundays + 1, "dim": _dim(month)}
     db.query(PayrollPeriod).filter_by(organization_id=org.id, month=month).delete()   # also removes the payslips made in the test
     db.commit()
 
