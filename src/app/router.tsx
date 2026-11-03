@@ -24,6 +24,8 @@ const CardsPage = lazy(() => import("@/features/cards/CardsPage").then((m) => ({
 const CountPage = lazy(() => import("@/features/cards/CountPage").then((m) => ({ default: m.CountPage })));
 const CompliancePage = lazy(() => import("@/features/compliance/CompliancePage").then((m) => ({ default: m.CompliancePage })));
 const CashPurchasesPage = lazy(() => import("@/features/cash/CashPurchasesPage").then((m) => ({ default: m.CashPurchasesPage })));
+const VendorPaymentsPage = lazy(() => import("@/features/vendorpay/VendorPaymentsPage").then((m) => ({ default: m.VendorPaymentsPage })));
+const VendorPaymentsAdminPage = lazy(() => import("@/features/vendorpay/VendorPaymentsAdminPage").then((m) => ({ default: m.VendorPaymentsAdminPage })));
 const DataSyncPage = lazy(() => import("@/features/datasync/DataSyncPage").then((m) => ({ default: m.DataSyncPage })));
 const CashToolsPage = lazy(() => import("@/features/datasync/CashToolsPage").then((m) => ({ default: m.CashToolsPage })));
 const AccountsPage = lazy(() => import("@/features/accounts/AccountsPage").then((m) => ({ default: m.AccountsPage })));
@@ -120,6 +122,8 @@ export function AppRoutes() {
         <Route path="/cards" element={<Require permission="orders.view"><CardsPage /></Require>} />
         <Route path="/compliance" element={<Require permission="compliance.upload"><CompliancePage /></Require>} />
         <Route path="/cash" element={<RequireAny permissions={["cash.view", "cash.add"]}><CashPurchasesPage /></RequireAny>} />
+        <Route path="/vendor-payments" element={<Require permission="vendorpay.view"><VendorPaymentsPage /></Require>} />
+        <Route path="/vendor-payments/admin" element={<Require permission="vendorpay.manage"><VendorPaymentsAdminPage /></Require>} />
         <Route path="/data-sync" element={<Require permission="sheets.sync"><DataSyncPage /></Require>} />
         <Route path="/developer/card-sheet" element={<Require permission="cards.sheet"><CardSheetPage /></Require>} />
         <Route path="/developer/cash" element={<Require permission="cash.adjust"><CashToolsPage /></Require>} />

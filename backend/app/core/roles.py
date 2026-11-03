@@ -39,6 +39,12 @@ ACCOUNTS_TOOL_PERMISSIONS = frozenset({"cards.sheet"})
 ZERO_VIEW, ZERO_REVIEW, ZERO_REOPEN = "zero.view", "zero.review", "zero.reopen"
 ZERO_PERMISSIONS = frozenset({ZERO_VIEW, ZERO_REVIEW, ZERO_REOPEN})
 
+# Vendor payments (fed from Busy 21). Computed per request in UserRepository.get_permission_codes (nothing is stored per person):
+#   vendorpay.view    every staff account except partner logins: read-only vendor totals, paid and balances
+#   vendorpay.manage  administrators and the developer: CSV upload, vendors, unmatched codes, sync history
+VENDORPAY_VIEW, VENDORPAY_MANAGE = "vendorpay.view", "vendorpay.manage"
+VENDORPAY_PERMISSIONS = frozenset({VENDORPAY_VIEW, VENDORPAY_MANAGE})
+
 # The only permissions a partner account may ever hold — enforced server-side whatever the UI sends.
 PARTNER_PERMISSIONS = ["orders.view", "tickets.view", "tickets.create", "reports.delivery"]
 

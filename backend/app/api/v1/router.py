@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     attendance,
     auth,
     bottles,
+    busy_sync,
     capping,
     cards,
     cash_adjustments,
@@ -36,6 +37,7 @@ from app.api.v1.endpoints import (
     tickets,
     uploads,
     zero_review,
+    vendor_payments,
     vendor_rates,
 )
 
@@ -77,3 +79,5 @@ api_router.include_router(sync.router)
 api_router.include_router(client_errors.router)
 api_router.include_router(my_notifications.router)
 api_router.include_router(zero_review.router)
+api_router.include_router(busy_sync.router)
+api_router.include_router(vendor_payments.router)

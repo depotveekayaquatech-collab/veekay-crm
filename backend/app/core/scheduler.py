@@ -167,6 +167,25 @@ def run_performance_snapshots() -> None:
         db.close()
 
 
+def run_busy_stale_check() -> None:
+    """Hourly: write a warning to the log when Busy has not delivered a successful sync for longer than BUSY_STALE_HOURS.
+    Silent until the feature is connected (a key is set, or a sync has ever arrived), so an unconnected install does not log every hour."""
+    from app.services import busy_ledger_service
+
+    db = SessionLocal()
+    try:
+        fresh = busy_ledger_service.freshness(db)
+        if fresh.never_synced and not settings.BUSY_SYNC_API_KEY:
+            return
+        if fresh.stale:
+            log.warning("Busy vendor-payments data is stale: %s (limit %s hours)",
+                        "no successful sync has ever arrived" if fresh.never_synced else f"last successful sync {fresh.last_updated:%Y-%m-%d %H:%M} UTC", fresh.stale_hours)
+    except Exception:  # noqa: BLE001 - a monitoring job must never raise
+        log.exception("busy stale-data check failed")
+    finally:
+        db.close()
+
+
 def start() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -201,6 +220,10 @@ def start() -> None:
     _scheduler.add_job(
         run_audit_purge, CronTrigger(hour=3, minute=30, timezone=tz), id="audit_purge",
         replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
+    _scheduler.add_job(
+        run_busy_stale_check, CronTrigger(minute=15, timezone=tz), id="busy_stale_check",
+        replace_existing=True, misfire_grace_time=1800, coalesce=True,
     )
     _scheduler.start()
     log.info(

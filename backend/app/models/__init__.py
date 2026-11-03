@@ -31,8 +31,14 @@ from app.models.bottle import Bottle, BottleBatch, BottleScan
 from app.models.external_account import ExternalAccount, ExternalAccountStore, ExternalSession
 from app.models.external_activity import BillReminder, DeliveryConfirmation, ExternalDevice, ExternalNotification, StaffDevice, StaffNotification, TicketAttachment
 from app.models.employee_scope import EmployeeExclusion, EmployeeRegion
+from app.models.busy_ledger import BusyLedgerEntry, BusySyncLog, BusyUnmatchedEntry, BusyVendor, BusyVendorAlias
 
 __all__ = [
+    "BusyVendor",
+    "BusyVendorAlias",
+    "BusyLedgerEntry",
+    "BusySyncLog",
+    "BusyUnmatchedEntry",
     "StoreCap",
     "VendorRate",
     "StoreVendorPeriod",

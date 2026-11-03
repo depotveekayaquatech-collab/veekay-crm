@@ -185,6 +185,27 @@ class Settings(BaseSettings):
     # Ticket integration
     TICKET_WEBHOOK_KEY: str = Field(default="")
 
+    # Vendor payments fed from Busy 21 (POST /busy-sync, header x-api-key). Empty key = the endpoint answers 503 (switched off).
+    BUSY_SYNC_API_KEY: str = Field(default="", repr=False)
+    # The vendor code is the last whitespace-separated word of a Busy account name that fully matches this pattern (case-insensitive).
+    # Change it here if the code format changes, e.g. ^V\d{5}$. It is the ONLY link between Busy data and a CRM vendor.
+    BUSY_VENDOR_CODE_REGEX: str = Field(default=r"^V\d{4}$")
+    BUSY_STALE_HOURS: int = Field(default=6, ge=1, le=168)          # no successful sync for longer than this = warning banner + log line
+    BUSY_SYNC_PER_MIN: int = Field(default=30, ge=1)                # per client IP
+    BUSY_SYNC_MAX_ROWS: int = Field(default=20000, ge=1)            # entries per request
+    BUSY_CSV_MAX_MB: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("BUSY_VENDOR_CODE_REGEX")
+    @classmethod
+    def _busy_regex_compiles(cls, value: str) -> str:
+        import re
+
+        try:
+            re.compile(value)
+        except re.error as exc:
+            raise ValueError(f"BUSY_VENDOR_CODE_REGEX is not a valid regular expression: {exc}") from exc
+        return value
+
     # Bottle QR tracking
     CARD_SHEET_CODE: str = Field(default="2580")
     BOTTLE_API_KEY: str = Field(default="")

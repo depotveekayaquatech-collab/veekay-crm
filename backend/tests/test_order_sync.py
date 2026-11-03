@@ -94,10 +94,10 @@ def test_admin_holds_every_permission_that_exists(client, admin, db):
 
     everything = {p.code for p in db.query(Permission)}
     granted = set(client.get(f"{API}/auth/me", headers=admin).json()["permissions"])
-    from app.core.roles import RESERVED_PERMISSIONS, ZERO_PERMISSIONS
+    from app.core.roles import RESERVED_PERMISSIONS, VENDORPAY_PERMISSIONS, ZERO_PERMISSIONS
 
     # every permission except the developer-only ones
-    assert everything and (everything - RESERVED_PERMISSIONS) | ZERO_PERMISSIONS == granted
+    assert everything and (everything - RESERVED_PERMISSIONS) | ZERO_PERMISSIONS | VENDORPAY_PERMISSIONS == granted
 
 
 def test_admin_sees_every_live_store_and_can_mark_and_edit_any_of_them(client, admin, emp, make_store, db):

@@ -92,6 +92,8 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Compliance", to: "/compliance", icon: IconShield, permission: "compliance.upload" },
       { label: "Billing", to: "/accounts", icon: IconReceipt, permission: "accounts.view" },
       { label: "Cash purchases", to: "/cash", icon: IconWallet, anyPermission: ["cash.view", "cash.add"], excludeRole: "partner" },
+      { label: "Vendor payments", to: "/vendor-payments", icon: IconReceipt, permission: "vendorpay.view", excludeRole: "partner" },
+      { label: "Vendor payments admin", to: "/vendor-payments/admin", icon: IconReceipt, permission: "vendorpay.manage" },
     ],
   },
   {

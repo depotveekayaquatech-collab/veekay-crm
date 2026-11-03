@@ -92,7 +92,7 @@ class RequestContextMiddleware:
 # --------------------------------------------------------------------------
 
 _HEAVY = [
-    ("POST", re.compile(rf"^{_API}/(compliance/(upload|bulk|summary-pdf|download)|orders/import|stores/import|stores/sync-start-dates|employees/import|cards/zip|developer/cash-adjustments/sync/upload)$")),
+    ("POST", re.compile(rf"^{_API}/(compliance/(upload|bulk|summary-pdf|download)|orders/import|stores/import|stores/sync-start-dates|employees/import|cards/zip|developer/cash-adjustments/sync/upload|vendor-payments/admin/csv/(preview|import))$")),
     ("POST", re.compile(rf"^{_API}/external/(tickets|documents|deliveries)(/[0-9a-f-]{{36}}/comments)?$")),
     ("GET", re.compile(rf"^{_API}/(cards/pdf|orders/matrix/export)$")),
 ]
@@ -131,6 +131,8 @@ rate_windows = _Window()
 def _bucket(method: str, path: str) -> tuple[str, int] | None:
     if not path.startswith(_API) or method == "OPTIONS" or path in (f"{_API}/health", f"{_API}/ready"):
         return None
+    if method == "POST" and path == f"{_API}/busy-sync":
+        return "busy-sync", settings.BUSY_SYNC_PER_MIN
     for m, rx in _HEAVY:
         if method == m and rx.match(path):
             return "heavy", settings.RATE_LIMIT_HEAVY_PER_MIN
