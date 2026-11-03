@@ -197,8 +197,8 @@ class DashboardInsights(BaseModel):
     store_status: dict[str, int]  # {LIVE: n, PENDING: n, CLOSE: n}
     platforms: list[PlatformSummary]
     leaderboard: list[LeaderRow]
-    bottles_today: int
-    bottles_yesterday: int
+    bottles_today: int       # what people marked today (India time), whatever order date they marked; the trend above is by order date
+    bottles_yesterday: int   # the same, for yesterday
     entries_today: int
     stores_by_region: list[CoverageRow]
     stores_by_state: list[CoverageRow]

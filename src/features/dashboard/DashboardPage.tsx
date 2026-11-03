@@ -200,7 +200,7 @@ function OverviewSection({ insights, isLoading, channelName, channel }: SectionD
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           icon={IconClipboard}
-          label="Bottles today"
+          label="Bottles marked today"
           value={insights?.bottlesToday ?? 0}
           hint={delta?.text}
           tone="brand"
@@ -208,9 +208,9 @@ function OverviewSection({ insights, isLoading, channelName, channel }: SectionD
         />
         <StatCard
           icon={IconCheckCircle}
-          label="Entries today"
+          label="Entries marked today"
           value={insights?.entriesToday ?? 0}
-          hint={`${Math.round(overallPercent)}% of stores marked`}
+          hint={`${Math.round(overallPercent)}% of stores have today's date marked`}
           tone="success"
           loading={isLoading}
         />

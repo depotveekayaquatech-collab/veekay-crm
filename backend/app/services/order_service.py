@@ -10,6 +10,7 @@ from __future__ import annotations
 import calendar as _calendar
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy import literal_column, case, func, select
@@ -58,6 +59,22 @@ _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July",
 
 def _today() -> date:
     return datetime.now(timezone.utc).date()
+
+
+def _display_zone() -> ZoneInfo:
+    try:
+        return ZoneInfo(settings.DISPLAY_TIMEZONE)
+    except Exception:  # noqa: BLE001 - a bad setting must not take the dashboard down
+        return ZoneInfo("Asia/Kolkata")
+
+
+def _marked_today_and_yesterday(repo: OrderEntryRepository, org_id: uuid.UUID, partner_slug: str | None) -> tuple[tuple[int, int], tuple[int, int]]:
+    """((entries, bottles) marked today, (entries, bottles) marked yesterday), by the moment of marking on the display clock (India)."""
+    zone = _display_zone()
+    local_today = datetime.now(zone).date()
+    midnight = lambda d: datetime(d.year, d.month, d.day, tzinfo=zone).astimezone(timezone.utc)      # noqa: E731
+    per_day = repo.marked_per_day(org_id, midnight(local_today - timedelta(days=1)), midnight(local_today + timedelta(days=1)), zone.key, partner_slug=partner_slug)
+    return per_day.get(local_today, (0, 0)), per_day.get(local_today - timedelta(days=1), (0, 0))
 
 
 def _store_meta(store: Store) -> dict:
@@ -798,8 +815,11 @@ def dashboard_insights(db: Session, admin: User, days: int = 14, partner_slug: s
 
     leaderboard.sort(key=lambda r: (r.bottles, r.entries_done), reverse=True)
 
-    e_today, b_today = totals.get(today, (0, 0))
-    _, b_yesterday = totals.get(today - timedelta(days=1), (0, 0))
+    # "Today" on the cards = what people marked today (India time), whatever order date they marked. Employees mostly enter the previous day's
+    # orders, so counting by order date would read 0 all day. The trend chart above stays by order date.
+    marked_today, marked_yesterday = _marked_today_and_yesterday(repo, org_id, partner_slug.strip().lower() if partner_slug else None)
+    e_today, b_today = marked_today
+    _, b_yesterday = marked_yesterday
 
     # --- store coverage ---
     live_case = func.sum(case((Store.status == StoreStatus.LIVE.value, 1), else_=0))

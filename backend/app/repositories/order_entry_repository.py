@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, and_, cast, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.order_entry import OrderEntry
@@ -12,9 +12,33 @@ from app.models.store import Store
 from app.models.user import User
 
 
+# Entries written in bulk by the sheet sync / an order-file import carry these created_via prefixes (see scheduler.execute_sync and order_import_service).
+# They are not somebody marking an order, so the "marked today" figures leave them out.
+BULK_IMPORT_VIA_PREFIXES = ("sheet_sync_", "order_sheet_import_")
+
+
 class OrderEntryRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def marked_per_day(
+        self, org_id: uuid.UUID, start: datetime, end: datetime, tz_name: str, *, partner_slug: str | None = None,
+    ) -> dict[date, tuple[int, int]]:
+        """{day: (entries, bottles)} for entries CREATED in [start, end), where `day` is the calendar day of that moment in `tz_name`: when the
+        person marked, whatever order date they marked. Bottles are what the person entered (the developer's cash adjustment is not theirs).
+        Bulk imports are left out. Served by ix_order_entries_org_created."""
+        day = cast(func.timezone(tz_name, OrderEntry.created_at), Date)
+        not_bulk = or_(OrderEntry.created_via.is_(None), and_(*[~OrderEntry.created_via.startswith(p, autoescape=True) for p in BULK_IMPORT_VIA_PREFIXES]))
+        stmt = (
+            select(day, func.count(OrderEntry.id), func.coalesce(func.sum(OrderEntry.bottle_count - OrderEntry.cash_adjustment), 0))
+            .where(OrderEntry.organization_id == org_id, OrderEntry.created_at >= start, OrderEntry.created_at < end, not_bulk)
+            .group_by(day)
+        )
+        if partner_slug:
+            from app.models.organization import Organization
+
+            stmt = stmt.join(Store, Store.id == OrderEntry.store_id).join(Organization, Organization.id == Store.partner_organization_id).where(Organization.slug == partner_slug)
+        return {d: (int(n), int(b)) for d, n, b in self.db.execute(stmt).all()}
 
     def get(self, store_id: uuid.UUID, order_date: date) -> OrderEntry | None:
         stmt = select(OrderEntry).where(
