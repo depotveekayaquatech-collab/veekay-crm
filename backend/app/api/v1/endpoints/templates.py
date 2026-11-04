@@ -10,7 +10,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 
 @router.get("/{kind}")
 def template(kind: str, month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), user: User = Depends(get_current_user)) -> Response:
-    """kind: orders, employees, attendance, cash, cardsheet, stores or vendor-rates. `month` (2026-10) sets the date columns of the orders and attendance sheets."""
+    """kind: orders, employees, attendance, cash, cardsheet, cardsheet-daily, stores or vendor-rates. `month` (2026-10) sets the date columns of the orders, attendance and cardsheet-daily sheets."""
     data, name = template_service.make(kind, month)
     return Response(
         content=data,

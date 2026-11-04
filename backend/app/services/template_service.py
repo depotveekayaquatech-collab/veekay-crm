@@ -2,7 +2,7 @@
 Template sheets: for every spreadsheet the CRM can read, a ready-made Excel file in exactly the format that upload understands (a sample sheet plus a "How to fill"
 tab), so a person can shape their own sheet to match BEFORE it goes to the upload. They hold only invented example rows, never real data.
 
-kinds: orders, employees, attendance, cash, cardsheet, stores, vendor-rates
+kinds: orders, employees, attendance, cash, cardsheet, cardsheet-daily, stores, vendor-rates
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 
 IST = ZoneInfo("Asia/Kolkata")
-KINDS = ("orders", "employees", "attendance", "cash", "cardsheet", "stores", "vendor-rates")
+KINDS = ("orders", "employees", "attendance", "cash", "cardsheet", "cardsheet-daily", "stores", "vendor-rates")
 
 STORE_SHEET_HEADER = [
     "S.NO", "Entity", "ZONE", "State", "City", "Outlet ID", "Outlet Name", "STATUS", "Rate - BCPL",
@@ -86,8 +86,8 @@ def _orders(month: date) -> tuple[bytes, str]:
         "Date headings can be 1-Oct, 01-Oct-2026, 2026-10-01 or a real Excel date. A heading with no year uses the year written in this tab's name (here %s)." % tab,
         "The store is found by its Outlet Name (capitals and extra spaces do not matter). If the name matches no store, the Outlet ID is used instead. Stores must already exist in the CRM.",
         "A BLANK cell marks nothing: that day is left for the employee to enter.",
-        "A 0 in the sheet is only used where the CRM already has a 0 for that store and day. Anywhere else a 0 is ignored (it never replaces a number and never creates an entry), because a sheet made for the whole month has 0 in every day nobody has filled in yet. To record a real zero day, enter it on the store itself.",
-        "A number from 1 to 200 is the bottles for that store and day. Existing entries are kept unless 'Overwrite existing entries' is ticked on the upload.",
+        "A 0 marks that day as a real zero entry, the same as any other number. So type 0 only for days that truly had no order: leave the day BLANK if it is still to be filled in.",
+        "A number from 0 to 200 is the bottles for that store and day. Existing entries are kept unless 'Overwrite existing entries' is ticked on the upload.",
         "Days in the future are ignored. In an Excel file every tab with these columns is read; other tabs (like this one) are ignored.",
         "The two example rows are invented. Delete them and paste your own stores.",
     ]
@@ -155,6 +155,25 @@ def _cardsheet() -> tuple[bytes, str]:
     return _build([("Outlets", rows, [30, 12])], notes), "random-card-sheet-template.xlsx"
 
 
+def _cardsheet_daily(month: date) -> tuple[bytes, str]:
+    days = calendar.monthrange(month.year, month.month)[1]
+    first = [4, 4, 4, None, 6] + [None] * (days - 5)
+    second = [3, 0, 6] + [None] * (days - 3)
+    rows = [
+        ["Store name", "Total count", *range(1, days + 1)],
+        ["Example Store One", sum(x or 0 for x in first), *first],
+        ["BLK-1002", sum(x or 0 for x in second), *second],
+    ]
+    notes = [
+        f"One row per outlet: the outlet (its name or its Outlet ID), the total count, then one column for each day of the month ({days} for {month:%B %Y}).",
+        "Type the bottle count under each day. These numbers are printed on the card exactly as written; nothing is randomised.",
+        "Leave a day empty for no entry (that row of the card stays blank). Type 0 for a day with a zero entry.",
+        "The total count is a check: the page tells you if an outlet's days do not add up to it. An outlet that does not add up is left out of the PDF until the sheet is fixed.",
+        "Pick the same month on the page when you upload. Nothing is saved or added to any order or store. The example rows are invented: delete them.",
+    ]
+    return _build([("Daily entries", rows, [30, 12] + [5] * days)], notes), f"random-card-daily-template-{month:%Y-%m}.xlsx"
+
+
 def _stores() -> tuple[bytes, str]:
     rows = [STORE_SHEET_HEADER,
             [1, "Blinkit", "North Zone", "Delhi", "Delhi", "BLK-1001", "Blinkit - Example", "Live", None, None, None, "2026-03-01", "Sector 1, Rohini", "Store Manager", "9999999999", None, "Local Vendor", "8888888888", "Rohini"]]
@@ -182,5 +201,5 @@ def make(kind: str, month: str | None = None) -> tuple[bytes, str]:
     m = _month(month)
     return {
         "orders": lambda: _orders(m), "employees": _employees, "attendance": lambda: _attendance(m), "cash": _cash,
-        "cardsheet": _cardsheet, "stores": _stores, "vendor-rates": _vendor_rates,
+        "cardsheet": _cardsheet, "cardsheet-daily": lambda: _cardsheet_daily(m), "stores": _stores, "vendor-rates": _vendor_rates,
     }[kind]()

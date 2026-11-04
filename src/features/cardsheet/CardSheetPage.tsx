@@ -3,10 +3,19 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ApiError, apiRequest } from "@/services/api";
+import { DailySheetPanel } from "./DailySheetPanel";
 import { RandomCountPanel } from "./RandomCountPanel";
 import { RandomSheetPanel } from "./RandomSheetPanel";
 
 const KEY = "cardsheet-token";
+
+// "sheet" shares each outlet's total out at random; "daily" prints the day-by-day numbers written in the sheet; "one" is a single store.
+type Mode = "sheet" | "daily" | "one";
+const MODES: readonly (readonly [Mode, string])[] = [
+  ["sheet", "Random split from a sheet"],
+  ["daily", "My own daily entries from a sheet"],
+  ["one", "One store"],
+];
 
 // The unlock token lives only for this browser tab (and 30 minutes); closing the tab locks the tool again.
 function loadToken(): { token: string; exp: number } | null {
@@ -54,7 +63,7 @@ function LockScreen({ onUnlocked }: { onUnlocked: (token: string, expiresIn: num
 /** Random Card PDF (many outlets from a sheet, or one store). Level 3 (Reviewer) and above, and still behind the access code. */
 export function CardSheetPage() {
   const [session, setSession] = useState(loadToken);
-  const [mode, setMode] = useState<"sheet" | "one">("sheet");
+  const [mode, setMode] = useState<Mode>("sheet");
 
   // Lock again the moment the 30 minutes are up.
   useEffect(() => {
@@ -90,7 +99,7 @@ export function CardSheetPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Random Card PDF"
-        subtitle="Upload a sheet of outlets and totals, or pick one store, and print the store cards with the total shared out across the dates you choose."
+        subtitle="Print store cards from a sheet: either share each outlet's total out at random across the dates you choose, or use the exact numbers you wrote for each day. Or pick one store."
         action={session && <Button variant="secondary" onClick={lock}>Lock</Button>}
       />
 
@@ -99,14 +108,16 @@ export function CardSheetPage() {
       ) : (
         <>
           <div role="tablist" className="flex w-fit gap-1 rounded-lg bg-surface-muted p-1">
-            {([["sheet", "From a sheet (many outlets)"], ["one", "One store"]] as const).map(([id, label]) => (
+            {MODES.map(([id, label]) => (
               <button
                 key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)}
                 className={`rounded-md px-3 py-1.5 text-sm font-semibold ${mode === id ? "bg-surface text-heading shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
               >{label}</button>
             ))}
           </div>
-          {mode === "sheet" ? <RandomSheetPanel token={session.token} onLocked={lock} /> : <RandomCountPanel token={session.token} onLocked={lock} />}
+          {mode === "sheet" && <RandomSheetPanel token={session.token} onLocked={lock} />}
+          {mode === "daily" && <DailySheetPanel token={session.token} onLocked={lock} />}
+          {mode === "one" && <RandomCountPanel token={session.token} onLocked={lock} />}
         </>
       )}
     </div>

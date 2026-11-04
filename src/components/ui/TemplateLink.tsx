@@ -3,7 +3,7 @@ import { IconDownload } from "@/components/ui/icons";
 import { pushToast } from "@/lib/toast";
 import { apiBlob } from "@/services/api";
 
-export type TemplateKind = "orders" | "employees" | "attendance" | "cash" | "cardsheet" | "stores" | "vendor-rates";
+export type TemplateKind = "orders" | "employees" | "attendance" | "cash" | "cardsheet" | "cardsheet-daily" | "stores" | "vendor-rates";
 
 /**
  * "Download template": an Excel file in exactly the format the upload next to it reads (sample rows and a "How to fill" tab), so a sheet can be shaped to match

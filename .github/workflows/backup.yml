@@ -1,0 +1,198 @@
+name: Backup
+
+# Nightly, off-platform copies of everything that cannot be rebuilt:
+#   db-backup    encrypted pg_dump of the production database -> backup bucket (db/)
+#   files-mirror uploaded documents and photos, copied from the live bucket -> backup bucket (files/)
+#   restore-test (Sundays / on demand) restores the newest dump into a scratch Postgres and checks it
+# Setup and restore steps: docs/BACKUP_AND_RESTORE.md. A failed run emails the repository admins.
+
+on:
+  schedule:
+    - cron: "30 20 * * *"   # 02:00 India time, every day
+    - cron: "40 20 * * 0"   # Sundays, 02:10 India time: also restore-test the newest dump
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PG_MAJOR: "17"            # the client must be at least as new as the server; a 17 client dumps 14 to 17
+  KEEP_DAYS: "35"           # daily dumps older than this are deleted; the dump from the 1st of each month is kept for good
+  # one rclone remote per bucket, configured from the environment (nothing is written to disk)
+  RCLONE_CONFIG_DST_TYPE: s3
+  RCLONE_CONFIG_DST_PROVIDER: Other
+  RCLONE_CONFIG_DST_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+  RCLONE_CONFIG_DST_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+  RCLONE_CONFIG_DST_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+  RCLONE_CONFIG_DST_NO_CHECK_BUCKET: "true"
+  BACKUP_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+
+jobs:
+  db-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the secrets exist
+        env:
+          HAVE: ${{ secrets.PROD_DATABASE_URL != '' && secrets.BACKUP_PASSPHRASE != '' && secrets.BACKUP_S3_BUCKET != '' && secrets.BACKUP_S3_ENDPOINT != '' && secrets.BACKUP_S3_ACCESS_KEY_ID != '' && secrets.BACKUP_S3_SECRET_ACCESS_KEY != '' }}
+        run: |
+          if [ "$HAVE" != "true" ]; then
+            echo "::error::Backup secrets are missing. See docs/BACKUP_AND_RESTORE.md, section 'One-time setup'."
+            exit 1
+          fi
+
+      - name: Install the Postgres client and rclone
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common rclone
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" --version
+
+      - name: Dump the database
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%d-%H%M)"
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+          # custom format is compressed and restores table by table; no owners or grants, so it loads into any Postgres
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" --format=custom --no-owner --no-privileges \
+            --file "veekay-$stamp.dump" "$DATABASE_URL"
+          ls -l "veekay-$stamp.dump"
+
+      - name: Check the dump is readable and not empty
+        run: |
+          set -euo pipefail
+          tables="$("/usr/lib/postgresql/${PG_MAJOR}/bin/pg_restore" --list "veekay-$STAMP.dump" | grep -c 'TABLE DATA' || true)"
+          echo "table data sections in the dump: $tables"
+          if [ "$tables" -lt 20 ]; then
+            echo "::error::The dump holds only $tables tables, which is far too few. Not uploading it."
+            exit 1
+          fi
+
+      - name: Encrypt (the dump contains staff and customer data and password hashes)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          printf %s "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "veekay-$STAMP.dump.gpg" "veekay-$STAMP.dump"
+          rm "veekay-$STAMP.dump"
+          ls -l "veekay-$STAMP.dump.gpg"
+
+      - name: Upload to the backup bucket
+        run: |
+          set -euo pipefail
+          rclone copyto "veekay-$STAMP.dump.gpg" "dst:${BACKUP_BUCKET}/db/veekay-$STAMP.dump.gpg" --checksum
+          rclone lsl "dst:${BACKUP_BUCKET}/db/veekay-$STAMP.dump.gpg"
+
+      - name: Delete old daily dumps (the 1st of every month is kept)
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_BUCKET"
+          rclone delete "dst:${BACKUP_BUCKET}/db" --min-age "${KEEP_DAYS}d" --exclude "veekay-??????01-*"
+          echo "dumps now in the bucket:"
+          rclone lsf "dst:${BACKUP_BUCKET}/db" | sort | tail -n 45
+
+  files-mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RCLONE_CONFIG_SRC_TYPE: s3
+      RCLONE_CONFIG_SRC_PROVIDER: Other
+      RCLONE_CONFIG_SRC_ENDPOINT: ${{ secrets.FILES_S3_ENDPOINT }}
+      RCLONE_CONFIG_SRC_ACCESS_KEY_ID: ${{ secrets.FILES_S3_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_SRC_SECRET_ACCESS_KEY: ${{ secrets.FILES_S3_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_SRC_NO_CHECK_BUCKET: "true"
+      FILES_BUCKET: ${{ secrets.FILES_S3_BUCKET }}
+    steps:
+      - name: Check the secrets exist
+        env:
+          HAVE: ${{ secrets.FILES_S3_BUCKET != '' && secrets.FILES_S3_ENDPOINT != '' && secrets.FILES_S3_ACCESS_KEY_ID != '' && secrets.FILES_S3_SECRET_ACCESS_KEY != '' && secrets.BACKUP_S3_BUCKET != '' && secrets.BACKUP_S3_ENDPOINT != '' && secrets.BACKUP_S3_ACCESS_KEY_ID != '' && secrets.BACKUP_S3_SECRET_ACCESS_KEY != '' }}
+        run: |
+          if [ "$HAVE" != "true" ]; then
+            echo "::error::File-mirror secrets are missing. See docs/BACKUP_AND_RESTORE.md, section 'One-time setup'."
+            exit 1
+          fi
+
+      - name: Install rclone
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rclone
+
+      - name: Copy new and changed files (nothing is ever deleted from the copy)
+        run: |
+          set -euo pipefail
+          test -n "$FILES_BUCKET" && test -n "$BACKUP_BUCKET"
+          # copy, not sync: a file deleted or lost in the live bucket stays in the backup
+          rclone copy "src:${FILES_BUCKET}" "dst:${BACKUP_BUCKET}/files" --transfers 8 --checkers 16 --stats-one-line --stats 30s -v
+
+      - name: Compare the two sides
+        run: |
+          set -euo pipefail
+          # every object in the live bucket must exist in the copy (extra objects in the copy are fine)
+          rclone check "src:${FILES_BUCKET}" "dst:${BACKUP_BUCKET}/files" --one-way --size-only
+
+  restore-test:
+    needs: db-backup
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '40 20 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: restore
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: restore
+    steps:
+      - name: Install the Postgres client and rclone
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common rclone
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+
+      - name: Fetch and decrypt the newest dump
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          latest="$(rclone lsf "dst:${BACKUP_BUCKET}/db" | sort | tail -n 1)"
+          test -n "$latest"
+          echo "restoring $latest"
+          rclone copyto "dst:${BACKUP_BUCKET}/db/$latest" backup.dump.gpg
+          printf %s "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --decrypt --output backup.dump backup.dump.gpg
+          echo "DUMP_NAME=$latest" >> "$GITHUB_ENV"
+
+      - name: Restore into a scratch database
+        run: |
+          set -euo pipefail
+          bin="/usr/lib/postgresql/${PG_MAJOR}/bin"
+          "$bin/createdb" -h localhost -U postgres restored
+          "$bin/pg_restore" -h localhost -U postgres -d restored --no-owner --no-privileges backup.dump
+
+      - name: Check what came back
+        run: |
+          set -euo pipefail
+          psql="/usr/lib/postgresql/${PG_MAJOR}/bin/psql -h localhost -U postgres -d restored -At"
+          {
+            echo "### Restore test: $DUMP_NAME"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Migration version | $($psql -c 'select version_num from alembic_version') |"
+            for t in users stores order_entries compliance_documents cash_purchases busy_vendors; do
+              n="$($psql -c "select count(*) from $t")"
+              echo "| rows in $t | $n |"
+              if [ "$t" = "users" ] && [ "$n" -lt 1 ]; then echo "::error::users is empty after the restore"; exit 1; fi
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"

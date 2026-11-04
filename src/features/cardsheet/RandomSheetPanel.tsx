@@ -3,21 +3,19 @@ import { TemplateLink } from "@/components/ui/TemplateLink";
 import { Button } from "@/components/ui/Button";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { ApiError, apiBlob, apiRequest } from "@/services/api";
 import { useAllStores } from "@/features/stores/useAllStores";
 import { isoDate } from "@/lib/dates";
 import { pushToast } from "@/lib/toast";
 import { MAX_DAYS, datesBetween, fmtDay, freshDistribution, type DayCount } from "./randomCounts";
+import { SKIP, type Suggestion } from "./sheetPicker";
+import { UnmatchedPicker } from "./UnmatchedPicker";
 
 interface Matched { row: number; sheet_name: string; store_id: string; store_name: string; code: string; platform: string | null; total: number; entries?: DayCount[] }
-interface Suggestion { store_id: string; name: string; code: string }
 interface Unmatched { row: number; name: string; total: number; reason: string; suggestions: Suggestion[] }
 interface Parsed { file: string; rows: number; matched: Matched[]; unmatched: Unmatched[]; warnings: string[]; has_entries?: boolean }
 interface Line { storeId: string; name: string; code: string; total: number; entries?: DayCount[] }
-
-const SKIP = "skip";
 
 /**
  * A sheet of outlet + total (no dates needed) becomes one PDF of cards: each outlet's total is shared out at random over
@@ -79,7 +77,6 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
     return [...out.values()];
   }, [parsed, choice, storeById]);
 
-  const unresolved = parsed ? parsed.unmatched.filter((u) => !choice[u.row]).length : 0;
   const skipped = parsed ? parsed.unmatched.filter((u) => choice[u.row] === SKIP).length : 0;
   const days = useMemo(() => (start && end && end >= start ? datesBetween(start, end) : []), [start, end]);
   // A sheet that already has daily entries is used exactly as written; nothing is randomised and no date range is needed.
@@ -163,32 +160,7 @@ export function RandomSheetPanel({ token, onLocked }: { token: string; onLocked:
           {parsed.warnings.map((w) => <p key={w} className="text-sm text-status-warning">{w}</p>)}
 
           {parsed.unmatched.length > 0 && (
-            <div className="rounded-xl border border-status-warning bg-status-warning-soft px-4 py-3">
-              <p className="text-sm font-semibold text-gray-800">Pick the right store for these (or skip them)</p>
-              <div className="mt-3 flex flex-col gap-3">
-                {parsed.unmatched.map((u) => (
-                  <div key={u.row} className="grid items-end gap-3 md:grid-cols-[1fr_2fr]">
-                    <div className="text-sm">
-                      <p className="font-semibold text-gray-900">{u.name}</p>
-                      <p className="text-xs text-gray-600">Total {u.total.toLocaleString("en-IN")} · {u.reason}</p>
-                    </div>
-                    <Select
-                      label="Store"
-                      searchable
-                      placeholder="Choose a store…"
-                      value={choice[u.row] ?? ""}
-                      options={[
-                        ...u.suggestions.map((s) => ({ value: s.store_id, label: `★ ${s.code} — ${s.name}` })),
-                        { value: SKIP, label: "Skip this outlet" },
-                        ...allOptions.filter((o) => !u.suggestions.some((s) => s.store_id === o.value)),
-                      ]}
-                      onChange={(e) => { setChoice((c) => ({ ...c, [u.row]: e.target.value })); setSplit(null); }}
-                    />
-                  </div>
-                ))}
-              </div>
-              {unresolved > 0 && <p className="mt-3 text-xs text-gray-600">{unresolved} not chosen yet; they will be left out until you pick a store or skip them.</p>}
-            </div>
+            <UnmatchedPicker rows={parsed.unmatched} choice={choice} allOptions={allOptions} onChoose={(row, value) => { setChoice((c) => ({ ...c, [row]: value })); setSplit(null); }} />
           )}
 
           {fromSheet && <p className="text-sm text-gray-700">This sheet already has daily entries, so those exact numbers go on the cards. Nothing is randomised.</p>}

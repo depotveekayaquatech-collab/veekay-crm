@@ -64,7 +64,6 @@ class OrderImportResult:
     invalid_values: int = 0
     future_skipped: int = 0
     not_live_stores: int = 0    # stores the sheet has numbers for but that are not live: no entry is written for them
-    zeros_skipped: int = 0      # 0s in the sheet that were not marked: a 0 only counts on a day the CRM already has a 0 for
     matched_by_id: int = 0      # stores found by their Outlet ID because their name in the sheet matched no store
     start_dates_set: int = 0    # stores whose empty start date was filled from their first order
     vendor_starts_set: int = 0  # new vendors whose start date was fixed from their first order
@@ -367,15 +366,7 @@ def _import_grids(
                 not_live.add(sid)
                 continue
             entry = existing.get((store.id, d))
-            if n == 0:
-                # A 0 in a sheet is not trusted (a sheet made for the whole month has 0 in every cell nobody has filled in): it is only honoured on a day the CRM
-                # already has a 0 for (nothing to change). Anywhere else it is not marked and the day is left for the employee. A blank cell is never marked either.
-                if entry is not None and entry.bottle_count == 0:
-                    result.unchanged += 1
-                else:
-                    result.zeros_skipped += 1
-                continue
-            if entry is None:
+            if entry is None:                                # a 0 is a real "marked, zero bottles" like any other count; only a blank cell marks nothing
                 db.add(OrderEntry(
                     organization_id=actor.organization_id, store_id=store.id, order_date=d,
                     bottle_count=n, source=EntrySource.ADMIN.value, marked_by_user_id=actor.id,
@@ -407,11 +398,6 @@ def _import_grids(
         )
     if result.future_skipped:
         result.warnings.append(f"{result.future_skipped} future-dated cells were skipped.")
-    if result.zeros_skipped:
-        result.warnings.append(
-            f"{result.zeros_skipped:,} cell{'s' if result.zeros_skipped > 1 else ''} with 0 {'were' if result.zeros_skipped > 1 else 'was'} not marked: a 0 in the sheet only counts on a day the CRM "
-            "already has a 0 for. Blank cells are never marked either; those days are left for the employee."
-        )
     if result.matched_by_id:
         result.warnings.append(f"{result.matched_by_id} store{'s' if result.matched_by_id > 1 else ''} matched by Outlet ID because the name in the sheet matched no store.")
     if result.not_live_stores:

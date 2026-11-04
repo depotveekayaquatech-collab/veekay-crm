@@ -2,7 +2,7 @@
 import uuid
 import datetime as dt
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.api.deps import require_permission
 from app.db.session import get_db
 from app.models.user import User
 from app.services import card_sheet_bulk as bulk
+from app.services import card_sheet_daily as daily
 from app.services import card_sheet_service as svc
 
 router = APIRouter(prefix="/developer/card-sheet", tags=["developer"])
@@ -69,6 +70,19 @@ async def totals_preview(
     """Reads a sheet of store + total (header row optional) for the random generator. Nothing is stored or logged."""
     svc.check_token(user, token)
     return bulk.parse_totals(db, user, file.filename or "", await file.read())
+
+
+@router.post("/daily-preview")
+async def daily_preview(
+    token: str = Form(...), month: str = Form(...), file: UploadFile = File(...),
+    user: User = Depends(require_permission("cards.sheet")), db: Session = Depends(get_db),
+) -> dict:
+    """Reads a sheet of store + total count + one column per day of `month`. The numbers are the entries; nothing is stored or logged."""
+    svc.check_token(user, token)
+    chosen = svc.parse_month(month)
+    if chosen is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Pick the month the sheet is for.")
+    return daily.parse_daily(db, user, file.filename or "", await file.read(), chosen)
 
 
 @router.post("/random-bulk-pdf")
