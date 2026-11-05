@@ -5,7 +5,8 @@ Zepto capping: how many bottles each store may take per day, and how close it is
 Who may use it (always re-checked on the server, whatever the app shows):
   * every ACTIVE employee whose platform is Zepto, whatever their state or region,
   * the Zepto partner login (the platform's own account), and
-  * administrators (they hold orders.correct and belong to no platform), so the Capping page works for them too.
+  * administrators (they hold orders.correct and belong to no platform), so the Capping page works for them too, and
+  * developers, who hold every permission, whatever platform their account was created on.
   Blinkit employees and Blinkit partner logins (whatever else they hold) are refused. Changing a capping needs capping.change on top.
 
 A store's capping is ONE DAILY number (store_caps.daily_cap, the capping in force today). The monthly limit a store must not exceed is that number x the number of days in
@@ -48,10 +49,17 @@ def _today() -> date:
     return datetime.now(_IST).date()
 
 
+def is_developer(perms: set[str]) -> bool:
+    """The developer role holds every permission, and only it can hold the reserved sheets.sync, so that is how a developer is recognised without a query."""
+    return "sheets.sync" in perms
+
+
 def is_eligible(user: User, perms: set[str]) -> bool:
-    """Active Zepto employee or partner login, or an administrator. Never anyone on another platform."""
+    """Active Zepto employee or partner login, an administrator, or a developer (whatever platform the account was created on). Never anyone else on another platform."""
     if not user.is_active:
         return False
+    if is_developer(perms):
+        return True
     slug = ((user.platform_organization.slug if user.platform_organization is not None else None) or "").strip().lower()
     if slug == PLATFORM:
         return True

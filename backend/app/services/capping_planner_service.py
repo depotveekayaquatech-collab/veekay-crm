@@ -46,7 +46,7 @@ def authorise(user: User, perms: set[str], project: str) -> list[str]:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "The Smart Capping Planner is not switched on for you.")
     cs.require_eligible(user, perms)
     slug = ((user.platform_organization.slug if user.platform_organization is not None else None) or "").strip().lower()
-    allowed = ["zepto", "blinkit"] if not slug else ["zepto"]
+    allowed = ["zepto", "blinkit"] if not slug or cs.is_developer(perms) else ["zepto"]
     if project not in PROJECTS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Project must be zepto, blinkit or all.")
     if project == "all":

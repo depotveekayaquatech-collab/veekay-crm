@@ -69,9 +69,9 @@ function RequireAny({ permissions, children }: { permissions: string[]; children
 
 /** Capping is for Zepto employees and admins (the API enforces the same rule). */
 function RequireCapping({ children }: { children: React.ReactNode }) {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, hasRole } = useAuth();
   const slug = user?.platformSlug?.toLowerCase();
-  const ok = slug === "zepto" || (!slug && hasPermission("orders.correct"));       // admins have no platform; a Blinkit person never sees Zepto capping
+  const ok = slug === "zepto" || (!slug && hasPermission("orders.correct")) || hasRole("developer");       // admins have no platform; a Blinkit person never sees Zepto capping
   return ok ? <>{children}</> : <Navigate to="/" replace />;
 }
 

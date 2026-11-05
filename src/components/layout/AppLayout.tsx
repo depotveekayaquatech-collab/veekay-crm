@@ -136,7 +136,7 @@ const canSee = (item: NavItem, has: (p: string) => boolean, allRoles: string[], 
   return (
     !(item.excludeRole && [item.excludeRole].flat().some((r) => roles.includes(r))) &&
     !(item.requireRole && !roles.includes(item.requireRole)) &&
-    (item.platform ? platformSlug?.toLowerCase() === item.platform.slug || (!platformSlug && has(item.platform.orPermission)) : true) &&
+    (item.platform ? allRoles.includes("developer") || platformSlug?.toLowerCase() === item.platform.slug || (!platformSlug && has(item.platform.orPermission)) : true) &&
     (item.anyPermission ? item.anyPermission.some(has) : !item.permission || has(item.permission))
   );
 };

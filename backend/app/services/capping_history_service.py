@@ -96,7 +96,7 @@ def _require_change(user: User, perms: set[str]) -> None:
     if "capping.change" not in perms:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an administrator or manager can change capping.")
     slug = ((user.platform_organization.slug if user.platform_organization is not None else None) or "").strip().lower()
-    if not user.is_active or slug not in ("", capping_service.PLATFORM):
+    if not user.is_active or (slug not in ("", capping_service.PLATFORM) and not capping_service.is_developer(perms)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Capping is available to Zepto employees.")
 
 

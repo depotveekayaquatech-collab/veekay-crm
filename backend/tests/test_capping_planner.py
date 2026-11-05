@@ -171,3 +171,29 @@ def test_bad_input_is_refused(client, admin):
     assert _plan(client, admin, mode="bogus").status_code == 422
     assert _plan(client, admin, priority=["x" * 201]).status_code == 422
     assert _plan(client, admin, unknown=1).status_code == 422
+
+
+def test_a_developer_account_can_use_every_capping_feature(client, dev):
+    """A developer holds every permission that exists, so a permission added later (capping.planner) needs no grant for them."""
+    assert _plan(client, dev).status_code == 200
+    assert client.post(f"{API}/capping/planner/export", json={}, headers=dev).status_code == 200
+    for path in ("/capping", "/capping/usage", "/capping/overflow", "/capping/alert"):
+        assert client.get(f"{API}{path}", headers=dev).status_code == 200, path
+    me = client.get(f"{API}/auth/me", headers=dev).json()
+    perms = set(me.get("permissions", []))
+    assert {"capping.planner", "capping.change", "capping.alerts", "orders.correct"} <= perms
+
+
+def test_a_developer_made_from_a_blinkit_login_still_has_every_capping_feature(client, db, make_user):
+    """The platform an account was created on never locks a developer out; the same account without the developer role is still refused."""
+    from scripts.create_developer import make_developer
+
+    code, pw, _ = make_user("employee", platform="blinkit", region="NORTH", grants=("orders.view", "capping.planner"))
+    plain = auth(login(client, code, pw).json()["access_token"])
+    assert _plan(client, plain).status_code == 403 and client.get(f"{API}/capping/usage", headers=plain).status_code == 403
+    make_developer(db, code, None, None, promote=True)
+    dev = auth(login(client, code, pw).json()["access_token"])
+    assert _plan(client, dev, project="all").status_code == 200
+    assert _plan(client, dev, project="blinkit").status_code == 200
+    for path in ("/capping", "/capping/usage", "/capping/overflow", "/capping/alert"):
+        assert client.get(f"{API}{path}", headers=dev).status_code == 200, path
