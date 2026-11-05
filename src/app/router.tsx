@@ -30,6 +30,7 @@ const DataSyncPage = lazy(() => import("@/features/datasync/DataSyncPage").then(
 const CashToolsPage = lazy(() => import("@/features/datasync/CashToolsPage").then((m) => ({ default: m.CashToolsPage })));
 const AccountsPage = lazy(() => import("@/features/accounts/AccountsPage").then((m) => ({ default: m.AccountsPage })));
 const CappingPage = lazy(() => import("@/features/capping/CappingPage").then((m) => ({ default: m.CappingPage })));
+const CappingPlannerPage = lazy(() => import("@/features/cappingPlanner/CappingPlannerPage").then((m) => ({ default: m.CappingPlannerPage })));
 const InventoryPage = lazy(() => import("@/features/inventory/InventoryPage").then((m) => ({ default: m.InventoryPage })));
 const PartnerHomePage = lazy(() => import("@/features/partner/PartnerHomePage").then((m) => ({ default: m.PartnerHomePage })));
 const PartnerDeliveryReport = lazy(() => import("@/features/partner/PartnerDeliveryReport").then((m) => ({ default: m.PartnerDeliveryReport })));
@@ -129,6 +130,7 @@ export function AppRoutes() {
         <Route path="/developer/cash" element={<Require permission="cash.adjust"><CashToolsPage /></Require>} />
         <Route path="/accounts" element={<Require permission="accounts.view"><AccountsPage /></Require>} />
         <Route path="/capping" element={<RequireCapping><CappingPage /></RequireCapping>} />
+        <Route path="/capping-planner" element={<Require permission="capping.planner"><RequireCapping><CappingPlannerPage /></RequireCapping></Require>} />
         <Route path="/inventory" element={<Require permission="orders.view"><InventoryPage /></Require>} />
         <Route path="/pending" element={<Navigate to="/orders/pending" replace />} />
         <Route path="/reports" element={<Require permission="orders.overview"><ReportsPage /></Require>} />

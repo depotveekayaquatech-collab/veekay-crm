@@ -80,6 +80,7 @@ PERMISSIONS = [
     ("cards.sheet", "Cards from an uploaded sheet, behind an access code (developer only for now)"),
     ("capping.alerts", "See capping alerts for your stores (over the monthly cap, or ahead of its pace)"),
     ("capping.change", "Change a store's capping with an effective date, and see the history of changes"),
+    ("capping.planner", "Smart Capping Planner: analyse store capping capacity, plan a target over it and export (read only, changes no entry)"),
     ("tickets.view", "View tickets for your stores"),
     ("tickets.create", "Raise tickets"),
     ("tickets.manage", "Manage every ticket: assign, change status, see all regions and insights"),

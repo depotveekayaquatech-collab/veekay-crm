@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     bottles,
     busy_sync,
     capping,
+    capping_planner,
     cards,
     cash_adjustments,
     client_errors,
@@ -54,6 +55,7 @@ api_router.include_router(permissions.router)
 api_router.include_router(orders.router)
 api_router.include_router(order_audit.router)
 api_router.include_router(capping.router)
+api_router.include_router(capping_planner.router)
 api_router.include_router(vendor_rates.router)
 api_router.include_router(templates.router)
 api_router.include_router(activity.router)

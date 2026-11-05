@@ -20,6 +20,7 @@ import {
   IconRefresh,
   IconReport,
   IconSearch,
+  IconChart,
   IconShield,
   IconStore,
   IconSun,
@@ -84,6 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Vendors", to: "/inventory", icon: IconBox, permission: "orders.view" },
       { label: "Store cards", to: "/cards", icon: IconCard, permission: "orders.view" },
       { label: "Zepto capping", to: "/capping", icon: IconShield, platform: { slug: "zepto", orPermission: "orders.correct" } },
+      { label: "Smart Capping Planner", to: "/capping-planner", icon: IconChart, permission: "capping.planner", platform: { slug: "zepto", orPermission: "orders.correct" } },
     ],
   },
   {
