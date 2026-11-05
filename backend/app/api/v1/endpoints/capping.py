@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_permissions, get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.services import capping_history_service, capping_service
+from app.services import capping_history_service, capping_overflow_service, capping_service
 
 router = APIRouter(prefix="/capping", tags=["capping"])
 
@@ -41,6 +41,15 @@ def usage(
     return capping_service.report(db, user, perms, month)
 
 
+@router.get("/overflow")
+def overflow(
+    month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="YYYY-MM; this month by default"),
+    user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
+) -> dict:
+    """Read-only: the stores over their capping (for the month and day by day) and the stores that still have room, with the totals. Changes nothing."""
+    return capping_overflow_service.overflow(db, user, perms, month)
+
+
 @router.get("/alerts")
 def my_alerts(
     user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
@@ -51,10 +60,11 @@ def my_alerts(
 
 @router.get("")
 def list_capping(
+    month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="YYYY-MM; today's capping by default"),
     user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
 ) -> dict:
-    """Every live Zepto store with its latest capping and the date it started."""
-    return capping_history_service.current_list(db, user, perms)
+    """Every live Zepto store with its latest capping; with `month`, the capping in force at the end of that month (and the one it started the month with)."""
+    return capping_history_service.current_list(db, user, perms, capping_service.parse_month(month) if month else None)
 
 
 @router.post("/change", status_code=status.HTTP_201_CREATED)

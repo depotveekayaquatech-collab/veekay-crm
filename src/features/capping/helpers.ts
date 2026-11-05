@@ -21,3 +21,28 @@ export function dateLabel(iso: string): string {
 export function fmtAvg(v: number | null | undefined): string {
   return v == null ? "—" : v.toFixed(2);
 }
+
+/** The last 12 months, this one first, as YYYY-MM (the same months the backend offers). */
+export function recentMonths(today: string = istToday()): string[] {
+  let y = Number(today.slice(0, 4));
+  let m = Number(today.slice(5, 7));
+  const out: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m -= 1;
+    if (m === 0) { y -= 1; m = 12; }
+  }
+  return out;
+}
+
+/** "2026-10" -> "October 2026". */
+export function monthName(month: string): string {
+  return new Date(`${month}-01T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
+/** The dates the alert is asked for: the whole month, or only up to today for the month in progress. */
+export function monthRange(month: string, today: string = istToday()): { from: string; to: string } {
+  const [y, m] = month.split("-").map(Number);
+  const last = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  return { from: `${month}-01`, to: last > today ? today : last };
+}

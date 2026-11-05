@@ -155,6 +155,12 @@ def _rows(db: Session, user: User, partner: Organization, month: date, store_ids
     if store_ids is not None:
         q = q.where(Store.id.in_(store_ids or {uuid.uuid4()}))
     stores = db.execute(q).all()
+    if (month.year, month.month) != (today.year, today.month):
+        # a finished month is measured against the capping in force on its last day, not today's
+        from app.services import capping_history_service as hist
+
+        by_store = hist._history_by_store(db, [s[0] for s in stores], end)  # noqa: SLF001
+        stores = [(sid, code, name, state, city, hist.capping_on(by_store.get(sid, []), daily, end), vendor) for sid, code, name, state, city, daily, vendor in stores]
     usage = {
         r[0]: (int(r[1]), int(r[2]), int(r[3]), r[4])
         for r in db.execute(

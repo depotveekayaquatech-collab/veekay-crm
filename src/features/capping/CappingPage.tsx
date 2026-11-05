@@ -2,13 +2,15 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { SelectField } from "@/components/ui/Dropdown";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { IconRefresh, IconSearch } from "@/components/ui/icons";
 import { AverageCards } from "@/features/capping/AverageCards";
-import { istToday } from "@/features/capping/helpers";
+import { istToday, monthName, monthRange, recentMonths } from "@/features/capping/helpers";
+import { OverflowTab } from "@/features/capping/OverflowTab";
 import { ReduceCappingBanner } from "@/features/capping/ReduceCappingBanner";
 import { StoreCappingPanel } from "@/features/capping/StoreCappingPanel";
 import { UsageTab } from "@/features/capping/UsageTab";
@@ -18,17 +20,22 @@ import { getCappingAlert, getCappingList } from "@/services/capping";
 const PAGE = 100;
 
 /**
- * Zepto capping: the alert on the collective averages; a Usage tab (every store against its monthly limit: over, ahead of pace, near, OK) for analysis; and a
- * Capping tab with each store's latest capping, a way to set or remove it, and the record of every change.
+ * Zepto capping: the alert on the collective averages; a Usage tab (every store against its monthly limit: over, ahead of pace, near, OK) for analysis; a
+ * read-only Overflow tab (stores over their capping next to stores with room); and a Capping tab with each store's latest capping, a way to set or remove it, and the record of every change.
  */
 export function CappingPage() {
   const qc = useQueryClient();
   const canChange = usePermission("capping.change");
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({ queryKey: ["capping", "list"], queryFn: getCappingList, staleTime: 30_000 });
-  // The "Reduce capping" alert: this month so far, all stores together.
   const today = istToday();
-  const alert = useQuery({ queryKey: ["capping", "alert", today.slice(0, 7)], queryFn: () => getCappingAlert(`${today.slice(0, 7)}-01`, today), staleTime: 60_000 });
-  const [tab, setTab] = useState<"usage" | "capping">("usage");
+  const thisMonth = today.slice(0, 7);
+  // One month for the whole page: the alert, the averages and every tab. A finished month is read-only.
+  const [month, setMonth] = useState(thisMonth);
+  const isCurrent = month === thisMonth;
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({ queryKey: ["capping", "list", month], queryFn: () => getCappingList(month), staleTime: 30_000 });
+  // The "Reduce capping" alert: the chosen month (this month so far), all stores together.
+  const range = monthRange(month, today);
+  const alert = useQuery({ queryKey: ["capping", "alert", range.from, range.to], queryFn: () => getCappingAlert(range.from, range.to), staleTime: 60_000 });
+  const [tab, setTab] = useState<"usage" | "overflow" | "capping">("usage");
   const [needle, setNeedle] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
@@ -44,11 +51,16 @@ export function CappingPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Zepto capping"
-        subtitle={data ? `${data.total.toLocaleString("en-IN")} live stores · latest capping per day · ${data.withoutCapping.toLocaleString("en-IN")} with none` : "The latest capping of every live Zepto store."}
+        subtitle={data ? `${data.total.toLocaleString("en-IN")} live stores · ${isCurrent ? "latest capping per day" : `capping at the end of ${monthName(month)}`} · ${data.withoutCapping.toLocaleString("en-IN")} with none` : "The latest capping of every live Zepto store."}
         action={
-          <Button variant="secondary" onClick={() => { void qc.invalidateQueries({ queryKey: ["capping"] }); void refetch(); }} isLoading={isFetching && !isLoading}>
-            <IconRefresh className="h-4 w-4" /> Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <SelectField className="h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm" value={month} onChange={(e) => { setMonth(e.target.value); setPicked(null); setShown(PAGE); }} aria-label="Month">
+              {recentMonths(today).map((m) => <option key={m} value={m}>{monthName(m)}{m === thisMonth ? " (this month)" : ""}</option>)}
+            </SelectField>
+            <Button variant="secondary" onClick={() => { void qc.invalidateQueries({ queryKey: ["capping"] }); void refetch(); }} isLoading={isFetching && !isLoading}>
+              <IconRefresh className="h-4 w-4" /> Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -56,7 +68,7 @@ export function CappingPage() {
       <AverageCards alert={alert.data} isLoading={alert.isLoading} error={alert.isError ? (alert.error as Error) : null} onRetry={() => void alert.refetch()} />
 
       <div role="tablist" aria-label="Capping" className="flex flex-wrap gap-1.5">
-        {([["usage", "Usage"], ["capping", "Capping"]] as const).map(([id, label]) => (
+        {([["usage", "Usage"], ["overflow", "Overflow"], ["capping", "Capping"]] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${tab === id ? "bg-brand-500 text-white shadow-sm" : "bg-surface text-gray-600 ring-1 ring-surface-border hover:bg-surface-subtle"}`}>
             {label}
@@ -64,7 +76,9 @@ export function CappingPage() {
         ))}
       </div>
 
-      {tab === "usage" && <UsageTab onUpdate={(id) => { setPicked(id); setTab("capping"); }} />}
+      {tab === "usage" && <UsageTab month={month} onUpdate={(id) => { setMonth(thisMonth); setPicked(id); setTab("capping"); }} />}
+
+      {tab === "overflow" && <OverflowTab month={month} />}
 
       {tab === "capping" && isLoading && <Skeleton className="h-64" />}
       {tab === "capping" && isError && <ErrorState message={error instanceof Error ? error.message : "Couldn't load the capping."} onRetry={() => refetch()} />}
@@ -109,8 +123,10 @@ export function CappingPage() {
                           <div className="font-medium text-gray-900">{r.outletName}</div>
                           <div className="text-xs text-gray-500">{r.outletId}{r.city ? ` · ${r.city}` : ""}</div>
                         </td>
-                        <td className="px-3 py-2.5 text-right text-base font-extrabold tabular-nums text-heading">{r.capping ?? <Badge tone="neutral">None</Badge>}</td>
-                        <td className="px-4 py-2.5 text-right text-xs font-semibold text-brand-600">{canChange ? "Update" : "History"}</td>
+                        <td className="px-3 py-2.5 text-right text-base font-extrabold tabular-nums text-heading">{r.capping ?? <Badge tone="neutral">None</Badge>}
+                          {r.startCapping !== r.capping && <div className="text-[11px] font-medium text-gray-500">{r.startCapping === null ? "none" : r.startCapping} at the start</div>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs font-semibold text-brand-600">{canChange && isCurrent ? "Update" : "History"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -126,9 +142,9 @@ export function CappingPage() {
 
           <div className="min-w-0 lg:sticky lg:top-4">
             {selected ? (
-              <StoreCappingPanel key={selected.storeId} row={selected} canChange={canChange} onClose={() => setPicked(null)} />
+              <StoreCappingPanel key={selected.storeId} row={selected} canChange={canChange && isCurrent} pastMonth={isCurrent ? null : data.monthLabel} onClose={() => setPicked(null)} />
             ) : (
-              <EmptyState title="Choose a store" description={canChange ? "Pick a store to set a new capping or read its history." : "Pick a store to read its capping history."} />
+              <EmptyState title="Choose a store" description={canChange && isCurrent ? "Pick a store to set a new capping or read its history." : "Pick a store to read its capping history."} />
             )}
           </div>
         </div>

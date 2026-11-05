@@ -8,12 +8,18 @@ export interface CapRow {
   outletName: string;
   state: string | null;
   city: string | null;
-  /** The capping in force today; null when the store has none. */
+  /** The capping in force today, or on the last day of the chosen month; null when the store has none. */
   capping: number | null;
+  /** The capping the store started the chosen month with, so a change inside the month shows. */
+  startCapping: number | null;
 }
 
 export interface CapList {
   today: string;
+  month: string;
+  monthLabel: string;
+  /** False for a finished month, which can be read but not changed. */
+  isCurrent: boolean;
   total: number;
   withoutCapping: number;
   rows: CapRow[];
@@ -74,9 +80,9 @@ export interface CapAlert {
   overall: CapOverall;
 }
 
-/** Every live Zepto store with its latest capping. */
-export async function getCappingList(): Promise<CapList> {
-  return camelize<CapList>(await apiRequest("/capping"));
+/** Every live Zepto store with its latest capping; with a month, the capping it had at the end of that month. */
+export async function getCappingList(month?: string): Promise<CapList> {
+  return camelize<CapList>(await apiRequest(`/capping${month ? `?month=${encodeURIComponent(month)}` : ""}`));
 }
 
 export async function getCappingHistory(storeId: string): Promise<CapHistory> {
@@ -160,4 +166,59 @@ export async function getCappingUsage(month?: string): Promise<CapUsage> {
 
 export async function getCappingAlerts(): Promise<CapAlerts> {
   return camelize<CapAlerts>(await apiRequest("/capping/alerts"));
+}
+
+// ---------------------------------------------------------------- overflow: who is over, who has room (read-only)
+
+/** One day on which a store's bottles were above the capping in force that day. */
+export interface OverDay {
+  date: string;
+  bottles: number;
+  cap: number;
+  overBy: number;
+}
+
+export interface OverflowRow {
+  storeId: string;
+  outletId: string;
+  outletName: string;
+  state: string | null;
+  city: string | null;
+  vendorName: string | null;
+  dailyCap: number | null;
+  monthlyCap: number | null;
+  used: number;
+  /** Bottles above the monthly limit (dailyCap x 30). */
+  excess: number;
+  /** What is left of the monthly limit; 0 for a store with no capping or one that is over. */
+  room: number;
+  percent: number | null;
+  daysOver: number;
+  /** The bottles above the day's capping, added up over the days it was exceeded. */
+  dailyExcess: number;
+  overDays: OverDay[];
+}
+
+export interface CapOverflow {
+  month: string;
+  monthLabel: string;
+  months: string[];
+  summary: {
+    stores: number;
+    storesOverMonth: number;
+    monthExcess: number;
+    storesOverDays: number;
+    daysOver: number;
+    dailyExcess: number;
+    storesWithRoom: number;
+    room: number;
+    used: number;
+    limit: number;
+    overTotal: number;
+  };
+  rows: OverflowRow[];
+}
+
+export async function getCappingOverflow(month?: string): Promise<CapOverflow> {
+  return camelize<CapOverflow>(await apiRequest(`/capping/overflow${month ? `?month=${encodeURIComponent(month)}` : ""}`));
 }

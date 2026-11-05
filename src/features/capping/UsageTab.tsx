@@ -87,8 +87,7 @@ function PasteText({ rows, monthLabel, current }: { rows: UsageRow[]; monthLabel
  * Usage against the limit, for analysis: every live Zepto store with its daily capping, monthly limit (x 30), the bottles marked so far this month (every entry,
  * whoever entered it), what is left, the percentage and the status (over, ahead of pace, near, OK, no capping). Click a count to filter by it.
  */
-export function UsageTab({ onUpdate }: { onUpdate: (storeId: string) => void }) {
-  const [month, setMonth] = useState("");
+export function UsageTab({ month, onUpdate }: { month: string; onUpdate: (storeId: string) => void }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
   const [state, setState] = useState("");
@@ -97,7 +96,7 @@ export function UsageTab({ onUpdate }: { onUpdate: (storeId: string) => void }) 
   const [limit, setLimit] = useState({ n: PAGE, sig: "" });
 
   // never show the previous month's rows as if they were the chosen month's
-  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ["capping", "usage", month], queryFn: () => getCappingUsage(month || undefined), staleTime: 30_000, placeholderData: undefined });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ["capping", "usage", month], queryFn: () => getCappingUsage(month), staleTime: 30_000, placeholderData: undefined });
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const states = useMemo(() => [...new Set(rows.map((r) => r.state).filter(Boolean) as string[])].sort(), [rows]);
   const cities = useMemo(() => [...new Set(rows.filter((r) => !state || r.state === state).map((r) => r.city).filter(Boolean) as string[])].sort(), [rows, state]);
@@ -128,11 +127,6 @@ export function UsageTab({ onUpdate }: { onUpdate: (storeId: string) => void }) 
         <p className="text-xs text-gray-500">
           {data ? `${data.monthLabel} · monthly limit = daily capping × 30 · every entry of the month is counted${s ? ` · ${s.entries.toLocaleString("en-IN")} entries, ${s.bottles.toLocaleString("en-IN")} bottles` : ""}` : "Bottles used against each store's monthly limit."}
         </p>
-        <SelectField className="h-10 rounded-lg border border-surface-border bg-surface px-3 text-sm shadow-sm" value={month || data?.month || ""} onChange={(e) => setMonth(e.target.value)} aria-label="Month">
-          {(data?.months ?? [data?.month ?? ""]).filter(Boolean).map((m) => (
-            <option key={m} value={m}>{new Date(`${m}-01T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</option>
-          ))}
-        </SelectField>
       </div>
 
       {isLoading && <Skeleton className="h-64" />}

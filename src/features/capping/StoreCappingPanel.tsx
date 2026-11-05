@@ -46,7 +46,7 @@ function History({ storeId }: { storeId: string }) {
 }
 
 /** One store: its latest capping, a way to set a new one or remove it (administrators and managers), and the record of every change. No dates to choose. */
-export function StoreCappingPanel({ row, canChange, onClose }: { row: CapRow; canChange: boolean; onClose: () => void }) {
+export function StoreCappingPanel({ row, canChange, pastMonth, onClose }: { row: CapRow; canChange: boolean; pastMonth: string | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const [removing, setRemoving] = useState(false);
@@ -90,9 +90,9 @@ export function StoreCappingPanel({ row, canChange, onClose }: { row: CapRow; ca
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg bg-brand-500/5 px-3 py-2 ring-1 ring-brand-500/20">
         {row.capping === null ? (
-          <span className="text-sm text-gray-600">No capping is set for this store.</span>
+          <span className="text-sm text-gray-600">{pastMonth ? `This store had no capping at the end of ${pastMonth}.` : "No capping is set for this store."}</span>
         ) : (
-          <span className="text-sm text-gray-700">Latest capping <b className="text-base tabular-nums text-heading">{row.capping}</b> a day</span>
+          <span className="text-sm text-gray-700">{pastMonth ? `Capping at the end of ${pastMonth}` : "Latest capping"} <b className="text-base tabular-nums text-heading">{row.capping}</b> a day</span>
         )}
         {canChange && row.capping !== null && (
           <button type="button" onClick={() => setRemoving(true)} className="text-xs font-semibold text-status-danger hover:underline">Remove capping</button>
@@ -108,7 +108,7 @@ export function StoreCappingPanel({ row, canChange, onClose }: { row: CapRow; ca
           <Button type="submit" disabled={!ready} isLoading={save.isPending}>Update capping</Button>
         </form>
       ) : (
-        <p className="text-xs text-gray-500">Only an administrator or manager can change capping. You can read each store&rsquo;s history here.</p>
+        <p className="text-xs text-gray-500">{pastMonth ? `${pastMonth} is finished, so its capping can't be changed. Pick this month to change a capping.` : "Only an administrator or manager can change capping. You can read each store\u2019s history here."}</p>
       )}
       {canChange && cappingBad && <p role="alert" className="-mt-2 text-sm text-status-danger">Enter a whole number from 1 to 1,000,000.</p>}
 

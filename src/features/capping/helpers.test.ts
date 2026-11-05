@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateLabel, dayLabel, fmtAvg, istToday } from "./helpers";
+import { dateLabel, dayLabel, fmtAvg, istToday, monthRange, recentMonths } from "./helpers";
 
 describe("capping dates (Asia/Kolkata)", () => {
   it("takes the day from India, not from the browser's zone", () => {
@@ -15,5 +15,19 @@ describe("capping dates (Asia/Kolkata)", () => {
     expect(fmtAvg(11)).toBe("11.00");
     expect(fmtAvg(9.333)).toBe("9.33");
     expect(fmtAvg(null)).toBe("—");
+  });
+});
+
+describe("capping months", () => {
+  it("lists the last twelve months, this one first, across a year end", () => {
+    const m = recentMonths("2026-02-10");
+    expect(m).toHaveLength(12);
+    expect(m.slice(0, 3)).toEqual(["2026-02", "2026-01", "2025-12"]);
+    expect(m[11]).toBe("2025-03");
+  });
+  it("asks the alert for the whole of a finished month and only up to today for this one", () => {
+    expect(monthRange("2026-10", "2026-11-05")).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+    expect(monthRange("2026-11", "2026-11-05")).toEqual({ from: "2026-11-01", to: "2026-11-05" });
+    expect(monthRange("2028-02", "2028-03-01")).toEqual({ from: "2028-02-01", to: "2028-02-29" });
   });
 });

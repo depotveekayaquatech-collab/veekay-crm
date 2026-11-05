@@ -51,6 +51,12 @@ def effective_capping(history: Sequence[tuple[date, int | None]], day: date) -> 
     return history[i - 1][1] if i else None
 
 
+def capping_on(history: Sequence[tuple[date, int | None]], legacy: int | None, day: date) -> int | None:
+    """The capping of a store on `day`. A store with capping history uses it (None before its first capping or after a removal); one without falls back to its
+    current store_caps value (`legacy`), which is how a capping set before the history existed is still honoured."""
+    return effective_capping(history, day) if history else legacy
+
+
 def capping_totals(history: Sequence[tuple[date, int | None]], start: date, end: date) -> tuple[int, int]:
     """(sum of the capping, number of days) over start..end, counting only the days on which a capping was in force (none before the first change, none after a
     removal). Walks the changes once instead of looking every day up."""
@@ -202,21 +208,29 @@ def change(db: Session, user: User, perms: set[str], store_id: uuid.UUID, cappin
     return {"id": row.id, "store_id": store_id, "capping": capping, "effective_from": effective, "current_capping": current}
 
 
-def current_list(db: Session, user: User, perms: set[str]) -> dict:
-    """Every live Zepto store with its latest capping (the one in force today). A store with no capping has none (null). The store's start date is not part of this list."""
+def current_list(db: Session, user: User, perms: set[str], month: date | None = None) -> dict:
+    """Every live Zepto store with its capping: the one in force today, or for a chosen month the one in force on its last day (today for the month in progress),
+    plus the one it started the month with so a change inside the month shows. A store with no capping has none (null). The store's start date is not part of this list."""
     capping_service.require_eligible(user, perms)
     partner = capping_service._partner(db, user.organization_id)  # noqa: SLF001
     today = today_ist()
+    first = month or date(today.year, today.month, 1)
+    last = date(first.year + (first.month == 12), first.month % 12 + 1, 1) - timedelta(days=1)
+    end = min(last, today)
     stores = _stores(db, user, partner.id, None)
-    hist = _history_by_store(db, [s[0] for s in stores], today)
+    by_store = _history_by_store(db, [s[0] for s in stores], end)
     rows = []
     for sid, code, name, state, city, legacy, _start in stores:
-        capping = effective_capping(hist.get(sid, []), today)
+        h = by_store.get(sid, [])
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city,
-            "capping": capping if capping is not None else legacy if not hist.get(sid) else None,
+            "capping": capping_on(h, legacy, end), "start_capping": capping_on(h, legacy, first),
         })
-    return {"today": today, "total": len(rows), "without_capping": sum(1 for r in rows if r["capping"] is None), "rows": rows}
+    return {
+        "today": today, "month": f"{first:%Y-%m}", "month_label": f"{capping_service._MONTHS[first.month]} {first.year}",  # noqa: SLF001
+        "is_current": (first.year, first.month) == (today.year, today.month),
+        "total": len(rows), "without_capping": sum(1 for r in rows if r["capping"] is None), "rows": rows,
+    }
 
 
 def history(db: Session, user: User, perms: set[str], store_id: uuid.UUID) -> dict:
