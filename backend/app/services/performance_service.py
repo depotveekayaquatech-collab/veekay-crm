@@ -281,8 +281,8 @@ def _vendor_key(name: str | None) -> str:
     return " ".join((name or "").split()).lower()
 
 
-def _add_zepto_limits(db: Session, partner: Organization, groups: dict[str, dict], stores: dict[uuid.UUID, Store]) -> None:
-    """Zepto only: each vendor store gets its capping (`daily_cap`), the month's limit it stands for (`monthly_limit`, the Capping page's number: daily x 30) and what is
+def _add_zepto_limits(db: Session, partner: Organization, groups: dict[str, dict], stores: dict[uuid.UUID, Store], month: date) -> None:
+    """Zepto only: each vendor store gets its capping (`daily_cap`), the month's limit it stands for (`monthly_limit`, the Capping page's number: daily x the month's days) and what is
     still `pending` (limit - everything supplied at the store this month, 0 once it is used up; `over_by` is the excess). The pending figure counts the store's bottles
     from EVERY vendor that supplied it, because the limit belongs to the store. Other platforms get null for all four, so the rows keep one shape."""
     zepto = partner.slug == capping_service.PLATFORM
@@ -293,7 +293,7 @@ def _add_zepto_limits(db: Session, partner: Organization, groups: dict[str, dict
             supplied[sid] += r["bottles"]
     for g in groups.values():
         for sid, r in g["stores"].items():
-            limit = capping_service.monthly_limit(caps.get(sid))
+            limit = capping_service.monthly_limit(caps.get(sid), month)
             r["daily_cap"] = caps.get(sid)
             r["monthly_limit"] = limit
             r["pending"] = None if limit is None else max(limit - supplied[sid], 0)
@@ -354,7 +354,7 @@ def vendors(db: Session, user: User, partner_slug: str, month: date, today: date
         if st.status == StoreStatus.LIVE.value:
             row(st.vendor_name, st.vendor_number, sid)
 
-    _add_zepto_limits(db, partner, groups, stores)
+    _add_zepto_limits(db, partner, groups, stores, month)
 
     out = []
     for g in groups.values():

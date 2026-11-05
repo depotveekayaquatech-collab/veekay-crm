@@ -141,7 +141,7 @@ export function OverflowTab({ month }: { month: string }) {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-gray-500">
-          {data ? `${data.monthLabel} · read-only: nothing here changes an entry or moves a bottle · monthly limit = daily capping × 30` : "Stores over their capping, and stores with room."}
+          {data ? `${data.monthLabel} · read-only: nothing here changes an entry or moves a bottle · monthly limit = daily capping × the days in the month` : "Stores over their capping, and stores with room."}
         </p>
       </div>
 

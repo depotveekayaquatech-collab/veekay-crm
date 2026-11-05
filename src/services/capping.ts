@@ -124,7 +124,7 @@ export interface UsageRow {
   ownerName: string | null;
   /** Bottles per day: the capping in force today. */
   dailyCap: number | null;
-  /** The most the store may take in a month: dailyCap x 30. */
+  /** The most the store may take in a month: dailyCap x the days in that month. */
   monthlyCap: number | null;
   /** Bottles marked so far this month, every entry whoever entered it. */
   used: number;
@@ -188,7 +188,7 @@ export interface OverflowRow {
   dailyCap: number | null;
   monthlyCap: number | null;
   used: number;
-  /** Bottles above the monthly limit (dailyCap x 30). */
+  /** Bottles above the monthly limit (dailyCap x the days in that month). */
   excess: number;
   /** What is left of the monthly limit; 0 for a store with no capping or one that is over. */
   room: number;

@@ -6,7 +6,7 @@
  *   Vendor name - Aqua Traders
  *
  *   Store - Store One (ZPT-4821)
- *   Monthly limit - 900            (the store's capping x 30, the number the Capping page measures against)
+ *   Monthly limit - 900            (the store's capping x the days in the month, the number the Capping page measures against)
  *   Supplied till date - 450       (every bottle marked at the store this month so far)
  *   Pending limit - 450            (limit - supplied; 0 and "(over by N)" once it is used up)
  *
@@ -15,7 +15,7 @@
 export interface LimitStore {
   store_name: string;
   external_code?: string | null;
-  /** daily capping x 30; null when the store has no capping. */
+  /** daily capping x the days in the month; null when the store has no capping. */
   monthly_limit: number | null;
   /** Bottles supplied this month so far. */
   bottles: number;

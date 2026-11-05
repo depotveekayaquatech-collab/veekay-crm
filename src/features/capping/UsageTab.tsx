@@ -71,7 +71,7 @@ function PasteText({ rows, monthLabel, current }: { rows: UsageRow[]; monthLabel
   return (
     <div className="rounded-xl border border-surface-border bg-surface-subtle/60 p-3">
       <p className="text-xs font-bold text-gray-500">Text to paste</p>
-      <p className="mt-1 text-xs text-gray-500">Vendor by vendor: monthly limit (capping × 30), supplied till date and the pending limit, for the stores listed below.</p>
+      <p className="mt-1 text-xs text-gray-500">Vendor by vendor: monthly limit (capping × the days in the month), supplied till date and the pending limit, for the stores listed below.</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void copy()} disabled={!rows.length}>Copy text</Button>
         <button type="button" className="text-xs font-semibold text-brand-600 hover:text-brand-700" onClick={() => setShow((v) => !v)} aria-expanded={show}>
@@ -84,7 +84,7 @@ function PasteText({ rows, monthLabel, current }: { rows: UsageRow[]; monthLabel
 }
 
 /**
- * Usage against the limit, for analysis: every live Zepto store with its daily capping, monthly limit (x 30), the bottles marked so far this month (every entry,
+ * Usage against the limit, for analysis: every live Zepto store with its daily capping, monthly limit (x the days in the month), the bottles marked so far this month (every entry,
  * whoever entered it), what is left, the percentage and the status (over, ahead of pace, near, OK, no capping). Click a count to filter by it.
  */
 export function UsageTab({ month, onUpdate }: { month: string; onUpdate: (storeId: string) => void }) {
@@ -125,7 +125,7 @@ export function UsageTab({ month, onUpdate }: { month: string; onUpdate: (storeI
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-gray-500">
-          {data ? `${data.monthLabel} · monthly limit = daily capping × 30 · every entry of the month is counted${s ? ` · ${s.entries.toLocaleString("en-IN")} entries, ${s.bottles.toLocaleString("en-IN")} bottles` : ""}` : "Bottles used against each store's monthly limit."}
+          {data ? `${data.monthLabel} · monthly limit = daily capping × the days in the month · every entry of the month is counted${s ? ` · ${s.entries.toLocaleString("en-IN")} entries, ${s.bottles.toLocaleString("en-IN")} bottles` : ""}` : "Bottles used against each store's monthly limit."}
         </p>
       </div>
 

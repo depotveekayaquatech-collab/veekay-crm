@@ -121,7 +121,7 @@ export function CappingPlannerPage() {
         </fieldset>
 
         {form.month !== thisMonth && <p className="text-xs text-gray-600">{monthName(form.month)} is finished: you will see its capacity and whether the target would fit, but no per-store allocation is proposed.</p>}
-        <p className="text-xs text-gray-500">Leave the number of stores blank to use every eligible store. The monthly limit is the daily capping × 30; a store counts only with a valid capping.</p>
+        <p className="text-xs text-gray-500">Leave the number of stores blank to use every eligible store. The monthly limit is the daily capping × the days in that month; a store counts only with a valid capping.</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={!built.request} isLoading={calc.isPending}>Calculate</Button>
           {stale && !calc.isPending && <span className="text-xs font-medium text-status-warning">The inputs changed since the last calculation.</span>}

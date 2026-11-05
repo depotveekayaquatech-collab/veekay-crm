@@ -25,13 +25,17 @@ def _row(client, headers, store, month=None):
 
 
 def test_the_levels_follow_the_monthly_limit_the_pace_and_the_warning_line():
-    assert cs.monthly_limit(10) == 300 and cs.monthly_limit(None) is None and cs.monthly_limit(0) == 0
-    assert cs.alert_for(5, None) == "NO_CAP"
-    assert cs.alert_for(301, 10) == "OVER" and cs.alert_for(300, 10) == "NEAR"                 # exactly the limit is not over it
-    assert cs.alert_for(0, 0) == "OK" and cs.alert_for(1, 0) == "OVER"                         # a capping of 0 is a real capping
-    assert cs.alert_for(250, 10) == "NEAR" and cs.alert_for(239, 10) == "OK"                   # 80% of 300 is 240
-    assert cs.alert_for(160, 10, day=15) == "AHEAD" and cs.alert_for(150, 10, day=15) == "OK"  # ahead of 10 x 15
+    nov, octo, feb, leap = date(2026, 11, 1), date(2026, 10, 1), date(2026, 2, 1), date(2028, 2, 1)
+    assert cs.monthly_limit(10, nov) == 300 and cs.monthly_limit(None, nov) is None and cs.monthly_limit(0, nov) == 0
+    assert (cs.monthly_limit(10, octo), cs.monthly_limit(10, feb), cs.monthly_limit(10, leap)) == (310, 280, 290)   # the limit follows the month's own days
+    assert cs.alert_for(5, None, nov) == "NO_CAP"
+    assert cs.alert_for(301, 10, nov) == "OVER" and cs.alert_for(300, 10, nov) == "NEAR"       # exactly the limit is not over it
+    assert cs.alert_for(301, 10, octo) == "NEAR" and cs.alert_for(311, 10, octo) == "OVER"     # 301 is over a 30-day limit but within October's 310
+    assert cs.alert_for(0, 0, nov) == "OK" and cs.alert_for(1, 0, nov) == "OVER"               # a capping of 0 is a real capping
+    assert cs.alert_for(250, 10, nov) == "NEAR" and cs.alert_for(239, 10, nov) == "OK"         # 80% of 300 is 240
+    assert cs.alert_for(160, 10, nov, day=15) == "AHEAD" and cs.alert_for(150, 10, nov, day=15) == "OK"  # ahead of 10 x 15
     assert cs.pace_for(10, date(2026, 10, 1), date(2026, 10, 15)) == (15, 150)
+    assert cs.pace_for(10, octo, date(2026, 10, 31)) == (31, 310)                              # day 31 counts as 31
     assert cs.pace_for(10, date(2026, 9, 1), date(2026, 10, 15)) == (None, None)               # a finished month has no pace
 
 
@@ -44,9 +48,10 @@ def test_the_usage_report_counts_every_entry_of_the_month_against_the_limit(clie
     plant_entry(db, zstore, first + timedelta(days=1), 150, source="admin")                    # an admin's / a sheet's entry counts too
     _cap(client, admin, zstore, 10)
     row, body = _row(client, admin, zstore)
-    assert row["daily_cap"] == 10 and row["monthly_cap"] == 300
+    limit = 10 * cs.days_in_month(first)
+    assert row["daily_cap"] == 10 and row["monthly_cap"] == limit
     assert row["used"] == 350 and row["entries"] == 2 and row["highest_day"] == 200 and row["last_entry"] == (first + timedelta(days=1)).isoformat()
-    assert row["alert"] == "OVER" and row["excess"] == 50 and row["remaining"] == 0 and row["percent"] == 116.7
+    assert row["alert"] == "OVER" and row["excess"] == 350 - limit and row["remaining"] == 0 and row["percent"] == round(350 * 100 / limit, 1)
     assert body["summary"]["over"] >= 1 and body["summary"]["total"] == len(body["rows"]) and body["month"] == f"{first:%Y-%m}"
     assert body["rows"][0]["alert"] == "OVER"                                                  # worst first
 

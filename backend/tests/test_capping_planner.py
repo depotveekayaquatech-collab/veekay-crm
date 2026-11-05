@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.models.order_entry import OrderEntry
 from app.services import capping_history_service as hist
+from app.services import capping_service as cs
 
 from .conftest import API, auth, login, plant_entry
 
@@ -21,6 +22,10 @@ def _plan(client, headers, **body):
 
 def _row(res, store):
     return next((r for r in res["rows"] if r["store_id"] == str(store.id)), None)
+
+
+def _dim() -> int:
+    return cs.days_in_month(hist.today_ist().replace(day=1))
 
 
 def _zepto(make_store, **kw):
@@ -49,15 +54,16 @@ def test_capacity_comes_from_the_capping_and_the_months_entries(client, admin, m
     _cap(client, admin, s, 10)
     res = _plan(client, admin, mode="max_capacity").json()
     r = _row(res, s)
-    assert (r["daily_cap"], r["monthly_limit"], r["used"], r["remaining"], r["over_by"], r["exclude_reason"]) == (10, 300, 200, 100, 0, None)
-    assert r["capacity"] == 100 and res["is_plan"] is True and res["month"] == f"{first:%Y-%m}"
+    limit = 10 * _dim()
+    assert (r["daily_cap"], r["monthly_limit"], r["used"], r["remaining"], r["over_by"], r["exclude_reason"]) == (10, limit, 200, limit - 200, 0, None)
+    assert r["capacity"] == limit - 200 and res["is_plan"] is True and res["month"] == f"{first:%Y-%m}"
 
 
 def test_a_full_store_an_over_cap_store_and_a_store_with_no_capping_add_no_capacity(client, admin, make_store, db):
     full, over, nocap = _zepto(make_store), _zepto(make_store), _zepto(make_store)
     first = hist.today_ist().replace(day=1)
-    plant_entry(db, full, first, 300)
-    plant_entry(db, over, first, 350)
+    plant_entry(db, full, first, 10 * _dim())
+    plant_entry(db, over, first, 10 * _dim() + 50)
     for st in (full, over):
         _cap(client, admin, st, 10)
     res = _plan(client, admin, target=10_000_000).json()
@@ -71,13 +77,14 @@ def test_a_full_store_an_over_cap_store_and_a_store_with_no_capping_add_no_capac
 def test_priority_stores_are_filled_first_in_the_order_pasted_and_never_beyond_their_capacity(client, admin, make_store, db):
     a, b, c = _zepto(make_store), _zepto(make_store), _zepto(make_store)
     for st, cap in ((a, 10), (b, 5), (c, 20)):
-        _cap(client, admin, st, cap)                                                   # remaining 300, 150, 600
-    res = _plan(client, admin, mode="priority_first", target=400, storeLimit=2, priority=[b.crm_code, a.crm_code, c.name]).json()
-    assert _row(res, b)["proposed"] == 150 and _row(res, a)["proposed"] == 250        # b filled to its 150, the rest to a - never beyond a capacity
+        _cap(client, admin, st, cap)                                                   # remaining 10, 5 and 20 days' worth
+    d = _dim()
+    res = _plan(client, admin, mode="priority_first", target=5 * d + 100, storeLimit=2, priority=[b.crm_code, a.crm_code, c.name]).json()
+    assert _row(res, b)["proposed"] == 5 * d and _row(res, a)["proposed"] == 100       # b filled to its capacity, the rest to a - never beyond a capacity
     assert _row(res, c)["proposed"] == 0 and _row(res, c)["selected"] is False        # the limit of 2 was reached
     assert (_row(res, b)["priority_rank"], _row(res, a)["priority_rank"], _row(res, c)["priority_rank"]) == (1, 2, 3)
     t = res["totals"]
-    assert (t["matchable"], t["unmatched"], t["selected"], t["priority_exceeds_limit"]) == (400, 0, 2, True)
+    assert (t["matchable"], t["unmatched"], t["selected"], t["priority_exceeds_limit"]) == (5 * d + 100, 0, 2, True)
     outcomes = [e["outcome"] for e in res["priority"]]
     assert outcomes[:2] == ["Included.", "Included."] and "store limit (2)" in outcomes[2]
 
@@ -88,7 +95,7 @@ def test_maximum_capacity_ignores_the_priority_list(client, admin, make_store):
     _cap(client, admin, big, 29)
     res = _plan(client, admin, mode="max_capacity", storeLimit=1, priority=[small.crm_code]).json()
     chosen = [r for r in res["rows"] if r["selected"]]
-    assert len(chosen) == 1 and chosen[0]["remaining"] >= 29 * 30                      # the biggest store in the system, not the pasted one
+    assert len(chosen) == 1 and chosen[0]["remaining"] >= 29 * _dim()                      # the biggest store in the system, not the pasted one
     assert res["priority"][0]["included"] is False
 
 

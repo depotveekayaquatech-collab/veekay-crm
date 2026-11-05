@@ -8,13 +8,13 @@ Who may use it (always re-checked on the server, whatever the app shows):
   * administrators (they hold orders.correct and belong to no platform), so the Capping page works for them too.
   Blinkit employees and Blinkit partner logins (whatever else they hold) are refused. Changing a capping needs capping.change on top.
 
-A store's capping is ONE DAILY number (store_caps.daily_cap, the capping in force today). The monthly limit a store must not exceed is that number x 30 (always 30,
-whatever the month's length). No capping = no limit; 0 is a real capping. Usage is the sum of the month's order entries for the store, EVERY entry whoever entered
+A store's capping is ONE DAILY number (store_caps.daily_cap, the capping in force today). The monthly limit a store must not exceed is that number x the number of days in
+THAT month (31 for October, 30 for November, 28 or 29 for February). No capping = no limit; 0 is a real capping. Usage is the sum of the month's order entries for the store, EVERY entry whoever entered
 it (an employee, a Team Lead, an admin, a sheet), so everyone sees the same figures. Alert levels:
-  OVER   usage > monthly limit (daily x 30)
-  AHEAD  usage is ahead of the pace: more than daily x day of the month (day 31 counts as 30) - current month only, not yet over
+  OVER   usage > monthly limit (daily x the month's days)
+  AHEAD  usage is ahead of the pace: more than daily x day of the month - current month only, not yet over
   NEAR   usage >= 80% of the monthly limit (and not over / ahead)        OK  below that        NO_CAP  no capping set
-Example: capping 10 -> limit 300; on the 15th up to 150 is on pace, 160 marked gives an AHEAD alert.
+Example: capping 10 in a 30-day month -> limit 300 (310 in a 31-day month); on the 15th up to 150 is on pace, 160 marked gives an AHEAD alert.
 
 Who is alerted: people holding capping.alerts (and the platform's own login) - see alerts() - for the stores they cover.
 """
@@ -38,7 +38,6 @@ from app.services import assignment_service
 
 PLATFORM = "zepto"
 WARN_PERCENT = 80
-CAP_DAYS = 30            # the monthly limit is the daily capping x 30, in every month
 MAX_CAP = 1_000_000      # the largest daily capping accepted
 _ORDER = {"OVER": 0, "AHEAD": 1, "NEAR": 2, "OK": 3, "NO_CAP": 4}
 _MONTHS = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -94,22 +93,26 @@ def available_months(today: date | None = None) -> list[str]:
     return out
 
 
-def monthly_limit(daily: int | None) -> int | None:
-    """The most a store may take in a month: its daily capping x 30."""
-    return None if daily is None else daily * CAP_DAYS
+def days_in_month(month: date) -> int:
+    return calendar.monthrange(month.year, month.month)[1]
 
 
-def alert_for(used: int, daily: int | None, day: int | None = None) -> str:
+def monthly_limit(daily: int | None, month: date) -> int | None:
+    """The most a store may take in `month`: its daily capping x the number of days in that month."""
+    return None if daily is None else daily * days_in_month(month)
+
+
+def alert_for(used: int, daily: int | None, month: date, day: int | None = None) -> str:
     """OVER / AHEAD / NEAR / OK / NO_CAP from the bottles used and the store's DAILY capping. A capping of 0 is valid: zero used is OK, any use is OVER (no
     division). Pass `day` (the day of the month in progress) to also get AHEAD (used more than daily x day)."""
     if daily is None:
         return "NO_CAP"
-    limit = daily * CAP_DAYS
+    limit = daily * days_in_month(month)
     if used > limit:
         return "OVER"
     if limit == 0:
         return "OK"
-    if day is not None and used > daily * min(day, CAP_DAYS):
+    if day is not None and used > daily * day:
         return "AHEAD"
     return "NEAR" if used * 100 >= WARN_PERCENT * limit else "OK"
 
@@ -118,7 +121,7 @@ def pace_for(daily: int | None, month: date, today: date) -> tuple[int | None, i
     """(day, bottles allowed so far) for the month in progress; (None, None) for a finished month or a store with no capping."""
     if daily is None or (month.year, month.month) != (today.year, today.month):
         return None, None
-    return today.day, daily * min(today.day, CAP_DAYS)
+    return today.day, daily * today.day
 
 
 def _partner(db: Session, org_id: uuid.UUID) -> Organization:
@@ -176,8 +179,8 @@ def _rows(db: Session, user: User, partner: Organization, month: date, store_ids
     for sid, code, name, state, city, daily, vendor in stores:
         used, entries, highest, last = usage.get(sid, (0, 0, 0, None))
         day, allowed = pace_for(daily, month, today)
-        level = alert_for(used, daily, day)
-        cap = monthly_limit(daily)          # everything below is measured against the monthly limit (daily x 30)
+        level = alert_for(used, daily, month, day)
+        cap = monthly_limit(daily, month)   # everything below is measured against the monthly limit (daily x the month's days)
         owner = owners.get(sid)
         rows.append({
             "store_id": sid, "outlet_id": code, "outlet_name": name, "state": state, "city": city, "vendor_name": " ".join(vendor.split()) if vendor else None,
@@ -231,7 +234,7 @@ def alerts(db: Session, user: User, perms: set[str]) -> dict:
     rows = [r for r in _rows(db, user, partner, month, scope) if r["alert"] in ("OVER", "AHEAD")]
     return {
         "success": True, "month": f"{month:%Y-%m}", "month_label": f"{_MONTHS[month.month]} {month.year}",
-        "day": today.day, "days_in_month": CAP_DAYS,
+        "day": today.day, "days_in_month": days_in_month(month),
         "over": sum(1 for r in rows if r["alert"] == "OVER"), "ahead": sum(1 for r in rows if r["alert"] == "AHEAD"),
         "rows": rows[:50],
     }

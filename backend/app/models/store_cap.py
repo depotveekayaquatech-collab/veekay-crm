@@ -1,5 +1,5 @@
 """
-StoreCap = the DAILY bottle cap for one store (Zepto capping). The monthly limit is daily_cap x 30.
+StoreCap = the DAILY bottle cap for one store (Zepto capping). The monthly limit is daily_cap x the days in that month.
 
 One row per store; no row means "no cap configured". 0 is a real cap (no bottles allowed), not "blank". The same cap
 applies to every month until someone changes it. Set by an employee in the CRM, or loaded from the Capping sheet by a

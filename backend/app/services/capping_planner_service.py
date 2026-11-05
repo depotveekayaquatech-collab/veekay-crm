@@ -3,7 +3,7 @@ Smart Capping Planner - loads the store capacities for a month and runs capping_
 entries and writes nothing, so no supply record can change because of it.
 
 Source of every figure (so it can be audited):
-  monthly limit   the store's capping in force at the end of the month (today for the month in progress) x 30 - the same limit the Usage tab measures against
+  monthly limit   the store's capping in force at the end of the month (today for the month in progress) x the days in that month - the same limit the Usage tab measures against
   current count   the sum of the month's order entries for the store, every entry whoever entered it
   remaining       limit - current count, never below 0
 A store is VERIFIED (counts toward capacity) only with a valid capping, an Outlet ID, and when it is not one of several identical records (same project, Outlet ID
@@ -144,7 +144,7 @@ def load(db: Session, user: User, perms: set[str], month: date, project: str) ->
     for sid, code, outlet, name, state, city, slug, legacy in stores:
         cap = hist.capping_on(history.get(sid, []), legacy, end)
         used, entries = usage.get(sid, (0, 0))
-        limit = cs.monthly_limit(cap)
+        limit = cs.monthly_limit(cap, month)
         valid = cap is not None and 0 <= cap <= cs.MAX_CAP
         remaining = max(limit - used, 0) if valid else 0
         rows.append({

@@ -3,7 +3,7 @@ Zepto capping overflow: which stores went over their capping in a month, by how 
 no entry; it is the picture to plan supply and to talk to the platform about capping, built on the same usage figures as the Usage tab.
 
 Two kinds of "over", both shown:
-  * monthly: bottles used above the monthly limit (daily capping x 30) - the figure the Usage tab alerts on, and
+  * monthly: bottles used above the monthly limit (daily capping x the days in the month) - the figure the Usage tab alerts on, and
   * daily: a day whose bottles for the store were above the capping in force ON THAT DAY (capping history, so a later change never rewrites an earlier day).
 Room is what a store with a capping still has left of its monthly limit.
 """

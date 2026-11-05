@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 
 from app.models.order_entry import OrderEntry
 from app.services import capping_history_service as hist
+from app.services import capping_service as cs
 from app.services.capping_overflow_service import over_days
 
 from .conftest import API, plant_entry
@@ -42,19 +43,20 @@ def test_the_overflow_lists_stores_over_and_stores_with_room(client, admin, make
     first = today.replace(day=1)
     over = make_store(platform="zepto", region=None, state="Karnataka", city="Bengaluru")
     roomy = make_store(platform="zepto", region=None, state="Karnataka", city="Mysuru")
-    plant_entry(db, over, first, 40)                                                # cap 1 -> limit 30: 10 over for the month, 39 over on the day
+    d = cs.days_in_month(first)
+    plant_entry(db, over, first, 40)                                                # cap 1 -> limit d: 40 - d over for the month, 39 over on the day
     plant_entry(db, roomy, first, 6)
-    plant_entry(db, roomy, first + timedelta(days=1), 15)                           # cap 10 -> 5 over on one day, but 279 left of 300
+    plant_entry(db, roomy, first + timedelta(days=1), 15)                           # cap 10 -> 5 over on one day, but 10 x d - 21 left
     _cap(client, admin, over, 1)
     _cap(client, admin, roomy, 10)
     body = _overflow(client, admin)
     a, b = _row(body, over), _row(body, roomy)
-    assert (a["monthly_cap"], a["used"], a["excess"], a["room"]) == (30, 40, 10, 0)
+    assert (a["monthly_cap"], a["used"], a["excess"], a["room"]) == (d, 40, 40 - d, 0)
     assert (a["days_over"], a["daily_excess"]) == (1, 39) and a["over_days"][0]["date"] == first.isoformat()
-    assert (b["monthly_cap"], b["used"], b["excess"], b["room"]) == (300, 21, 0, 279)
+    assert (b["monthly_cap"], b["used"], b["excess"], b["room"]) == (10 * d, 21, 0, 10 * d - 21)
     assert (b["days_over"], b["daily_excess"]) == (1, 5)
     s = body["summary"]
-    assert s["stores_over_month"] >= 1 and s["month_excess"] >= 10 and s["stores_with_room"] >= 1 and s["room"] >= 279
+    assert s["stores_over_month"] >= 1 and s["month_excess"] >= 40 - d and s["stores_with_room"] >= 1 and s["room"] >= 10 * d - 21
     assert body["rows"][0]["excess"] >= body["rows"][-1]["excess"]                  # worst first
 
 
@@ -67,7 +69,7 @@ def test_a_store_with_no_capping_and_one_with_no_entries_are_handled(client, adm
     body = _overflow(client, admin)
     assert _row(body, nocap) is None                                                # no capping: nothing to be over, no room to speak of
     q = _row(body, quiet)
-    assert q["used"] == 0 and q["excess"] == 0 and q["room"] == 240 and q["days_over"] == 0
+    assert q["used"] == 0 and q["excess"] == 0 and q["room"] == 8 * cs.days_in_month(hist.today_ist().replace(day=1)) and q["days_over"] == 0
 
 
 def test_looking_at_the_overflow_changes_no_entry(client, admin, make_store, db):
@@ -116,8 +118,9 @@ def test_usage_and_overflow_of_a_finished_month_use_the_capping_it_had(client, a
     plant_entry(db, store, last_first, 25)
     month = f"{last_end:%Y-%m}"
     usage = next(x for x in client.get(f"{API}/capping/usage", params={"month": month}, headers=admin).json()["rows"] if x["store_id"] == str(store.id))
-    assert usage["daily_cap"] == 10 and usage["monthly_cap"] == 300                   # not today's 20
+    dim = cs.days_in_month(last_first)
+    assert usage["daily_cap"] == 10 and usage["monthly_cap"] == 10 * dim              # not today's 20, and last month's own number of days
     row = _row(_overflow(client, admin, month), store)
-    assert row["days_over"] == 1 and row["over_days"][0]["cap"] == 10 and row["room"] == 275
+    assert row["days_over"] == 1 and row["over_days"][0]["cap"] == 10 and row["room"] == 10 * dim - 25
     alert = client.get(f"{API}/capping/alert", params={"from": last_first.isoformat(), "to": last_end.isoformat()}, headers=admin)
     assert alert.status_code == 200 and alert.json()["to"] == last_end.isoformat()   # the alert can be asked for a finished month

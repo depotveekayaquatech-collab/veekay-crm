@@ -13,7 +13,7 @@ import { formatLimitReport } from "@/lib/zeptoLimitReport";
 import { Panel, SearchBox, StatCard } from "@/features/orders/ui";
 import { apiRequest } from "@/services/api";
 
-/** monthly_limit / pending / over_by are Zepto's capping figures (daily capping x 30); null on other platforms and for a store with no capping. */
+/** monthly_limit / pending / over_by are Zepto's capping figures (daily capping x the days in the month); null on other platforms and for a store with no capping. */
 export interface VendorStore {
   store_id: string; store_name: string; external_code: string; state: string | null; city: string | null; live: boolean; bottles: number; days_marked: number;
   daily_cap: number | null; monthly_limit: number | null; pending: number | null; over_by: number | null;
@@ -101,7 +101,7 @@ export function VendorPerformance({ q }: { q: ReturnType<typeof useVendorPerform
   if (!d) return null;
 
   const period = d.from && d.to ? `${shortDay(d.from)} to ${shortDay(d.to)}` : "no day yet";
-  const zepto = d.partner_slug === "zepto";                 // Zepto vendors have a monthly limit (capping x 30) to supply against
+  const zepto = d.partner_slug === "zepto";                 // Zepto vendors have a monthly limit (capping x the days in the month) to supply against
   const options = [{ value: "", label: `All vendors (${d.vendors.length})` }, ...d.vendors.map((v) => ({ value: label(v), label: `${label(v)} (${v.store_count} store${v.store_count === 1 ? "" : "s"})` }))];
 
   function exportCsv() {

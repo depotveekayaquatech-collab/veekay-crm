@@ -36,7 +36,7 @@ def usage(
     month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$", description="YYYY-MM; this month by default"),
     user: User = Depends(get_current_user), perms: set[str] = Depends(get_current_permissions), db: Session = Depends(get_db),
 ) -> dict:
-    """The monthly usage of every live Zepto store against its limit (daily capping x 30): bottles used, what is left, the percentage and the alert level
+    """The monthly usage of every live Zepto store against its limit (daily capping x the days in the month): bottles used, what is left, the percentage and the alert level
     (over / ahead of pace / near / ok / no capping), counting every entry of the month."""
     return capping_service.report(db, user, perms, month)
 

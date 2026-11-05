@@ -5,7 +5,7 @@ laying a target difference over their remaining capacity.
 This is CAPACITY PLANNING. Nothing here is supply: a proposed allocation is a number a store COULD still take under its capping, never a count that was delivered,
 and nothing in this module (or the service around it) writes a single entry.
 
-Remaining capacity of a store = its monthly limit (daily capping x 30) - what is already recorded for the month, never below 0. A store counts only when it is
+Remaining capacity of a store = its monthly limit (daily capping x the days in the month) - what is already recorded for the month, never below 0. A store counts only when it is
 verified: it has a valid capping and an Outlet ID, and is not one of several identical records (see capping_planner_service). Two modes:
   max_capacity    the stores with the most remaining capacity, whatever the priority list says
   priority_first  the pasted priority stores first, in the order pasted (a store with no capacity is skipped, with the reason), then the rest by remaining capacity
