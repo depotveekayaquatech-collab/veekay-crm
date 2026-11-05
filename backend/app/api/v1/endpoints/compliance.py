@@ -37,6 +37,8 @@ def stores(
     month: str | None = None,
     partner: str | None = None,
     region: uuid.UUID | None = None,
+    state: str | None = None,
+    entity: str | None = None,
     city: str | None = None,
     manager: str | None = None,
     missing: str | None = Query(None, pattern="^(any|card|bill|payment)$"),
@@ -59,12 +61,13 @@ def stores(
         return compliance_repo_service.repository(
             db, user, perms, month_str=month, partner=partner, region=region, city=city, manager=manager,
             missing=missing, rng=range, status_filter=status, q=q, sort=sort, direction=dir, page=page, page_size=page_size,
+            state=state, entity=entity,
         )
 
     if "compliance.manage" in perms:
         # Everyone who manages compliance sees the same organisation-wide table, so share one copy per filter set.
         return cached_json_response(
-            request, ("compliance-repo", user.organization_id, month, partner, region, city, manager, missing, range, status, q, sort, dir, page, page_size),
+            request, ("compliance-repo", user.organization_id, month, partner, region, state, entity, city, manager, missing, range, status, q, sort, dir, page, page_size),
             lambda: _REPO_PAGE.dump_json(build()),
         )
     return build()

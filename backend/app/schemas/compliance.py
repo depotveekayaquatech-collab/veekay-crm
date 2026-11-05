@@ -55,6 +55,8 @@ class RegionOption(BaseModel):
 
 class ComplianceOptions(BaseModel):
     regions: list[RegionOption]
+    states: list[str] = []
+    entities: list[str] = []
     cities: list[str]
     managers: list[str]
     has_unassigned: bool

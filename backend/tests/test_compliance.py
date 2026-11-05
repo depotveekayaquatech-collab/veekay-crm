@@ -81,6 +81,18 @@ def test_re_uploading_replaces_rather_than_duplicates(client, admin, make_store)
     assert len(docs["items"]) == 1
 
 
+def test_repository_filters_by_state_and_entity(client, admin, make_store):
+    a = make_store(state="Zzstate One", entity="ZZENT1")
+    b = make_store(state="Zzstate Two", entity="ZZENT2")
+    opts = repo(client, admin)["options"]
+    assert {"Zzstate One", "Zzstate Two"} <= set(opts["states"]) and {"ZZENT1", "ZZENT2"} <= set(opts["entities"])
+    by_state = {r["store_id"] for r in repo(client, admin, state="zzstate one")["items"]}
+    assert by_state == {str(a.id)}
+    by_entity = {r["store_id"] for r in repo(client, admin, entity="ZZENT2")["items"]}
+    assert by_entity == {str(b.id)}
+    assert repo(client, admin, state="Zzstate One", entity="ZZENT2")["items"] == []
+
+
 # ---------------------------------------------------------------- access
 def test_employees_only_touch_their_own_stores(client, emp, zepto_emp, make_store):
     mine = make_store(platform="blinkit", region="NORTH")

@@ -81,6 +81,11 @@ def _logged(d: dict[str, ComplianceDocument]) -> int:
     return sum(1 for k in REQUIRED if k in d)
 
 
+def _distinct(values) -> list[str]:
+    """Unique non-blank values, one per spelling/case, sorted."""
+    return sorted({v.strip().lower(): v.strip() for v in values if v and v.strip()}.values(), key=str.lower)
+
+
 def _status(n: int) -> str:
     return "COMPLETE" if n == len(REQUIRED) else ("PENDING" if n == 0 else "PARTIAL")
 
@@ -93,6 +98,7 @@ def repository(
     db: Session, user: User, perms: set[str], *, month_str: str | None, partner: str | None, region: uuid.UUID | None,
     city: str | None, manager: str | None, missing: str | None, rng: str | None, status_filter: str | None,
     q: str | None, sort: str, direction: str, page: int, page_size: int,
+    state: str | None = None, entity: str | None = None,
 ) -> ComplianceStorePage:
     month = parse_month(month_str)
     today = _today()
@@ -109,6 +115,8 @@ def repository(
             {s.region.id: RegionOption(id=s.region.id, name=s.region.name) for s in scoped if s.region}.values(),
             key=lambda r: r.name.lower(),
         ),
+        states=_distinct(s.state for s in scoped),
+        entities=_distinct(s.entity for s in scoped),
         cities=sorted({s.city.strip() for s in scoped if s.city and s.city.strip()}, key=str.lower),
         managers=sorted({m.lower(): m for m in (managers[s.id] for s in scoped) if m}.values(), key=str.lower),  # one entry per vendor, any spelling/case
         has_unassigned=any(managers[s.id] is None for s in scoped),
@@ -120,6 +128,8 @@ def repository(
         s for s in everyone
         if (not partner or (s.partner_organization and s.partner_organization.slug == partner))
         and (region is None or s.region_id == region)
+        and (not state or (s.state or "").strip().lower() == state.strip().lower())
+        and (not entity or (s.entity or "").strip().lower() == entity.strip().lower())
         and (not city or (s.city or "").strip().lower() == city.strip().lower())
         and (not manager or (managers[s.id] is None if manager == UNASSIGNED else (managers[s.id] or "").lower() == manager.lower()))
         and (not ql or ql in s.name.lower() or ql in s.external_code.lower())

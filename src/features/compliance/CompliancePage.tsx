@@ -30,7 +30,7 @@ import { monthLabel } from "@/lib/months";
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const EMPTY: Omit<RepoFilters, "month"> = {
-  partner: "", region: "", city: "", manager: "", missing: "", range: "", status: "", q: "", sort: "name", dir: "asc", page: 1,
+  partner: "", region: "", state: "", entity: "", city: "", manager: "", missing: "", range: "", status: "", q: "", sort: "name", dir: "asc", page: 1,
 };
 
 const select =
@@ -230,6 +230,24 @@ export function CompliancePage() {
             </SelectField>
           </label>
           <label className={label}>
+            State
+            <SelectField className={select} value={f.state} onChange={(e) => set({ state: e.target.value })}>
+              <option value="">All states</option>
+              {data?.options.states.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </SelectField>
+          </label>
+          <label className={label}>
+            Entity
+            <SelectField className={select} value={f.entity} onChange={(e) => set({ entity: e.target.value })}>
+              <option value="">All entities</option>
+              {data?.options.entities.map((en) => (
+                <option key={en} value={en}>{en}</option>
+              ))}
+            </SelectField>
+          </label>
+          <label className={label}>
             City
             <SelectField className={select} value={f.city} onChange={(e) => set({ city: e.target.value })}>
               <option value="">All cities</option>
@@ -240,7 +258,7 @@ export function CompliancePage() {
           </label>
           <label className={label}>
             Channel
-            <SelectField className={select} value={f.partner} onChange={(e) => set({ partner: e.target.value, region: "", city: "", manager: "" })}>
+            <SelectField className={select} value={f.partner} onChange={(e) => set({ partner: e.target.value, region: "", state: "", entity: "", city: "", manager: "" })}>
               <option value="">All channels</option>
               {partners.map((p) => (
                 <option key={p.slug} value={p.slug}>{p.name}</option>

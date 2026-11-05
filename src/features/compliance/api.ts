@@ -58,6 +58,8 @@ export interface ComplianceKpis {
 
 export interface ComplianceOptions {
   regions: { id: string; name: string }[];
+  states: string[];
+  entities: string[];
   cities: string[];
   managers: string[];
   hasUnassigned: boolean;
@@ -79,6 +81,8 @@ export interface RepoFilters {
   month: string;
   partner: string;
   region: string;
+  state: string;
+  entity: string;
   city: string;
   manager: string;
   missing: string;
@@ -156,7 +160,7 @@ export function useComplianceRepo(f: RepoFilters) {
       camelize<ComplianceStorePage>(
         await apiRequest(
           `/compliance/stores?${qs({
-            month: f.month, partner: f.partner, region: f.region, city: f.city, manager: f.manager,
+            month: f.month, partner: f.partner, region: f.region, state: f.state, entity: f.entity, city: f.city, manager: f.manager,
             missing: f.missing, range: f.range, status: f.status, q: f.q, sort: f.sort, dir: f.dir,
             page: f.page, page_size: 50,
           })}`,
